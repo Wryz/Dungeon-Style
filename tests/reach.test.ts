@@ -1,0 +1,39 @@
+import { describe, expect, it } from 'vitest';
+import { CombatSim } from '../src/sim/combat';
+import { ENEMY_MOVES, PLAYER_MOVES } from '../src/sim/moves';
+import { createBrawler, createPlayer } from '../src/sim/roster';
+
+/** Farthest starting distance (5 cm steps) at which the move connects with an idle target. */
+function measureReach(side: 'player' | 'enemy', id: string): number {
+  let best = 0;
+  for (let d = 0.7; d <= 5; d += 0.05) {
+    const sim = new CombatSim(1);
+    const p = createPlayer();
+    const { fighter: e, ai } = createBrawler(sim.rng, { passive: true, blockChance: 0 });
+    p.autoDefense = false;
+    p.pos.set(0, 0, 0);
+    p.yaw = Math.PI / 2;
+    e.pos.set(d, 0, 0);
+    e.yaw = -Math.PI / 2;
+    sim.add(p);
+    sim.add(e, ai);
+    sim.step();
+    const [a, t] = side === 'player' ? [p, e] : [e, p];
+    a.startMove(a.moves[id]);
+    let hit = false;
+    for (let i = 0; i < 70 && !hit; i++) for (const ev of sim.step()) if (ev.type === 'hit' && ev.defender === t) hit = true;
+    if (hit) best = d;
+  }
+  return best;
+}
+
+// AI spacing and auto-defense threat checks rely on `reach`; keep it honest with the animation.
+describe('declared reach matches animated geometry', () => {
+  for (const [side, table] of [['player', PLAYER_MOVES], ['enemy', ENEMY_MOVES]] as const) {
+    for (const m of Object.values(table)) {
+      it(`${side} ${m.id}`, () => {
+        expect(Math.abs(measureReach(side, m.id) - m.reach)).toBeLessThanOrEqual(0.12);
+      });
+    }
+  }
+});
