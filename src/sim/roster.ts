@@ -12,7 +12,7 @@ export const BRAWLER_STYLE: FighterStyle = {
   footwork: { stanceWidth: 1.12, stepFrames: 12, stepHeight: 0.035 },
   idle: {
     bounceHz: 1.2,
-    bounceAmp: 0.022,
+    bounceAmp: 0.016,
     swayAmp: 0.06,
     feintEvery: [1.8, 3.6],
     feintWeights: { jab: 1, shoulder: 4, level: 1, step: 3 },

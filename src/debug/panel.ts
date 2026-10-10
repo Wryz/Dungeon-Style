@@ -55,10 +55,19 @@ export function buildPanel(game: Game): { toggle: () => void } {
   fw.addBinding(ps, 'stanceWidth', { min: 0.7, max: 1.5, step: 0.01, label: 'stance width' });
   fw.addBinding(ps, 'stepFrames', { min: 4, max: 20, step: 1, label: 'step frames' });
   fw.addBinding(ps, 'stepHeight', { min: 0, max: 0.15, step: 0.005, label: 'step height' });
-  fw.addBinding(FACING, 'stanceSpeed', { min: 0.2, max: 1, step: 0.01, label: 'in-range speed' });
   fw.addBinding(is, 'bounceHz', { min: 0, max: 3, step: 0.05, label: 'bounce Hz' });
   fw.addBinding(is, 'bounceAmp', { min: 0, max: 0.1, step: 0.002, label: 'bounce height' });
   fw.addBinding(is, 'swayAmp', { min: 0, max: 0.15, step: 0.005, label: 'sway' });
+
+  // Live view of how the player's movement is being shaped by the fight right now.
+  const live = pane.addFolder({ title: 'Motion context (live)' });
+  const mi = game.player.motionInfo;
+  live.addBinding(mi, 'zone', { readonly: true, label: 'distance' });
+  live.addBinding(mi, 'context', { readonly: true, label: 'context' });
+  live.addBinding(mi, 'speed', { readonly: true });
+  live.addBinding(mi, 'stride', { readonly: true });
+  live.addBinding(mi, 'bounce', { readonly: true });
+  live.addBinding(mi, 'guard', { readonly: true, label: 'guard Δ' });
 
   const cam = pane.addFolder({ title: 'Camera', expanded: false });
   cam.addBinding(CAMERA_TUNING, 'elevation', { min: 0.2, max: 1.4, step: 0.01 });

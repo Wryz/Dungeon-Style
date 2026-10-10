@@ -57,7 +57,14 @@ keep the legs stepping underneath; kicks and lunges carry your momentum.
 **Footwork.** Feet are planted in the world and take discrete steps: the lead foot steps
 first going forward, the rear foot going back, the near-side foot going sideways (the
 other drags in), turns pivot on the lead foot, and the hips shift over the planted foot.
-Inside fighting range, fighters move in stance at reduced speed with short steps.
+How a fighter moves is **contextual**: a live motion profile is re-blended every frame
+from distance zones — *pocket* (toe to toe: low, tight guard, small steps, head
+movement), *striking* range, *outside*/kicking range (longer stance, pawing to find
+range) and *roaming* (long walking strides, hands relaxed) — then adjusted by the fight:
+hurt (heavier, hands drop, rhythm dies), guard running low (shell up), a strike
+incoming (plant and sit down), just got hit (cautious), pressing an advantage (stalk,
+feint more), opponent down (relax). Retreating uses short gliding steps with the head
+kept over the lead knee. Open the **L** panel to watch the context change live.
 Between exchanges they stay alive — bouncing in rhythm, shifting weight, scanning,
 pawing with the lead hand, re-stancing and throwing feints (purely visual: feints never
 glow red and never trigger defenses). The player is a light-footed out-fighter; the
@@ -89,6 +96,7 @@ src/
     animator.ts keyframe tracks that blend from wherever the body really is
     footwork.ts planted-foot stepping (step-and-drag, pivots, weight transfer)
     idle.ts     between-exchange life: rhythm, sway, scanning, paws, feints
+    motion.ts   contextual movement profile (distance zones + fight-state modifiers)
     ragdoll.ts  Rapier powered ragdoll: joint "muscles" chase the animated pose;
                 hits relax muscles near the impact + add impulses, then recover
   render/     blocky low-poly fighters, arena, orthographic camera, particles

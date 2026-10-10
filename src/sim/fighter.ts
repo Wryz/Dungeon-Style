@@ -2,6 +2,7 @@ import { Vector3 } from 'three';
 import { Animator, type TrackKey } from '../body/animator';
 import { Footwork, type FootworkStyle } from '../body/footwork';
 import { IdleBehavior, type IdleStyle } from '../body/idle';
+import { makeProfile, type MotionMods, type MotionProfile, smoothProfile, targetProfile, type Zone } from '../body/motion';
 import { getPose, GUARD, POSE_SPECS, type PoseName } from '../body/poses';
 import {
   forwardKinematics,
@@ -25,7 +26,7 @@ export const OUTFIGHTER_STYLE: FighterStyle = {
   footwork: { stanceWidth: 1, stepFrames: 9, stepHeight: 0.045 },
   idle: {
     bounceHz: 1.9,
-    bounceAmp: 0.045,
+    bounceAmp: 0.03,
     swayAmp: 0.055,
     feintEvery: [1.1, 2.4],
     feintWeights: { jab: 4, shoulder: 3, level: 2, step: 2 },
@@ -140,6 +141,7 @@ export class Fighter {
   combo = 0;
   framesSinceBlock = 999;
   framesSinceHit = 999;
+  framesSinceLanded = 999;
   hitReaction: PoseName = 'hitHigh';
 
   /** Player gets automatic defense; enemies defend through their AI. */
@@ -158,6 +160,11 @@ export class Fighter {
   private breath = 0;
   readonly footwork: Footwork;
   readonly idle: IdleBehavior;
+  /** Live, context-blended movement profile (see body/motion.ts). */
+  readonly motion: MotionProfile = makeProfile();
+  private readonly motionTarget: MotionProfile = makeProfile();
+  /** Human-readable snapshot of the current motion context (debug panel). */
+  readonly motionInfo = { zone: '', context: '', speed: 0, stride: 0, bounce: 0, guard: 0 };
   private readonly rng: Rng;
 
   constructor(
@@ -346,7 +353,9 @@ export class Fighter {
     this.moveBlend += (want - this.moveBlend) * 0.25;
 
     const t = this.target && this.target.alive ? this.target : null;
-    const engaged = !!t && this.distanceTo(t) < 3.2;
+    const dist = t ? this.distanceTo(t) : Infinity;
+    this.updateMotion(t, dist);
+    const engaged = dist < 3.2;
     const still = this.state === 'idle' && speed < 0.25;
     this.idle.tick(engaged, still);
 
@@ -375,16 +384,61 @@ export class Fighter {
     if (!driven) this.footwork.syncToRig(this.rig);
   }
 
+  /** Re-evaluates the fight context and eases the movement profile toward it. */
+  private updateMotion(t: Fighter | null, dist: number) {
+    const threat =
+      !!t && t.state === 'attack' && !!t.move && t.stateFrame < t.move.startup + t.move.active && dist <= t.move.reach + 0.5;
+    const { weights, mods } = targetProfile(
+      {
+        dist,
+        hpFrac: this.hp / this.stats.maxHp,
+        guardFrac: this.guard / this.stats.maxGuard,
+        framesSinceHit: this.framesSinceHit,
+        threat,
+        opponentDown: !!this.target && (this.target.state === 'knockdown' || this.target.state === 'getup'),
+        pressing: !!t && (t.hp / t.stats.maxHp < 0.4 || t.state === 'hitstun' || this.framesSinceLanded < 60),
+      },
+      this.motionTarget,
+    );
+    // Threats are reacted to quickly; everything else drifts in over ~a second.
+    smoothProfile(this.motion, this.motionTarget, threat ? 0.25 : 0.06);
+    const M = this.motion;
+    Object.assign(this.footwork.mods, { stance: M.stance, stepFrames: M.stepFrames, stepHeight: M.stepHeight, stride: M.stride });
+    Object.assign(this.idle.mods, { bounce: M.bounce, bounceHz: M.bounceHz, sway: M.sway, head: M.head, feints: M.feints, paws: M.paws });
+
+    const info = this.motionInfo;
+    info.zone = (Object.entries(weights) as [Zone, number][])
+      .filter(([, w]) => w > 0.05)
+      .sort((a, b) => b[1] - a[1])
+      .map(([z, w]) => `${z} ${Math.round(w * 100)}%`)
+      .join(' / ');
+    info.context = (Object.entries(mods) as [MotionMods, number][])
+      .filter(([, v]) => v > 0.05)
+      .map(([k, v]) => (v > 0.95 ? k : `${k} ${Math.round(v * 100)}%`))
+      .join(', ') || 'neutral';
+    info.speed = +M.speed.toFixed(2);
+    info.stride = +M.stride.toFixed(2);
+    info.bounce = +M.bounce.toFixed(2);
+    info.guard = +M.guardY.toFixed(3);
+  }
+
   private locomotionPose(dx: number, dz: number, offX: number, offZ: number) {
     const m = this.moveBlend;
+    const M = this.motion;
     const raise = this.idle.toeRaise() * (1 - m);
     const [wx, wz] = this.footwork.weightShift(this, offX, offZ);
+    // Lean into forward/lateral travel; when retreating keep the head over the lead knee
+    // (never lean away from the opponent) and bring the hands up a touch.
+    const fwd = Math.max(0, dz);
+    const back = Math.max(0, -dz);
     const spec: PoseSpec = {
       ...GUARD,
-      // Hips ride over the support foot, lean slightly into the direction of travel.
-      root: [wx * 0.6 + dx * 0.03 * m, 0.86 - 0.012 * m, 0.01 + wz * 0.6 + dz * 0.03 * m],
-      abdomen: [0.1 + dz * 0.05 * m, 0, -dx * 0.05 * m],
+      // Hips ride over the support foot.
+      root: [wx * 0.6 + dx * 0.03 * m, 0.86 + M.crouch - 0.012 * m, 0.01 + wz * 0.6 + fwd * 0.03 * m],
+      abdomen: [0.1 + M.lean + fwd * 0.05 * m + back * 0.03 * m, 0, -dx * 0.05 * m],
       chest: [0.08 + Math.sin(this.breath * 2.2) * 0.01, -0.1, 0],
+      handL: guardHand(GUARD.handL!, M.guardY + back * 0.02 * m, M.guardZ),
+      handR: guardHand(GUARD.handR!, M.guardY + back * 0.02 * m, M.guardZ * 0.6),
       footL: { at: this.footwork.localTarget('L', this, raise), hint: KNEE_HINT.L },
       footR: { at: this.footwork.localTarget('R', this, raise), hint: KNEE_HINT.R },
     };
@@ -392,6 +446,11 @@ export class Fighter {
     return resolvePose(spec, this.locoPose);
   }
 }
+
+const guardHand = (h: { at: [number, number, number]; hint?: [number, number, number] }, dy: number, dz: number) => ({
+  at: [h.at[0], h.at[1] + dy, h.at[2] + dz] as [number, number, number],
+  hint: h.hint,
+});
 
 /** Knees track over the toes: lead foot points slightly in, rear foot turned out. */
 export const KNEE_HINT: Record<'L' | 'R', [number, number, number]> = {

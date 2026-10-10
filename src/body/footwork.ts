@@ -78,6 +78,8 @@ export class Footwork {
   steps = 0;
   firstStepper: Side | null = null;
   private lastStepper: Side | null = null;
+  /** Live multipliers from the contextual motion profile. */
+  readonly mods = { stance: 1, stepFrames: 1, stepHeight: 1, stride: 1 };
   private initialized = false;
 
   constructor(public style: FootworkStyle) {}
@@ -88,7 +90,7 @@ export class Footwork {
 
   /** Home position (fighter-local x/z) for a foot given an extra stance offset. */
   homeLocal(side: Side, offX: number, offZ: number): [number, number] {
-    const w = this.style.stanceWidth;
+    const w = this.style.stanceWidth * this.mods.stance;
     const [x, z] = BASE_HOME[side];
     return [x * w + offX, z * w + offZ];
   }
@@ -119,7 +121,7 @@ export class Footwork {
 
     const moving = speedFrac > 0.08;
     const speed = Math.hypot(body.walkVel.x, body.walkVel.z);
-    const dur = Math.max(5, Math.round(this.style.stepFrames - 3.5 * speedFrac));
+    const dur = Math.max(5, Math.round(this.style.stepFrames * this.mods.stepFrames - 3.5 * speedFrac));
     const errors = { L: 0, R: 0 };
     const homes = { L: new Vector3(), R: new Vector3() };
     for (const f of [this.L, this.R]) {
@@ -169,7 +171,10 @@ export class Footwork {
     }
     const follower: Side = leader === 'L' ? 'R' : 'L';
     // Stride grows with speed: longer planted phases instead of frantic stepping.
-    const thr = (moving ? MOVING_THRESHOLD : IDLE_THRESHOLD) + speed * 0.06;
+    // Retreating: shorter, gliding steps (never reach back with a long stride).
+    const retreat = moving && lz < -0.4;
+    const stride = this.mods.stride * (retreat ? 0.75 : 1);
+    const thr = ((moving ? MOVING_THRESHOLD : IDLE_THRESHOLD) + speed * 0.06) * stride;
 
     const tryStep = (side: Side) => {
       const f = this.foot(side);
@@ -183,7 +188,7 @@ export class Footwork {
       f.to.copy(homes[side]).addScaledVector(body.walkVel, dur / 60);
       f.t = 0;
       f.dur = forced ? Math.max(4, dur - 2) : dur;
-      f.height = this.style.stepHeight * (0.6 + 0.6 * speedFrac) * Math.min(1, errors[side] / 0.15);
+      f.height = this.style.stepHeight * this.mods.stepHeight * (retreat ? 0.6 : 1) * (0.6 + 0.6 * speedFrac) * Math.min(1, errors[side] / (0.15 * stride));
       f.stepping = true;
       if (this.steps === 0) this.firstStepper = side;
       this.steps++;

@@ -57,9 +57,6 @@ export const FACING = {
   /** Offsets smaller than this are tolerated while standing still. */
   idleDeadzone: 0.14,
   lockRange: 9,
-  /** Inside this distance fighters move in stance at `stanceSpeed` × walk speed. */
-  stanceRange: 3,
-  stanceSpeed: 0.58,
   disengageRange: 3.5,
 };
 
@@ -150,6 +147,7 @@ export class CombatSim {
     }
     f.framesSinceBlock++;
     f.framesSinceHit++;
+    f.framesSinceLanded++;
     if (f.framesSinceBlock > 60 && f.guard < f.stats.maxGuard) f.guard = Math.min(f.stats.maxGuard, f.guard + 0.35);
     if (f.framesSinceHit > 50 && f.poise < f.stats.maxPoise) f.poise = Math.min(f.stats.maxPoise, f.poise + 0.8);
     if (f.target && f.target.state !== 'hitstun' && f.target.state !== 'guardbreak' && f.target.state !== 'knockdown') {
@@ -285,12 +283,9 @@ export class CombatSim {
       if (len > 0.1) {
         const fwd = f.forward;
         const dot = (mi.x * fwd.x + mi.z * fwd.z) / raw;
-        // In fighting range, fighters move in stance: shorter, more controlled footwork.
-        const t = f.target && f.target.alive ? f.target : null;
-        const d = t ? f.distanceTo(t) : Infinity;
-        const stance = d < FACING.stanceRange ? 1 : d > FACING.stanceRange + 1.5 ? 0 : 1 - (d - FACING.stanceRange) / 1.5;
-        const sp =
-          f.stats.walkSpeed * len * (dot < -0.3 ? 0.8 : 1) * (handStrike ? 0.6 : 1) * (1 - stance * (1 - FACING.stanceSpeed));
+        // Speed comes from the contextual motion profile (stance footwork in range,
+        // full walking stride far away, slower when hurt...).
+        const sp = f.stats.walkSpeed * len * f.motion.speed * (dot < -0.3 ? 0.72 : 1) * (handStrike ? 0.6 : 1);
         _want.set(mi.x / raw, 0, mi.z / raw).multiplyScalar(sp);
       }
       // Accelerate rather than snap, so starts/stops have weight.
@@ -491,6 +486,7 @@ export class CombatSim {
     if (armored) dmg *= 0.5;
     d.hp -= dmg;
     d.framesSinceHit = 0;
+    a.framesSinceLanded = 0;
     const comboing = d.state === 'hitstun' || d.state === 'guardbreak';
     a.combo = comboing ? a.combo + 1 : 1;
     d.poise -= m.poiseDamage * (1 - d.stats.staggerResist) * (counter ? 1.3 : 1);
