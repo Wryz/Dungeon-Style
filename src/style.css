@@ -79,3 +79,43 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #b9d3e4; col
 .settings-card .actions button.primary { background: var(--gold); border-color: var(--gold); color: #1d222c; font-weight: 700; }
 .touch .tbtns { display: grid; grid-template-columns: repeat(2, 76px); gap: 12px; }
 .touch .tbtns button { width: 76px; height: 76px; margin: 0; font-size: 11px; }
+
+.coins { position: absolute; top: 80px; left: 22px; display: flex; align-items: center; gap: 6px; padding: 3px 10px 3px 6px; background: rgba(20, 24, 32, 0.55); border-radius: 3px; font-size: 15px; }
+.coins.bump { animation: bump 0.25s ease-out; }
+@keyframes bump { 50% { transform: scale(1.18); } }
+.coin { display: inline-block; width: 13px; height: 13px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #ffe28a, #e0a52b 60%, #a8740f); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35); vertical-align: -2px; margin-left: 4px; }
+.coins .coin { margin-left: 0; }
+.prompt { position: absolute; transform: translate(-50%, -100%); padding: 6px 12px; background: rgba(20, 24, 32, 0.78); border-radius: 4px; font-size: 14px; font-weight: 700; letter-spacing: 0.06em; white-space: nowrap; opacity: 0; transition: opacity 0.25s; }
+.prompt.show { opacity: 1; }
+.prompt b { display: inline-block; padding: 0 6px; border: 1px solid rgba(255, 255, 255, 0.4); border-radius: 3px; margin: 0 2px; color: var(--gold); }
+.flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+.flash.on { animation: flash 1.6s ease-out forwards; }
+@keyframes flash { 0% { opacity: 0; } 15% { opacity: 1; } 100% { opacity: 0; } }
+.glitch { position: fixed; inset: 0; pointer-events: none; opacity: 0; mix-blend-mode: difference; background: repeating-linear-gradient(0deg, transparent 0 6px, rgba(255, 0, 220, 0.25) 6px 8px, transparent 8px 21px, rgba(0, 255, 255, 0.2) 21px 23px); }
+.glitch.on { animation: glitch 0.18s steps(3) forwards; }
+@keyframes glitch { 0% { opacity: 1; transform: translateX(-6px); } 50% { opacity: 1; transform: translateX(8px); } 100% { opacity: 0; transform: none; } }
+
+.overlay { position: fixed; inset: 0; display: none; place-items: center; background: rgba(15, 18, 24, 0.6); z-index: 20; pointer-events: auto; }
+.overlay.show { display: grid; }
+.panel-card { width: min(460px, calc(100vw - 32px)); padding: 22px 24px; background: #1d222c; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 6px; color: var(--ink); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); max-height: calc(100vh - 32px); overflow-y: auto; }
+.panel-card.wide { width: min(880px, calc(100vw - 32px)); }
+.panel-card h2 { margin: 0 0 4px; font-size: 16px; letter-spacing: 0.25em; text-transform: uppercase; }
+.panel-card .sub { margin: 0 0 14px; font-size: 12px; color: var(--dim); }
+.panel-card .actions { display: flex; justify-content: space-between; gap: 12px; margin-top: 18px; }
+.panel-card button { padding: 8px 14px; border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 3px; background: transparent; color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; }
+.panel-card button.primary { background: var(--gold); border-color: var(--gold); color: #1d222c; font-weight: 700; }
+.panel-card button:disabled { opacity: 0.35; cursor: default; }
+.shop .wallet { position: absolute; margin-top: -44px; right: 0; }
+.shop .panel-card { position: relative; }
+.shop .wallet { top: 66px; right: 24px; font-size: 18px; font-weight: 700; }
+.shop .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.shop .card { padding: 12px; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 4px; background: rgba(255, 255, 255, 0.03); display: flex; flex-direction: column; gap: 6px; }
+.shop .card.maxed { opacity: 0.6; }
+.shop .slot { font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--dim); }
+.shop .owned { font-size: 12px; color: var(--dim); }
+.shop .next { font-size: 14px; flex: 1; }
+.shop .next small { display: block; font-size: 11px; color: var(--dim); margin-top: 4px; line-height: 1.4; }
+.choice .terminal { border-color: rgba(127, 232, 255, 0.4); box-shadow: 0 0 40px rgba(127, 232, 255, 0.15); font-family: 'Consolas', 'SFMono-Regular', ui-monospace, monospace; }
+.term-title { color: #7fe8ff; letter-spacing: 0.2em; text-transform: uppercase; font-size: 13px; margin-bottom: 12px; }
+.choice p { font-size: 14px; line-height: 1.5; }
+.banner.intro div { font-size: clamp(28px, 5vw, 56px); letter-spacing: 0.2em; }

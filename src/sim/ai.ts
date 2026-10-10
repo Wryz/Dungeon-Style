@@ -14,6 +14,51 @@ export interface AIConfig {
 
 export const DEFAULT_AI: AIConfig = { aggression: 1, blockChance: 0.3, stringChance: 0.35, passive: false };
 
+/** What an enemy archetype throws and how it manages distance. */
+export interface AIPlan {
+  /** Attack ids with selection weights. */
+  moves: [string, number][];
+  /** Preferred fighting distance (m). */
+  range: number;
+  /** Starts attacks when closer than this (m). */
+  attackRange: number;
+  /** Quick attack used to punish a whiffed / blocked player move. */
+  punish: string;
+  /** Follow-ups: after `from`, cancel into `next` (chance scaled by stringChance). */
+  chains: Record<string, string>;
+}
+
+export const BRAWLER_PLAN: AIPlan = {
+  moves: [
+    ['straight', 30],
+    ['hook', 25],
+    ['body', 25],
+    ['sweep', 18],
+  ],
+  range: 1.05,
+  attackRange: 1.25,
+  punish: 'straight',
+  chains: { straight: 'hookChain' },
+};
+
+/**
+ * Shared between enemies: only one may start an attack within a short window, so a
+ * group takes turns instead of swinging all at once (fair, and readable).
+ */
+export class AIDirector {
+  frame = 0;
+  private lastAttack = -999;
+  gap = 38;
+
+  canAttack() {
+    return this.frame - this.lastAttack >= this.gap;
+  }
+
+  claim() {
+    this.lastAttack = this.frame;
+  }
+}
+
 /** Simple brawler: keeps punching range, throws telegraphed attacks, sometimes blocks. */
 export class BrawlerAI {
   private cooldown = 70;
@@ -27,6 +72,8 @@ export class BrawlerAI {
   constructor(
     public cfg: AIConfig,
     private readonly rng: Rng,
+    public plan: AIPlan = BRAWLER_PLAN,
+    public director: AIDirector | null = null,
   ) {}
 
   think(self: Fighter, target: Fighter | null) {
@@ -70,8 +117,8 @@ export class BrawlerAI {
       this.punishDelay++;
       if (this.punishDelay > 2) {
         this.punishDelay = -1;
-        if (dist < 1.35 && this.rng.chance(0.6)) {
-          this.start(self, 'straight');
+        if (dist < this.plan.attackRange + 0.1 && this.rng.chance(0.6)) {
+          this.start(self, this.plan.punish);
           return;
         }
       }
@@ -84,10 +131,10 @@ export class BrawlerAI {
     const fx = dx / len;
     const fz = dz / len;
     const downed = target.state === 'knockdown' || target.state === 'getup';
-    const want = downed ? 1.7 : 1.05;
+    const want = downed ? 1.7 : this.plan.range;
     let mx = 0;
     let mz = 0;
-    if (dist > want + 0.2) {
+    if (dist > want + 0.1) {
       mx += fx;
       mz += fz;
     } else if (dist < want - 0.25) {
@@ -115,21 +162,15 @@ export class BrawlerAI {
 
     // Punish a player stuck in recovery.
     if (target.state === 'attack' && target.move && target.stateFrame > target.move.startup + target.move.active + 2) {
-      if (dist < 1.3 && this.rng.chance(0.05 * this.cfg.aggression)) {
-        this.start(self, 'straight');
+      if (dist < this.plan.attackRange + 0.05 && this.rng.chance(0.05 * this.cfg.aggression)) {
+        this.start(self, this.plan.punish);
         return;
       }
     }
 
     this.cooldown -= this.cfg.aggression;
-    if (this.cooldown <= 0 && dist < 1.25) {
-      const pick = this.rng.pickWeighted<string>([
-        ['straight', 30],
-        ['hook', 25],
-        ['body', 25],
-        ['sweep', 18],
-      ]);
-      this.start(self, pick);
+    if (this.cooldown <= 0 && dist < this.plan.attackRange && (!this.director || this.director.canAttack())) {
+      this.start(self, this.rng.pickWeighted<string>(this.plan.moves));
     }
   }
 
@@ -137,7 +178,9 @@ export class BrawlerAI {
     const m = self.moves[id];
     if (!m) return;
     self.startMove(m);
-    this.chain = id === 'straight' && this.rng.chance(this.cfg.stringChance) ? 'hookChain' : null;
+    this.director?.claim();
+    const next = this.plan.chains[id];
+    this.chain = next && this.rng.chance(this.cfg.stringChance) ? next : null;
     this.cooldown = this.rng.range(50, 110);
   }
 }

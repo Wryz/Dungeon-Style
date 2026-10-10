@@ -101,6 +101,30 @@ export class Sfx {
     this.thump(1980, 1970, 0.04, 0.14, 'sine');
   }
 
+  coin() {
+    if (!this.ctx) return;
+    const f = 1300 + Math.random() * 300;
+    this.thump(f, f * 1.01, 0.08, 0.09, 'square');
+    this.thump(f * 1.5, f * 1.5, 0.05, 0.14, 'sine');
+  }
+
+  gate(closing: boolean) {
+    if (!this.ctx) return;
+    this.noiseBurst('lowpass', closing ? 700 : 400, 0.8, 0.5, 0.005, closing ? 0.25 : 0.5);
+    this.thump(closing ? 110 : 80, 50, 0.6, closing ? 0.3 : 0.5, 'square');
+  }
+
+  glitch() {
+    if (!this.ctx) return;
+    this.thump(60 + Math.random() * 900, 30 + Math.random() * 2000, 0.06, 0.08, 'sawtooth');
+  }
+
+  chime() {
+    if (!this.ctx) return;
+    this.thump(660, 660, 0.08, 0.5, 'sine');
+    this.thump(990, 990, 0.06, 0.7, 'sine');
+  }
+
   knockdown() {
     if (!this.ctx) return;
     this.thump(90, 35, 0.9, 0.35);

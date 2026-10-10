@@ -93,6 +93,23 @@ export function buildPanel(game: Game): { toggle: () => void } {
     }
   }
 
+  const runF = pane.addFolder({ title: 'Run', expanded: false });
+  runF.addButton({ title: game.mode === 'run' ? 'Open training arena' : 'Back to the dungeon' }).on('click', () => {
+    location.search = game.mode === 'run' ? '?mode=arena' : '';
+  });
+  runF.addButton({ title: 'New game (reset save)' }).on('click', () => {
+    try {
+      localStorage.removeItem('brawler.save.v1');
+    } catch {
+      // ignore
+    }
+    location.reload();
+  });
+  runF.addButton({ title: '+200 coins' }).on('click', () => {
+    game.save.coins += 200;
+    game.hud.setCoins(game.save.coins);
+  });
+
   pane.addButton({ title: 'Copy tuning as JSON' }).on('click', () => {
     const pick = (t: Record<string, MoveDef>) =>
       Object.fromEntries(Object.values(t).map((m) => [m.id, Object.fromEntries(MOVE_FIELDS.map(([k]) => [k, m[k]]))]));

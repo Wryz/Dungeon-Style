@@ -1,9 +1,37 @@
-# Roguelike Brawler — combat prototype (Milestone 1)
+# Roguelike Brawler
 
 A 3D low-poly roguelike where combat is automatic and physics-driven: **you only choose
-when and how to attack — the character defends on its own.** This first slice is the
-combat sandbox: one player, one enemy type (the Brawler), automatic
-block/duck/weave/slide, context-sensitive attacks and powered-ragdoll hit reactions.
+when and how to attack — the character defends on its own.** Run short roofless
+dungeons, collect coins, choose to erase your memories at the end and run it again —
+each loop pays more and runs easier, while the world slowly reveals it is a simulation
+on a man's computer.
+
+## What's in
+
+- **Milestone 1 – combat:** context-sensitive punches and kicks, automatic
+  block/duck/weave/slide, counters, powered-ragdoll hit reactions, boxer footwork and
+  contextual movement, hit-pause, shake, procedural audio.
+- **Milestone 2 – dungeon & camera:** seeded roofless dungeons (start room, combat rooms
+  joined by turning corridors, exit room). Walls between the camera and the fight
+  dissolve in a dithered cutout; gates seal a room until it is cleared; the camera
+  looks ahead while exploring and frames the fight in combat.
+- **Milestone 3 – enemies, coins, shop:** four archetypes — Rookie (quick jabs),
+  Brawler (haymakers), Kicker (teep / low kick / body roundhouse), Bruiser (slow,
+  armored, heavy). An attack director makes groups take turns. KOs burst into coins that
+  fly to you; between runs a shop sells helmet, chestplate, leggings, boots and fist
+  cuffs (3 tiers each) that change your stats and show on your character. Progress is
+  saved in the browser.
+- **Milestone 4 – story loop:** the exit room's floating screen offers to erase your
+  memories. Each loop: more coins (+35% per loop), smaller enemy groups, softer enemies.
+  Story beats per loop, and environmental hints that escalate — missing-texture blocks
+  and screen glitches, then floating UI windows, a mouse cursor, a desktop taskbar,
+  until the explicit realization.
+- **Milestone 5 – tutorial & polish:** the first visit teaches against a sparring
+  partner, in order: punches, a combo, automatic defense, countering, kicks — with
+  few-word prompts. Gate / coin / glitch sounds, transitions, settings and key rebinding.
+
+The training arena from milestone 1 is still there: add `?mode=arena` to the URL (or use
+the **L** panel → Run).
 
 Built with **Three.js + Rapier (WASM physics) + TypeScript + Vite**. Runs entirely in the
 browser, no backend.
@@ -89,7 +117,8 @@ src/
     fighter.ts  fighter state machine + animated target pose
     moves.ts    frame data for every move and defensive reaction
     select.ts   context move selection (per button) + automatic defense choice
-    ai.ts       Brawler AI (spacing, telegraphed attacks, strings, blocking)
+    ai.ts       enemy AI (per-archetype plans, spacing, strings, blocking) + director
+    enemies.ts  enemy archetypes (stats, moves, style, coins)
   body/
     skeleton.ts 12-bone humanoid, forward kinematics, two-bone IK
     poses.ts    authored key poses (IK targets for fists/feet)
@@ -99,11 +128,14 @@ src/
     motion.ts   contextual movement profile (distance zones + fight-state modifiers)
     ragdoll.ts  Rapier powered ragdoll: joint "muscles" chase the animated pose;
                 hits relax muscles near the impact + add impulses, then recover
-  render/     blocky low-poly fighters, arena, orthographic camera, particles
+  world/      dungeon generation (grid, rooms, gates), collision, dungeon visuals
+  story/      story beats per loop and the escalating simulation hints
+  render/     blocky low-poly fighters + gear, arena, camera, wall cutout, coins, particles
   feel/       procedural impact audio (WebAudio, no assets)
   input/      rebindable keyboard, mouse, gamepad and touch input
-  game/       glue: fixed-step loop, hit-pause, shake, slow-mo KO, respawns
-  ui/         HUD and the settings (key rebinding) menu
+  game/       glue: fixed-step loop, run flow (rooms, coins, terminal, shop, loops),
+              economy + save data, tutorial
+  ui/         HUD, settings (key rebinding), shop, end-of-dungeon choice
   debug/      Tweakpane live tuning (frame data, feel, physics, AI)
 ```
 

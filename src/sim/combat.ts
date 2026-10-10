@@ -1,8 +1,9 @@
 import { Vector3 } from 'three';
 import { bonePoint, fistPoint, footPoint } from '../body/skeleton';
 import type { PoseName } from '../body/poses';
-import { BrawlerAI } from './ai';
+import { AIDirector, BrawlerAI } from './ai';
 import { type Fighter } from './fighter';
+import { RectWalkable, type Walkable } from '../world/collision';
 import { angleDelta, approachAngle, DT, Rng } from './math';
 import { DEFENSES, type DefenseKind, type Height, type MoveDef, moveLength } from './moves';
 import { chooseDefense, moveContext, selectPlayerMove } from './select';
@@ -32,13 +33,6 @@ export type CombatEvent =
   | { type: 'defend'; f: Fighter; kind: DefenseKind }
   | { type: 'getup'; f: Fighter };
 
-export interface Bounds {
-  minX: number;
-  maxX: number;
-  minZ: number;
-  maxZ: number;
-}
-
 interface Contact {
   attacker: Fighter;
   defender: Fighter;
@@ -62,6 +56,8 @@ export const FACING = {
 
 const _want = new Vector3();
 const MIN_SEPARATION = 0.66;
+/** Collision radius of a standing fighter against walls. */
+export const BODY_RADIUS = 0.3;
 const LUNGE_STOP = 0.74;
 const _strike = new Vector3();
 const _c = new Vector3();
@@ -74,8 +70,11 @@ export class CombatSim {
   readonly fighters: Fighter[] = [];
   readonly events: CombatEvent[] = [];
   readonly ais = new Map<Fighter, BrawlerAI>();
+  /** Turn-taking between enemies (only one starts an attack per window). */
+  readonly director = new AIDirector();
   frame = 0;
-  bounds: Bounds = { minX: -7.2, maxX: 7.2, minZ: -4.2, maxZ: 4.2 };
+  /** Where fighters can stand (arena box or dungeon grid). */
+  walkable: Walkable = new RectWalkable(-7.5, 7.5, -4.5, 4.5);
   readonly rng: Rng;
   /** When set, knocked-down fighters' positions are driven externally (ragdoll). */
   externalKnockdown = false;
@@ -87,7 +86,10 @@ export class CombatSim {
 
   add(f: Fighter, ai?: BrawlerAI) {
     this.fighters.push(f);
-    if (ai) this.ais.set(f, ai);
+    if (ai) {
+      ai.director ??= this.director;
+      this.ais.set(f, ai);
+    }
     f.updatePose(0, 0, 0);
   }
 
@@ -105,6 +107,7 @@ export class CombatSim {
   step(): CombatEvent[] {
     this.events.length = 0;
     this.frame++;
+    this.director.frame = this.frame;
     const fs = this.fighters;
 
     for (const f of fs) this.retarget(f);
@@ -383,10 +386,8 @@ export class CombatSim {
         }
       }
     }
-    const B = this.bounds;
     for (const f of fs) {
-      f.pos.x = Math.min(B.maxX, Math.max(B.minX, f.pos.x));
-      f.pos.z = Math.min(B.maxZ, Math.max(B.minZ, f.pos.z));
+      if (f.state !== 'knockdown' && f.state !== 'ko') this.walkable.resolve(f.pos, BODY_RADIUS);
       f.pos.y = 0;
     }
   }

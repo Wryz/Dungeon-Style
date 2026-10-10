@@ -13,6 +13,8 @@ export interface Palette {
   /** Upper-arm block colour: bare arms or sleeves. */
   sleeves: 'skin' | 'shirt';
   bald?: boolean;
+  /** Shin colour (defaults to pants; skin for shorts). */
+  shins?: string;
 }
 
 export const PLAYER_PALETTE: Palette = {
@@ -36,7 +38,24 @@ export const BRAWLER_PALETTE: Palette = {
   bald: true,
 };
 
-type Slot = keyof Omit<Palette, 'sleeves' | 'bald'>;
+export const ENEMY_PALETTES: Record<string, Palette> = {
+  rookie: { skin: '#e2b08a', shirt: '#6f7f90', pants: '#3b4252', gloves: '#d04848', boots: '#22252b', hair: '#2b211a', sleeves: 'shirt' },
+  brawler: BRAWLER_PALETTE,
+  kicker: { skin: '#b97f58', shirt: '#b97f58', pants: '#d8a71c', gloves: '#b8322a', boots: '#b07650', hair: '#151515', sleeves: 'skin', shins: '#b97f58' },
+  bruiser: { skin: '#9c6a52', shirt: '#46523f', pants: '#2d2a26', gloves: '#5a4632', boots: '#1f1a16', hair: '#1a1714', sleeves: 'skin', bald: true },
+};
+
+export const GEAR_COLORS: Record<string, { color: string; metalness: number; roughness: number }> = {
+  cloth: { color: '#8f806a', metalness: 0, roughness: 0.9 },
+  leather: { color: '#7a4e2e', metalness: 0, roughness: 0.7 },
+  iron: { color: '#8d9399', metalness: 0.5, roughness: 0.45 },
+  steel: { color: '#cfd6dd', metalness: 0.7, roughness: 0.3 },
+  gold: { color: '#d8b04a', metalness: 0.7, roughness: 0.35 },
+};
+
+export type GearLook = Partial<Record<'helmet' | 'chest' | 'legs' | 'boots' | 'cuffs', { material: string; tier: number }>>;
+
+type Slot = keyof Omit<Palette, 'sleeves' | 'bald' | 'shins'>;
 
 
 /** Low-poly body built from simple faceted shapes, one group per physics bone. */
@@ -102,8 +121,63 @@ export class FighterView {
       const th = `thigh${side}` as const;
       const sh = `shin${side}` as const;
       this.add(th, box(0.16, 0.47, 0.17), 'pants', [0, -0.22, 0]);
-      this.add(sh, box(0.14, 0.4, 0.15), 'pants', [0, -0.19, 0]);
+      const shin = this.add(sh, box(0.14, 0.4, 0.15), 'pants', [0, -0.19, 0]);
+      if (P.shins) (shin.material as MeshStandardMaterial).color.set(P.shins);
       this.add(sh, box(0.16, 0.11, 0.27), 'boots', [0, -0.425, 0.045]);
+    }
+  }
+
+  private readonly gearMeshes: Mesh[] = [];
+
+  /** Shows worn gear as blocky armour pieces on the body. */
+  setGear(look: GearLook) {
+    for (const m of this.gearMeshes) {
+      m.parent?.remove(m);
+      const mat = m.material as MeshStandardMaterial;
+      for (const list of Object.values(this.mats)) {
+        const i = list.indexOf(mat);
+        if (i >= 0) list.splice(i, 1);
+      }
+    }
+    this.gearMeshes.length = 0;
+    const piece = (bone: BoneName, kind: string, size: [number, number, number], pos: [number, number, number]) => {
+      const c = GEAR_COLORS[kind] ?? GEAR_COLORS.iron;
+      const mat = new MeshStandardMaterial({ color: c.color, metalness: c.metalness, roughness: c.roughness, flatShading: true });
+      const mesh = new Mesh(new BoxGeometry(...size), mat);
+      mesh.position.set(...pos);
+      mesh.castShadow = true;
+      this.bones[bone].add(mesh);
+      this.mats[bone].push(mat);
+      this.gearMeshes.push(mesh);
+      return mesh;
+    };
+    const h = look.helmet;
+    if (h) {
+      piece('head', h.material, [0.29, 0.13, 0.29], [0, 0.3, 0]);
+      piece('head', h.material, [0.29, 0.14, 0.05], [0, 0.22, -0.13]);
+      if (h.tier >= 3) piece('head', h.material, [0.27, 0.03, 0.05], [0, 0.2, 0.14]); // visor bar
+    }
+    const c = look.chest;
+    if (c) {
+      piece('chest', c.material, [0.5, 0.3, 0.06], [0, 0.15, 0.14]);
+      if (c.tier >= 2) piece('chest', c.material, [0.5, 0.3, 0.06], [0, 0.15, -0.14]);
+      if (c.tier >= 3) for (const s of [1, -1]) piece('chest', c.material, [0.14, 0.08, 0.16], [s * 0.21, 0.29, 0]); // pauldrons
+    }
+    const l = look.legs;
+    if (l) {
+      for (const side of ['L', 'R'] as const) {
+        piece(`shin${side}`, l.material, [0.16, 0.26, 0.05], [0, -0.2, 0.08]);
+        if (l.tier >= 2) piece(`thigh${side}`, l.material, [0.18, 0.28, 0.05], [0, -0.22, 0.09]);
+      }
+    }
+    const b = look.boots;
+    if (b) for (const side of ['L', 'R'] as const) piece(`shin${side}`, b.material, [0.18, 0.13, 0.29], [0, -0.42, 0.045]);
+    const k = look.cuffs;
+    if (k) {
+      for (const side of ['L', 'R'] as const) {
+        piece(`foreArm${side}`, k.material, [0.15, 0.1, 0.15], [0, -0.21, 0]);
+        if (k.tier >= 3) for (const sx of [1, -1]) piece(`foreArm${side}`, 'steel', [0.03, 0.03, 0.06], [sx * 0.05, -0.3, 0.1]);
+      }
     }
   }
 

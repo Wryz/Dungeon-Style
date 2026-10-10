@@ -169,7 +169,7 @@ export class Fighter {
 
   constructor(
     readonly team: Team,
-    readonly name: string,
+    public name: string,
     readonly moves: Record<string, MoveDef>,
     stats: Partial<FighterStats> = {},
     style: FighterStyle = OUTFIGHTER_STYLE,

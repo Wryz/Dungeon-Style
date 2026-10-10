@@ -376,6 +376,34 @@ export const ENEMY_MOVES: Record<string, MoveDef> = {
 // Haymaker thrown as the second hit of a string: shorter wind-up.
 ENEMY_MOVES.hookChain = { ...ENEMY_MOVES.hook, id: 'hookChain', startup: 17, armor: [4, 17], lunge: { from: 6, to: 19, distance: 0.35 } };
 
+// ---- Other archetypes' moves (built from the shared poses) -------------------
+const P = PLAYER_MOVES;
+const E = ENEMY_MOVES;
+// Rookie: a telegraphed jab and the straight / body shot.
+E.rookieJab = { ...P.jab, id: 'rookieJab', name: 'Jab', startup: 13, recovery: 15, damage: 5, reach: 1.45, cancel: undefined, aims: [{ id: 'head', weight: 3 }] };
+// Kicker (Muay Thai): push kick, low kick, body roundhouse.
+E.teep = { ...P.frontKick, id: 'teep', name: 'Teep', startup: 19, recovery: 20, damage: 8, reach: 1.35, guardDamage: 30, aims: [{ id: 'stomach', weight: 1 }] };
+E.kLowKick = { ...P.lowKick, id: 'kLowKick', name: 'Low Kick', startup: 21, recovery: 20, damage: 9, poiseDamage: 40, aims: [{ id: 'thigh', weight: 1 }] };
+E.roundhouse = {
+  ...P.lowKick,
+  id: 'roundhouse',
+  name: 'Roundhouse',
+  reach: 1.45,
+  startup: 25,
+  recovery: 24,
+  damage: 13,
+  weight: 'heavy',
+  height: 'mid',
+  hitstop: 9,
+  shake: 0.4,
+  impulse: 26,
+  aims: [{ ...P.lowKick.aims![2], weight: 1 }],
+  armor: [8, 25],
+};
+// Bruiser: slow, armored, hits like a truck.
+E.bruiserHook = { ...E.hook, id: 'bruiserHook', name: 'Sledge', startup: 31, recovery: 28, damage: 18, impulse: 34, knockback: 3.4, hitstop: 12, shake: 0.6, armor: [5, 31], poiseDamage: 70 };
+E.bruiserBody = { ...E.body, id: 'bruiserBody', name: 'Gut Punch', startup: 26, damage: 14, guardDamage: 45, armor: [8, 26], weight: 'heavy' };
+
 export function moveLength(m: MoveDef): number {
   return m.startup + m.active + m.recovery;
 }

@@ -16,6 +16,10 @@ export class Hud {
   private readonly wave: HTMLDivElement;
   private readonly banner: HTMLDivElement;
   private readonly hint: HTMLDivElement;
+  private readonly coinsEl: HTMLDivElement;
+  private readonly promptEl: HTMLDivElement;
+  private readonly flashEl: HTMLDivElement;
+  private shownCoins = 0;
   private comboTimer = 0;
   private lagP = 1;
   private lagE = 1;
@@ -34,6 +38,9 @@ export class Hud {
         <div class="bar hp"><div class="lag"></div><div class="fill"></div></div>
       </div>
       <div class="wave"></div>
+      <div class="coins"><span class="coin"></span><b>0</b></div>
+      <div class="prompt"></div>
+      <div class="flash"></div>
       <div class="combo"></div>
       <div class="banner"></div>
       <div class="hint"></div>
@@ -51,9 +58,50 @@ export class Hud {
     this.wave = q('.wave');
     this.banner = q('.banner');
     this.hint = q('.hint');
+    this.coinsEl = q('.coins');
+    this.promptEl = q('.prompt');
+    this.flashEl = q('.flash');
   }
 
-  update(dt: number, player: Fighter, enemy: Fighter | null, wave: number, kos: number) {
+  setCoins(n: number, animate = true) {
+    if (!animate) this.shownCoins = n;
+    const target = Math.floor(n);
+    if (target > this.shownCoins) {
+      this.coinsEl.classList.remove('bump');
+      void this.coinsEl.offsetWidth;
+      this.coinsEl.classList.add('bump');
+    }
+    this.shownCoins = target;
+    this.coinsEl.querySelector('b')!.textContent = String(target);
+  }
+
+  showCoins(show: boolean) {
+    this.coinsEl.style.display = show ? '' : 'none';
+  }
+
+  /** Short tutorial prompt floating above a world position (empty text hides it). */
+  prompt(text: string, world?: Vector3, camera?: Camera) {
+    if (!text) {
+      this.promptEl.classList.remove('show');
+      return;
+    }
+    if (this.promptEl.innerHTML !== text) this.promptEl.innerHTML = text;
+    this.promptEl.classList.add('show');
+    if (world && camera) {
+      const p = world.clone().project(camera);
+      this.promptEl.style.left = `${(p.x * 0.5 + 0.5) * 100}%`;
+      this.promptEl.style.top = `${(-p.y * 0.5 + 0.5) * 100}%`;
+    }
+  }
+
+  /** Full-screen white flash (memory erase). */
+  flash() {
+    this.flashEl.classList.remove('on');
+    void this.flashEl.offsetWidth;
+    this.flashEl.classList.add('on');
+  }
+
+  update(dt: number, player: Fighter, enemy: Fighter | null, label: string) {
     const ph = player.hp / player.stats.maxHp;
     this.lagP = Math.max(ph, this.lagP - dt * 0.5);
     this.pHp.style.width = `${ph * 100}%`;
@@ -71,7 +119,7 @@ export class Hud {
       this.eWrap.style.opacity = '0';
       this.lagE = 1;
     }
-    this.wave.textContent = `ROUND ${wave}${kos ? `  ·  ${kos} KO` : ''}`;
+    this.wave.textContent = label;
     this.comboTimer -= dt;
     if (this.comboTimer <= 0) this.combo.classList.remove('show');
   }
