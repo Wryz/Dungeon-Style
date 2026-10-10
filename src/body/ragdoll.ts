@@ -311,7 +311,7 @@ export class Ragdoll {
         const pAv = toV(parent.angvel());
         const pLv = toV(parent.linvel());
         toV(parent.worldCom(), _pcom);
-        const desired = pRot.multiply(f.anim.out.rot[name]);
+        const desired = pRot.multiply(f.pose.rot[name]);
         angularCorrection(rot, desired, T.muscleGain, _w).add(pAv);
         // Velocity of the joint point as carried by the parent, then rigidly to our COM.
         _jp.copy(pos);

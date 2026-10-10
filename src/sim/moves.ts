@@ -53,6 +53,11 @@ export interface MoveDef {
   /** Airborne/low-profile frames that make low/high attacks whiff (relative to move start). */
   evades?: { from: number; to: number; heights: Height[] };
   blockable: boolean;
+  /**
+   * 'upper': hands-only strike; while moving, the legs keep walking underneath and the
+   * fighter can keep stepping. 'full' (default): whole-body move that carries momentum.
+   */
+  layer?: 'upper' | 'full';
   /** Moves this can cancel into, and the window (relative to move start) where that is allowed. */
   cancel?: { into: string[]; from: number; to: number };
   keys: Key[];
@@ -77,6 +82,7 @@ const strike = (wind: PoseName, ext: PoseName, recover: PoseName = 'guard', foll
 export const PLAYER_MOVES: Record<string, MoveDef> = {
   jab: {
     id: 'jab', name: 'Jab',
+    layer: 'upper',
     startup: 5, active: 3, recovery: 11,
     limb: 'handL', height: 'high', kind: 'straight', weight: 'light',
     damage: 4, guardDamage: 6, poiseDamage: 8, hitstun: 16, blockstun: 10,
@@ -88,6 +94,7 @@ export const PLAYER_MOVES: Record<string, MoveDef> = {
   },
   cross: {
     id: 'cross', name: 'Cross',
+    layer: 'upper',
     startup: 7, active: 3, recovery: 13,
     limb: 'handR', height: 'high', kind: 'straight', weight: 'medium',
     damage: 7, guardDamage: 10, poiseDamage: 16, hitstun: 20, blockstun: 12,
@@ -99,6 +106,7 @@ export const PLAYER_MOVES: Record<string, MoveDef> = {
   },
   hook: {
     id: 'hook', name: 'Hook',
+    layer: 'upper',
     startup: 9, active: 4, recovery: 18,
     limb: 'handL', height: 'high', kind: 'hook', weight: 'heavy',
     damage: 10, guardDamage: 18, poiseDamage: 40, hitstun: 28, blockstun: 14,
@@ -115,6 +123,7 @@ export const PLAYER_MOVES: Record<string, MoveDef> = {
   },
   counterHook: {
     id: 'counterHook', name: 'Counter Hook',
+    layer: 'upper',
     startup: 7, active: 4, recovery: 18,
     limb: 'handL', height: 'high', kind: 'hook', weight: 'heavy',
     damage: 13, guardDamage: 25, poiseDamage: 60, hitstun: 32, blockstun: 16,
@@ -131,6 +140,7 @@ export const PLAYER_MOVES: Record<string, MoveDef> = {
   },
   counterCross: {
     id: 'counterCross', name: 'Counter Cross',
+    layer: 'upper',
     startup: 4, active: 3, recovery: 13,
     limb: 'handR', height: 'high', kind: 'straight', weight: 'medium',
     damage: 8, guardDamage: 12, poiseDamage: 22, hitstun: 22, blockstun: 12,
@@ -226,6 +236,7 @@ export const PLAYER_MOVES: Record<string, MoveDef> = {
 export const ENEMY_MOVES: Record<string, MoveDef> = {
   straight: {
     id: 'straight', name: 'Straight',
+    layer: 'upper',
     startup: 20, active: 3, recovery: 20,
     limb: 'handR', height: 'high', kind: 'straight', weight: 'medium',
     damage: 8, guardDamage: 14, poiseDamage: 25, hitstun: 22, blockstun: 12,
@@ -242,6 +253,7 @@ export const ENEMY_MOVES: Record<string, MoveDef> = {
   },
   hook: {
     id: 'hook', name: 'Haymaker',
+    layer: 'upper',
     startup: 26, active: 4, recovery: 24,
     limb: 'handL', height: 'high', kind: 'hook', weight: 'heavy',
     damage: 13, guardDamage: 28, poiseDamage: 50, hitstun: 28, blockstun: 16,
@@ -258,6 +270,7 @@ export const ENEMY_MOVES: Record<string, MoveDef> = {
   },
   body: {
     id: 'body', name: 'Body Blow',
+    layer: 'upper',
     startup: 22, active: 4, recovery: 20,
     limb: 'handR', height: 'mid', kind: 'straight', weight: 'medium',
     damage: 9, guardDamage: 26, poiseDamage: 30, hitstun: 24, blockstun: 16,

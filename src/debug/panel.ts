@@ -2,6 +2,7 @@ import { Pane } from 'tweakpane';
 import { RAGDOLL_TUNING } from '../body/ragdoll';
 import { GAME_TUNING, type Game } from '../game/game';
 import { CAMERA_TUNING } from '../render/cameraRig';
+import { FACING } from '../sim/combat';
 import { ENEMY_MOVES, type MoveDef, PLAYER_MOVES } from '../sim/moves';
 
 const MOVE_FIELDS: [keyof MoveDef, number, number, number][] = [
@@ -41,6 +42,13 @@ export function buildPanel(game: Game): { toggle: () => void } {
   feel.addBinding(RAGDOLL_TUNING, 'limpStrength', { min: 0, max: 0.6, step: 0.01, label: 'downed muscle' });
   feel.addBinding(GAME_TUNING, 'volume', { min: 0, max: 1, step: 0.05 }).on('change', (ev) => game.sfx.setVolume(ev.value));
 
+  const lock = pane.addFolder({ title: 'Lock-on', expanded: false });
+  lock.addBinding(FACING, 'idleRate', { min: 0.01, max: 0.4, step: 0.005, label: 'turn (idle)' });
+  lock.addBinding(FACING, 'walkRate', { min: 0.01, max: 0.4, step: 0.005, label: 'turn (moving)' });
+  lock.addBinding(FACING, 'aimAssist', { min: 0, max: 0.3, step: 0.005, label: 'aim assist' });
+  lock.addBinding(FACING, 'strafeLead', { min: 0, max: 1.2, step: 0.01, label: 'strafe lean' });
+  lock.addBinding(FACING, 'idleDeadzone', { min: 0, max: 0.5, step: 0.01, label: 'deadzone' });
+
   const cam = pane.addFolder({ title: 'Camera', expanded: false });
   cam.addBinding(CAMERA_TUNING, 'elevation', { min: 0.2, max: 1.4, step: 0.01 });
   cam.addBinding(CAMERA_TUNING, 'azimuth', { min: -1.2, max: 1.2, step: 0.01 });
@@ -69,7 +77,7 @@ export function buildPanel(game: Game): { toggle: () => void } {
     const pick = (t: Record<string, MoveDef>) =>
       Object.fromEntries(Object.values(t).map((m) => [m.id, Object.fromEntries(MOVE_FIELDS.map(([k]) => [k, m[k]]))]));
     const json = JSON.stringify(
-      { game: GAME_TUNING, ragdoll: RAGDOLL_TUNING, camera: CAMERA_TUNING, ai: game.aiCfg, player: pick(PLAYER_MOVES), enemy: pick(ENEMY_MOVES) },
+      { game: GAME_TUNING, ragdoll: RAGDOLL_TUNING, camera: CAMERA_TUNING, facing: FACING, ai: game.aiCfg, player: pick(PLAYER_MOVES), enemy: pick(ENEMY_MOVES) },
       null,
       2,
     );

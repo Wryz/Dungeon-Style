@@ -3,7 +3,7 @@ import { bonePoint, fistPoint, footPoint } from '../body/skeleton';
 import type { PoseName } from '../body/poses';
 import { BrawlerAI } from './ai';
 import { type Fighter } from './fighter';
-import { approachAngle, DT, Rng } from './math';
+import { angleDelta, approachAngle, DT, Rng } from './math';
 import { DEFENSES, type DefenseKind, type Height, type MoveDef, moveLength } from './moves';
 import { chooseDefense, moveContext, selectPlayerMove } from './select';
 
@@ -46,6 +46,21 @@ interface Contact {
   zone: HurtZone;
 }
 
+/** Lock-on tuning (rates in radians per frame). */
+export const FACING = {
+  idleRate: 0.07,
+  walkRate: 0.09,
+  defendRate: 0.08,
+  aimAssist: 0.07,
+  /** Max lean of the body into a strafe (radians). */
+  strafeLead: 0.35,
+  /** Offsets smaller than this are tolerated while standing still. */
+  idleDeadzone: 0.14,
+  lockRange: 9,
+  disengageRange: 3.5,
+};
+
+const _want = new Vector3();
 const MIN_SEPARATION = 0.66;
 const LUNGE_STOP = 0.74;
 const _strike = new Vector3();
@@ -64,7 +79,7 @@ export class CombatSim {
   readonly rng: Rng;
   /** When set, knocked-down fighters' positions are driven externally (ragdoll). */
   externalKnockdown = false;
-  private readonly speeds = new Map<Fighter, { speed: number; lx: number; lz: number }>();
+  private readonly speeds = new Map<Fighter, { speed: number; lx: number; lz: number; turn: number }>();
 
   constructor(seed = 7) {
     this.rng = new Rng(seed);
@@ -101,8 +116,8 @@ export class CombatSim {
     for (const f of fs) this.locomote(f);
     this.separate();
     for (const f of fs) {
-      const s = this.speeds.get(f) ?? { speed: 0, lx: 0, lz: 0 };
-      f.updatePose(s.speed, s.lx, s.lz);
+      const s = this.speeds.get(f) ?? { speed: 0, lx: 0, lz: 0, turn: 0 };
+      f.updatePose(s.speed, s.lx, s.lz, s.turn);
     }
     this.resolveHits();
     return this.events;
@@ -255,46 +270,91 @@ export class CombatSim {
     const friction = f.state === 'knockdown' || f.state === 'ko' ? 0.93 : 0.86;
     f.vel.multiplyScalar(friction);
 
-    let speed = 0;
-    let lx = 0;
-    let lz = 0;
-    if (f.free) {
+    // Footwork. Free fighters walk; hand strikes can keep stepping at reduced speed;
+    // everything else keeps (and bleeds off) the momentum it had going in.
+    const handStrike = f.state === 'attack' && f.move?.layer === 'upper';
+    if (f.free || handStrike) {
       const mi = f.moveInput;
       const len = Math.min(1, Math.hypot(mi.x, mi.z));
+      _want.set(0, 0, 0);
       if (len > 0.1) {
         const fwd = f.forward;
         const dot = (mi.x * fwd.x + mi.z * fwd.z) / len;
-        const sp = f.stats.walkSpeed * len * (dot < -0.3 ? 0.72 : 1);
-        f.pos.x += (mi.x / len) * sp * DT;
-        f.pos.z += (mi.z / len) * sp * DT;
-        f.state = 'walk';
-        speed = sp;
-        // Movement direction in fighter-local space (+X = fighter's left).
-        const c = Math.cos(f.yaw);
-        const s = Math.sin(f.yaw);
-        const wx = mi.x / len;
-        const wz = mi.z / len;
-        lx = wx * c - wz * s;
-        lz = wx * s + wz * c;
-      } else {
-        f.state = 'idle';
+        const sp = f.stats.walkSpeed * len * (dot < -0.3 ? 0.72 : 1) * (handStrike ? 0.5 : 1);
+        _want.set(mi.x / len, 0, mi.z / len).multiplyScalar(sp);
       }
+      // Accelerate rather than snap, so starts/stops have weight.
+      f.walkVel.lerp(_want, _want.lengthSq() > f.walkVel.lengthSq() ? 0.22 : 0.3);
+      if (f.free) f.state = f.walkVel.lengthSq() > 0.04 || len > 0.1 ? 'walk' : 'idle';
+    } else if (f.state === 'attack' || f.state === 'defend') {
+      f.walkVel.multiplyScalar(0.88);
+    } else {
+      f.walkVel.multiplyScalar(0.6);
     }
-    this.speeds.set(f, { speed, lx, lz });
+    if (!external && f.walkVel.lengthSq() > 1e-6) {
+      f.pos.x += f.walkVel.x * DT;
+      f.pos.z += f.walkVel.z * DT;
+    }
 
-    // Facing.
-    const t = f.target && f.target.alive ? f.target : null;
-    let rate = 0;
-    if (f.free) rate = 0.3;
-    else if (f.state === 'defend' || f.state === 'blockstun') rate = 0.2;
-    else if (f.state === 'attack' && f.move && f.stateFrame < f.move.startup) rate = 0.14;
-    else if (f.state === 'getup') rate = 0.1;
-    if (rate > 0) {
-      let desired: number | null = null;
-      if (t && f.distanceTo(t) < 9) desired = Math.atan2(t.pos.x - f.pos.x, t.pos.z - f.pos.z);
-      else if (f.state === 'walk' && f.moveInput.lengthSq() > 0.01) desired = Math.atan2(f.moveInput.x, f.moveInput.z);
-      if (desired !== null) f.yaw = approachAngle(f.yaw, desired, rate);
+    const speed = Math.hypot(f.walkVel.x, f.walkVel.z);
+    let lx = 0;
+    let lz = 0;
+    if (speed > 0.01) {
+      // Footwork direction in fighter-local space (+X = fighter's left).
+      const c = Math.cos(f.yaw);
+      const s = Math.sin(f.yaw);
+      const wx = f.walkVel.x / speed;
+      const wz = f.walkVel.z / speed;
+      lx = wx * c - wz * s;
+      lz = wx * s + wz * c;
     }
+
+    const before = f.yaw;
+    this.updateFacing(f);
+    this.speeds.set(f, { speed, lx, lz, turn: angleDelta(before, f.yaw) });
+  }
+
+  /**
+   * Soft lock-on: fighters turn toward their target, but not instantly. Strafing leads
+   * the body into the strafe, small offsets are left alone, and committed moves only get
+   * a little aim assist early in their wind-up — so angles and positioning matter.
+   */
+  private updateFacing(f: Fighter) {
+    const t = f.target && f.target.alive ? f.target : null;
+    const dist = t ? f.distanceTo(t) : Infinity;
+    const mi = f.moveInput;
+    const moving = Math.hypot(mi.x, mi.z) > 0.1;
+    let rate = 0;
+    if (f.free) rate = moving ? FACING.walkRate : FACING.idleRate;
+    else if (f.state === 'defend' || f.state === 'blockstun') rate = FACING.defendRate;
+    else if (f.state === 'attack' && f.move && f.stateFrame < f.move.startup * 0.7) rate = FACING.aimAssist;
+    else if (f.state === 'getup') rate = 0.06;
+    if (rate <= 0) return;
+
+    let desired: number | null = null;
+    let deadzone = 0;
+    if (t && dist < FACING.lockRange) {
+      const toT = Math.atan2(t.pos.x - f.pos.x, t.pos.z - f.pos.z);
+      desired = toT;
+      if (moving && f.free) {
+        const rel = angleDelta(toT, Math.atan2(mi.x, mi.z));
+        if (Math.cos(rel) < -0.3 && dist > FACING.disengageRange) {
+          // Walking away from a distant target: turn and walk.
+          desired = Math.atan2(mi.x, mi.z);
+        } else {
+          // Strafing: lead with the body, keep the head and guard roughly on target.
+          desired = toT + Math.sin(rel) * FACING.strafeLead;
+        }
+      } else if (f.free) {
+        deadzone = FACING.idleDeadzone;
+      }
+    } else if (moving) {
+      desired = Math.atan2(mi.x, mi.z);
+    }
+    if (desired === null) return;
+    const d = angleDelta(f.yaw, desired);
+    if (Math.abs(d) <= deadzone) return;
+    f.yaw = approachAngle(f.yaw, desired - Math.sign(d) * deadzone, rate);
   }
 
   private separate() {

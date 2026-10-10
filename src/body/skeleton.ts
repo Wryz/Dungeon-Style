@@ -308,3 +308,23 @@ export function resolvePose(spec: PoseSpec, out: Pose = makePose()): Pose {
   return out;
 }
 
+/**
+ * Re-solves both legs of an already-resolved pose so the ankles reach new targets
+ * (fighter-local). Used to put walking legs under an attacking upper body.
+ */
+export function solveLegs(pose: Pose, footL: LimbTarget, footR: LimbTarget): Pose {
+  forwardKinematics(pose, _tmpRig);
+  const pel = _tmpRig.pelvis;
+  for (const [side, t] of [['L', footL], ['R', footR]] as const) {
+    const thigh = side === 'L' ? 'thighL' : 'thighR';
+    const shin = side === 'L' ? 'shinL' : 'shinR';
+    const def = SKELETON[thigh];
+    _root.set(def.offset[0], def.offset[1], def.offset[2]).applyQuaternion(pel.rot).add(pel.pos);
+    _target.set(t.at[0], t.at[1], t.at[2]);
+    const h = t.hint ?? [SIDE_SIGN[side] * 0.25, 0, 1];
+    _v.set(h[0], h[1], h[2]);
+    solveTwoBone(_root, pel.rot, _target, _v, def.length, SKELETON[shin].length, 1, pose.rot[thigh], pose.rot[shin]);
+  }
+  return pose;
+}
+

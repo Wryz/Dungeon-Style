@@ -4,11 +4,15 @@ import { getPose, GUARD, type PoseName } from '../body/poses';
 import {
   ANKLE_HEIGHT,
   forwardKinematics,
+  blendPose,
+  copyPose,
+  type LimbTarget,
   makePose,
   makeRig,
   type PoseSpec,
   resolvePose,
   type Rig,
+  solveLegs,
 } from '../body/skeleton';
 import { clamp, type Ease } from './math';
 import { DEFENSES, type DefenseDef, type DefenseKind, markerFrame, type MoveDef } from './moves';
@@ -82,6 +86,8 @@ export class Fighter {
   readonly vel = new Vector3();
   /** Desired walk direction in world space (length 0..1). Set by input or AI. */
   readonly moveInput = new Vector3();
+  /** Actual footwork velocity (m/s): walking, or momentum carried into a move. */
+  readonly walkVel = new Vector3();
   yaw = 0;
 
   hp: number;
@@ -116,10 +122,15 @@ export class Fighter {
   stats: FighterStats;
 
   readonly anim = new Animator();
-  /** World-space joint transforms of the current target pose. */
+  /** Final animated target pose (what hit detection and the ragdoll follow). */
+  readonly pose = makePose();
+  /** World-space joint transforms of `pose`. */
   readonly rig: Rig = makeRig();
   private walkPhase = 0;
+  /** 0 = planted, 1 = stepping at full walk speed. Smoothed. */
+  private moveBlend = 0;
   private readonly locoPose = makePose();
+  private readonly layered = makePose();
   private breath = Math.random() * 10;
 
   constructor(
@@ -275,37 +286,76 @@ export class Fighter {
   // Animation
   // ---------------------------------------------------------------------------
 
-  /** Updates the animated target pose and its world-space FK. */
-  updatePose(speed: number, localDirX: number, localDirZ: number) {
+  /**
+   * Updates the animated target pose and its world-space FK.
+   * `speed`/`localDir*` describe the actual footwork velocity; `turnRate` (rad/frame)
+   * makes the feet shuffle when turning on the spot.
+   */
+  updatePose(speed: number, localDirX: number, localDirZ: number, turnRate = 0) {
+    this.breath += 1 / 60;
+    const stepSpeed = speed + Math.abs(turnRate) * 60 * 0.35;
+    const want = clamp(stepSpeed / Math.max(0.1, this.stats.walkSpeed * 0.6), 0, 1);
+    this.moveBlend += (want - this.moveBlend) * 0.25;
+    this.walkPhase += stepSpeed * (1 / 60) * 7.5;
+
     let proc;
-    if (this.anim.isProcedural) {
-      proc = this.locomotionPose(speed, localDirX, localDirZ);
-    }
+    if (this.anim.isProcedural) proc = this.locomotionPose(localDirX, localDirZ);
     this.anim.update(this.stateFrame, proc);
-    forwardKinematics(this.anim.out, this.rig, this.pos, this.yaw);
+    copyPose(this.anim.out, this.pose);
+
+    // Hand strikes thrown on the move: keep the legs walking under the punching torso.
+    if (this.state === 'attack' && this.move?.layer === 'upper' && this.moveBlend > 0.02) {
+      const L = this.layered;
+      copyPose(this.anim.out, L);
+      // Root: walking bob/height, plus the strike's own lean and weight shift.
+      const g = getPose('guard').root;
+      L.root.x = this.anim.out.root.x - g.x + localDirX * 0.04 * this.moveBlend;
+      L.root.z = this.anim.out.root.z - g.z + localDirZ * 0.04 * this.moveBlend;
+      L.root.y = this.anim.out.root.y + this.stepBob() * 0.8;
+      const [fl, fr] = this.locomotionFeet(localDirX, localDirZ);
+      solveLegs(L, fl, fr);
+      blendPose(this.anim.out, L, this.moveBlend, this.pose);
+    }
+    forwardKinematics(this.pose, this.rig, this.pos, this.yaw);
   }
 
-  private locomotionPose(speed: number, dx: number, dz: number) {
-    this.breath += 1 / 60;
-    const moving = clamp(speed / Math.max(0.1, this.stats.walkSpeed), 0, 1);
-    this.walkPhase += speed * (1 / 60) * 7.5;
+  private stepBob() {
+    return -Math.abs(Math.sin(this.walkPhase)) * 0.025 * this.moveBlend;
+  }
+
+  /** Ankle targets for the stepping cycle, in fighter-local space. */
+  private locomotionFeet(dx: number, dz: number): [LimbTarget, LimbTarget] {
+    const m = this.moveBlend;
     const ph = this.walkPhase;
-    const stride = 0.13 * moving;
-    const lift = 0.07 * moving;
-    const g = GUARD;
-    const bob = Math.sin(this.breath * 2.2) * 0.008 - Math.abs(Math.sin(ph)) * 0.025 * moving;
+    // Turning in place (no linear direction): shuffle the feet sideways.
+    const dirLen = Math.hypot(dx, dz);
+    if (dirLen < 0.1) {
+      dx = 1;
+      dz = 0;
+    }
+    const stride = 0.13 * m;
+    const lift = 0.07 * m;
     const sL = Math.sin(ph);
     const sR = Math.sin(ph + Math.PI);
+    return [
+      { at: [0.13 + dx * stride * sL, ANKLE_HEIGHT + Math.max(0, Math.cos(ph)) * lift, 0.27 + dz * stride * sL] },
+      { at: [-0.15 + dx * stride * sR, ANKLE_HEIGHT + Math.max(0, -Math.cos(ph)) * lift, -0.24 + dz * stride * sR] },
+    ];
+  }
+
+  private locomotionPose(dx: number, dz: number) {
+    const m = this.moveBlend;
+    const ph = this.walkPhase;
+    const bob = Math.sin(this.breath * 2.2) * 0.008 + this.stepBob();
+    const [footL, footR] = this.locomotionFeet(dx, dz);
     const spec: PoseSpec = {
-      ...g,
-      root: [dx * 0.03 * moving, 0.9 + bob, dz * 0.03 * moving],
-      chest: [0.06 + Math.sin(this.breath * 2.2) * 0.012, -0.1 + Math.sin(ph) * 0.05 * moving, 0],
-      footL: {
-        at: [0.13 + dx * stride * sL, ANKLE_HEIGHT + Math.max(0, Math.cos(ph)) * lift, 0.27 + dz * stride * sL],
-      },
-      footR: {
-        at: [-0.15 + dx * stride * sR, ANKLE_HEIGHT + Math.max(0, -Math.cos(ph)) * lift, -0.24 + dz * stride * sR],
-      },
+      ...GUARD,
+      // Lean into the direction of travel.
+      root: [dx * 0.04 * m, 0.9 + bob, dz * 0.04 * m],
+      abdomen: [0.06 + dz * 0.06 * m, 0, -dx * 0.06 * m],
+      chest: [0.06 + Math.sin(this.breath * 2.2) * 0.012, -0.1 + Math.sin(ph) * 0.05 * m, 0],
+      footL,
+      footR,
       handL: { at: [0.07, 1.47 + bob * 0.6, 0.33], hint: [0.5, -1, 0] },
       handR: { at: [-0.1, 1.44 + bob * 0.6, 0.2], hint: [-0.5, -1, 0] },
     };
