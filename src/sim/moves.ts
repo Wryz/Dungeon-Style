@@ -17,6 +17,22 @@ export interface Key {
   ease?: Ease;
 }
 
+/**
+ * Where a strike is aimed. Each throw picks one, so the same button doesn't always land
+ * on the same spot: jabs to the head or body, hooks to the head or liver, kicks to the
+ * thigh, calf or ribs... An aim can change the strike's height class (body shots are
+ * mid-height attacks for hit detection and for automatic defense).
+ */
+export interface Aim {
+  id: string;
+  weight: number;
+  /** Added to the striking fist/foot IK target in the active key poses (fighter-local). */
+  offset?: [number, number, number];
+  height?: Height;
+  /** Added to body angles / root in the active key poses (level change, hip turnover...). */
+  add?: Partial<Record<'root' | 'pelvis' | 'abdomen' | 'chest' | 'head', [number, number, number]>>;
+}
+
 export interface MoveDef {
   id: string;
   name: string;
@@ -58,6 +74,8 @@ export interface MoveDef {
    * fighter can keep stepping. 'full' (default): whole-body move that carries momentum.
    */
   layer?: 'upper' | 'full';
+  /** Target options (first = primary). Omitted: always the authored target. */
+  aims?: Aim[];
   /** Moves this can cancel into, and the window (relative to move start) where that is allowed. */
   cancel?: { into: string[]; from: number; to: number };
   keys: Key[];
@@ -69,6 +87,16 @@ export const SLIDE_RANGE_MAX = 3.0;
 export const GAZELLE_RANGE = 2.5;
 export const FLYING_KICK_MIN = 1.8;
 export const FLYING_KICK_MAX = 4.1;
+
+const BODY_PUNCH = (drop = 0.34): Aim => ({
+  id: 'body',
+  weight: 1.4,
+  offset: [0.02, -drop, -0.06],
+  height: 'mid',
+  // Level change: bend the knees and dip toward the body shot.
+  add: { root: [0, -0.09, 0], abdomen: [0.14, 0, 0] },
+});
+const HEAD: Aim = { id: 'head', weight: 3 };
 
 const strike = (wind: PoseName, ext: PoseName, recover: PoseName = 'guard', follow?: PoseName): Key[] => {
   const keys: Key[] = [
@@ -93,6 +121,7 @@ export const PLAYER_MOVES: Record<string, MoveDef> = {
     lunge: { from: 1, to: 6, distance: 0.18 },
     blockable: true,
     cancel: { into: ['jab', 'cross', 'frontKick', 'lowKick'], from: 6, to: 19 },
+    aims: [HEAD, BODY_PUNCH(0.33)],
     keys: strike('jabWind', 'jabExt'),
   },
   cross: {
@@ -105,6 +134,7 @@ export const PLAYER_MOVES: Record<string, MoveDef> = {
     lunge: { from: 1, to: 8, distance: 0.22 },
     blockable: true,
     cancel: { into: ['hook', 'frontKick', 'lowKick'], from: 8, to: 23 },
+    aims: [HEAD, BODY_PUNCH(0.35)],
     keys: strike('crossWind', 'crossExt'),
   },
   hook: {
@@ -117,6 +147,7 @@ export const PLAYER_MOVES: Record<string, MoveDef> = {
     lunge: { from: 2, to: 10, distance: 0.2 },
     blockable: true,
     cancel: { into: ['cross', 'lowKick'], from: 14, to: 31 },
+    aims: [HEAD, { ...BODY_PUNCH(0.38), id: 'liver' }],
     keys: [
       { at: ['s', 0.45], pose: 'hookWind', ease: 'out' },
       { at: ['s', 0.85], pose: 'hookMid', ease: 'in' },
@@ -135,6 +166,7 @@ export const PLAYER_MOVES: Record<string, MoveDef> = {
     lunge: { from: 1, to: 8, distance: 0.3 },
     blockable: true,
     cancel: { into: ['cross', 'lowKick'], from: 12, to: 29 },
+    aims: [HEAD, { ...BODY_PUNCH(0.38), id: 'liver' }],
     keys: [
       { at: ['s', 0.4], pose: 'hookWind', ease: 'out' },
       { at: ['s', 0.85], pose: 'hookMid', ease: 'in' },
@@ -153,6 +185,7 @@ export const PLAYER_MOVES: Record<string, MoveDef> = {
     lunge: { from: 0, to: 5, distance: 0.25 },
     blockable: true,
     cancel: { into: ['hook', 'frontKick', 'lowKick'], from: 5, to: 20 },
+    aims: [HEAD, BODY_PUNCH(0.35)],
     keys: strike('crossWind', 'crossExt'),
   },
   uppercut: {
@@ -193,6 +226,11 @@ export const PLAYER_MOVES: Record<string, MoveDef> = {
     damage: 6, guardDamage: 40, poiseDamage: 25, hitstun: 22, blockstun: 18,
     knockback: 4.6, impulse: 26, lift: 0.1, hitstop: 7, shake: 0.28, radius: 0.17, reach: 1.2,
     blockable: true,
+    aims: [
+      { id: 'stomach', weight: 3 },
+      { id: 'chest', weight: 1.5, offset: [0, 0.22, -0.03] },
+      { id: 'thigh', weight: 1, offset: [0, -0.38, -0.06], height: 'low' },
+    ],
     keys: [
       { at: ['s', 0.6], pose: 'kickChamber', ease: 'out' },
       { at: ['a', 0], pose: 'kickExt', ease: 'snap' },
@@ -209,6 +247,12 @@ export const PLAYER_MOVES: Record<string, MoveDef> = {
     knockback: 1.0, impulse: 16, lift: 0.2, hitstop: 6, shake: 0.22, radius: 0.17, reach: 1.3,
     lunge: { from: 1, to: 10, distance: 0.3 },
     blockable: false,
+    aims: [
+      { id: 'thigh', weight: 3 },
+      { id: 'calf', weight: 1.5, offset: [0, -0.2, 0.02] },
+      // Body roundhouse: hips turn over even further, kick lands on the ribs.
+      { id: 'ribs', weight: 2.5, offset: [0.04, 0.58, -0.02], height: 'mid', add: { root: [0, 0.03, 0], pelvis: [0, 0.3, 0], abdomen: [0, 0, -0.16] } },
+    ],
     keys: [
       { at: ['s', 0.55], pose: 'lowKickWind', ease: 'out' },
       { at: ['a', 0], pose: 'lowKickExt', ease: 'snap' },
@@ -226,6 +270,10 @@ export const PLAYER_MOVES: Record<string, MoveDef> = {
     lunge: { from: 5, to: 22, distance: 2.6 },
     evades: { from: 8, to: 24, heights: ['low'] },
     blockable: true,
+    aims: [
+      { id: 'chest', weight: 3 },
+      { id: 'head', weight: 1, offset: [0, 0.25, 0], height: 'high' },
+    ],
     keys: [
       { at: ['s', 0.3], pose: 'flyCrouch', ease: 'out' },
       { at: ['s', 0.65], pose: 'flyAir', ease: 'out' },
@@ -265,6 +313,7 @@ export const ENEMY_MOVES: Record<string, MoveDef> = {
     lunge: { from: 12, to: 22, distance: 0.3 },
     blockable: true,
     cancel: { into: ['hookChain'], from: 23, to: 34 },
+    aims: [HEAD, { id: 'chin', weight: 1.5, offset: [0.03, -0.06, 0] }],
     keys: [
       { at: ['s', 0.7], pose: 'straightWind', ease: 'out' },
       { at: ['a', 0], pose: 'straightExt', ease: 'snap' },
@@ -282,6 +331,7 @@ export const ENEMY_MOVES: Record<string, MoveDef> = {
     lunge: { from: 14, to: 28, distance: 0.35 },
     armor: [8, 26],
     blockable: true,
+    aims: [HEAD, { ...BODY_PUNCH(0.36), id: 'body', weight: 1.2 }],
     keys: [
       { at: ['s', 0.7], pose: 'ehookWind', ease: 'out' },
       { at: ['a', 0], pose: 'ehookExt', ease: 'linear' },

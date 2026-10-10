@@ -70,11 +70,11 @@ export function moveContext(f: Fighter): MoveContext {
  * shape and how many frames are left before it lands. Returns null when nothing fits
  * (too late, or the only option is on cooldown) — the hit will land.
  */
-export function chooseDefense(f: Fighter, move: MoveDef, framesToActive: number): DefenseKind | null {
+export function chooseDefense(f: Fighter, move: MoveDef, framesToActive: number, height = move.height): DefenseKind | null {
   let prefs: DefenseKind[];
-  if (move.height === 'low') prefs = ['slide'];
+  if (height === 'low') prefs = ['slide'];
   else if (!move.blockable) prefs = ['slide'];
-  else if (move.height === 'mid') prefs = f.guard < 25 ? ['slide', 'block'] : ['block', 'slide'];
+  else if (height === 'mid') prefs = f.guard < 25 ? ['slide', 'block'] : ['block', 'slide'];
   else if (move.kind === 'hook' || move.kind === 'uppercut') prefs = ['duck', 'weave', 'block'];
   else prefs = ['weave', 'duck', 'block'];
 

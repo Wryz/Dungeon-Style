@@ -225,9 +225,14 @@ function solveTwoBone(
   L = Math.min(Math.max(L, minL), maxL);
   _d.normalize();
 
-  // Bend plane: contains d and the hint. Fall back if they are parallel.
+  // Bend plane: contains d and the hint. A hint (nearly) parallel to the reach direction
+  // gives an unstable plane, so bias it downward (elbows/knees default to hanging).
   _hint.copy(hint).normalize();
   _axis.crossVectors(_d, _hint);
+  if (_axis.lengthSq() < 0.12) {
+    _hint.addScaledVector(_axis.set(0, -1, 0).addScaledVector(_d, _d.y), 0.8).normalize();
+    _axis.crossVectors(_d, _hint);
+  }
   if (_axis.lengthSq() < 1e-6) {
     _hint.set(0, 0, 1);
     _axis.crossVectors(_d, _hint);

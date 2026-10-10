@@ -2,7 +2,7 @@ import { Vector3 } from 'three';
 import { Animator, type TrackKey } from '../body/animator';
 import { Footwork, type FootworkStyle } from '../body/footwork';
 import { IdleBehavior, type IdleStyle } from '../body/idle';
-import { getPose, GUARD, type PoseName } from '../body/poses';
+import { getPose, GUARD, POSE_SPECS, type PoseName } from '../body/poses';
 import {
   forwardKinematics,
   blendPose,
@@ -35,7 +35,7 @@ export const OUTFIGHTER_STYLE: FighterStyle = {
   },
 };
 import { clamp, type Ease, Rng } from './math';
-import { DEFENSES, type DefenseDef, type DefenseKind, markerFrame, type MoveDef } from './moves';
+import { type Aim, DEFENSES, type DefenseDef, type DefenseKind, type Height, markerFrame, type MoveDef } from './moves';
 
 export type FighterState =
   | 'idle'
@@ -125,6 +125,9 @@ export class Fighter {
   hitThisAttack = false;
   /** The attack was a counter (thrown from a counter window). */
   isCounterAttack = false;
+  /** Target chosen for the current attack, and the height class it lands at. */
+  aim: Aim | null = null;
+  strikeHeight: Height = 'high';
 
   defense: ActiveDefense | null = null;
   counter: Counter | null = null;
@@ -224,7 +227,8 @@ export class Fighter {
     if (s !== 'defend') this.defense = null;
   }
 
-  startMove(move: MoveDef, isCounter = false) {
+  /** @param aimId force a specific aim (tests, scripted moves); otherwise one is picked. */
+  startMove(move: MoveDef, isCounter = false, aimId?: string) {
     this.setState('attack');
     this.move = move;
     this.attackSerial++;
@@ -233,7 +237,21 @@ export class Fighter {
     this.counter = null;
     this.buffer = null;
     this.idle.interrupt();
-    this.anim.play(moveKeys(move));
+    this.aim = this.pickAim(move, aimId);
+    this.strikeHeight = this.aim?.height ?? move.height;
+    // Natural scatter: no two strikes land on exactly the same spot.
+    const jitter: [number, number, number] = aimId ? [0, 0, 0] : [this.rng.range(-0.04, 0.04), this.rng.range(-0.035, 0.035), 0];
+    this.anim.play(moveKeys(move, this.aim, jitter));
+  }
+
+  private pickAim(move: MoveDef, aimId?: string): Aim | null {
+    const aims = move.aims;
+    if (!aims?.length) return null;
+    if (aimId) return aims.find((a) => a.id === aimId) ?? aims[0];
+    // Against a covered-up opponent, go around the guard: favour body / leg targets.
+    const t = this.target;
+    const covering = !!t && (t.state === 'blockstun' || (t.state === 'defend' && t.defense?.def.kind === 'block'));
+    return this.rng.pickWeighted(aims.map((a) => [a, a.weight * (covering && (a.height === 'mid' || a.height === 'low') ? 3 : 1)]));
   }
 
   startDefense(kind: DefenseKind, threatSerial: number) {
@@ -394,6 +412,25 @@ export function defensePose(kind: DefenseKind, side: 1 | -1): PoseName {
   }
 }
 
-export function moveKeys(m: MoveDef): TrackKey[] {
-  return m.keys.map((k) => ({ f: Math.round(markerFrame(m, k.at)), pose: getPose(k.pose), ease: k.ease as Ease | undefined }));
+type V3 = [number, number, number];
+const addV = (a: V3 | undefined, b: V3 | undefined): V3 | undefined =>
+  b ? [(a?.[0] ?? 0) + b[0], (a?.[1] ?? 0) + b[1], (a?.[2] ?? 0) + b[2]] : a;
+
+/** Key poses for one throw of a move; active-phase poses are re-aimed at the chosen target. */
+export function moveKeys(m: MoveDef, aim: Aim | null = null, jitter: V3 = [0, 0, 0]): TrackKey[] {
+  const scatter = jitter[0] !== 0 || jitter[1] !== 0 || jitter[2] !== 0;
+  return m.keys.map((k) => {
+    let pose = getPose(k.pose);
+    if (k.at[0] === 'a' && (aim?.offset || aim?.add || scatter)) {
+      const spec: PoseSpec = { ...POSE_SPECS[k.pose] };
+      const limb = spec[m.limb];
+      if (limb) spec[m.limb] = { at: addV(addV(limb.at, aim?.offset), jitter)!, hint: limb.hint };
+      for (const part of ['root', 'pelvis', 'abdomen', 'chest', 'head'] as const) {
+        const d = aim?.add?.[part];
+        if (d) spec[part] = addV(spec[part], d);
+      }
+      pose = resolvePose(spec);
+    }
+    return { f: Math.round(markerFrame(m, k.at)), pose, ease: k.ease as Ease | undefined };
+  });
 }

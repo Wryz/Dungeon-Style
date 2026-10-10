@@ -151,8 +151,10 @@ export const POSE_SPECS = {
   },
   kickExt: {
     ...GUARD,
-    root: [0, 0.93, -0.06],
-    abdomen: [-0.22, 0, 0],
+    // Teep: hips thrust through the target while the shoulders stay back.
+    root: [0, 0.92, 0.02],
+    pelvis: [-0.18, -0.3, 0],
+    abdomen: [-0.2, 0, 0],
     chest: [-0.1, -0.15, 0],
     head: [0.25, 0.3, 0],
     footL: { at: [0.04, 0.98, 0.9], hint: [0, 1, 0.3] },
@@ -213,31 +215,33 @@ export const POSE_SPECS = {
 
   lowKickWind: {
     ...GUARD,
-    root: [0.05, 0.88, 0.04],
-    pelvis: [0, -0.05, 0],
+    root: [0.05, 0.87, 0.05],
+    // Hips start opening as the lead foot steps out at an angle.
+    pelvis: [0, 0.3, 0],
     chest: [0.05, -0.1, 0],
-    head: [0.02, 0.15, 0],
-    // Lead foot steps out at an angle to open the hips.
-    footL: { at: [0.24, A, 0.33], hint: [0.6, 0, 0.8] },
-    footR: { at: [-0.22, 0.2, -0.12], hint: [-0.9, 0.3, 0.4] },
-    handL: { at: [0.08, 1.55, 0.27], hint: [0.35, -1, 0] },
-    handR: { at: [-0.2, 1.3, 0.05], hint: [-0.6, -1, -0.2] },
+    head: [0.02, -0.1, 0],
+    footL: { at: [0.24, A, 0.33], hint: [0.8, 0, 0.6] },
+    footR: { at: [-0.2, 0.24, -0.1], hint: [-0.9, 0.4, 0.3] },
+    handL: { at: [0.08, 1.54, 0.27], hint: [0.35, -1, 0] },
+    handR: { at: [-0.22, 1.28, 0.02], hint: [-0.6, -1, -0.2] },
   },
   lowKickExt: {
     ...GUARD,
-    root: [0.06, 0.88, 0.08],
-    // Hips turn over through the target; the torso stays tall and counter-leans
-    // sideways, away from the kicking leg.
-    pelvis: [0, 0.95, 0],
-    abdomen: [0.04, 0, -0.14],
-    chest: [0.04, -0.4, -0.08],
-    head: [0.02, -0.55, 0.1],
-    footL: { at: [0.22, A + 0.03, 0.3], hint: [-0.3, 0, 1] },
-    // Shin swings round in a side arc at thigh height, knee turned over.
-    footR: { at: [0.16, 0.5, 0.74], hint: [-0.7, 0.6, 0.3] },
+    root: [0.07, 0.88, 0.08],
+    // Full hip turnover (~100° from stance): the hips drive the shin through the target.
+    pelvis: [0, 1.45, 0],
+    // Shoulders turn with the hips; the torso counter-leans sideways, away from the kick.
+    abdomen: [0.04, 0, -0.18],
+    chest: [0.03, -0.2, -0.06],
+    // Eyes stay on the opponent.
+    head: [0.02, -0.95, 0.12],
+    // Support foot pivots on the ball: toes turn out, heel toward the target.
+    footL: { at: [0.23, A + 0.04, 0.3], hint: [1, 0, 0.25] },
+    // Knee turns over; the shin swings round in a flat arc at thigh height.
+    footR: { at: [0.16, 0.5, 0.74], hint: [-0.35, 0.85, 0.2] },
     handL: { at: [0.06, 1.54, 0.24], hint: [0.35, -1, 0] },
     // Kicking-side arm swings down and back for counterbalance.
-    handR: { at: [-0.36, 1.08, -0.26], hint: [-0.4, -0.6, -1] },
+    handR: { at: [-0.38, 1.05, -0.28], hint: [-0.4, -0.6, -1] },
   },
 
   // ---- Enemy strikes (brawler: wider, heavier) -------------------------------
@@ -266,7 +270,8 @@ export const POSE_SPECS = {
     pelvis: [0, -0.55, 0],
     chest: [0.06, -0.5, 0],
     head: [-0.05, 0.9, 0],
-    handL: { at: [0.55, 1.45, 0.05], hint: [1, 0.3, -0.5] },
+    // Haymaker cocked back by the ear, elbow out and down — big, readable telegraph.
+    handL: { at: [0.36, 1.52, -0.02], hint: [0.35, -1, -0.5] },
   },
   ehookExt: {
     ...GUARD,

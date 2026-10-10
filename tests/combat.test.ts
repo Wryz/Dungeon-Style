@@ -115,7 +115,7 @@ describe('automatic defense', () => {
   function enemyAttack(id: string, dist = 1.05) {
     const s = setup(dist);
     run(s.sim, 2);
-    s.enemy.startMove(s.enemy.moves[id]);
+    s.enemy.startMove(s.enemy.moves[id], false, 'head');
     return s;
   }
 
@@ -170,7 +170,7 @@ describe('automatic defense', () => {
   it('jab does not interrupt an armored haymaker', () => {
     const { sim, player, enemy } = enemyAttack('hook', 0.95);
     run(sim, 10);
-    player.startMove(player.moves.jab);
+    player.startMove(player.moves.jab, false, 'head');
     const ev = run(sim, 30);
     const onEnemy = hits(ev, enemy);
     expect(onEnemy.length).toBe(1);

@@ -233,7 +233,7 @@ export class CombatSim {
       const fta = o.framesToActive;
       if (fta < -o.move.active) continue;
       if (f.distanceTo(o) > o.move.reach + o.stats.reach + 0.45) continue;
-      const kind = chooseDefense(f, o.move, fta);
+      const kind = chooseDefense(f, o.move, fta, o.strikeHeight);
       if (!kind) continue;
       if (fta <= DEFENSES[kind].startup + 1) {
         f.startDefense(kind, serial);
@@ -408,7 +408,7 @@ export class CombatSim {
       strikePoint(a, m, _strike);
       for (const d of this.opponents(a)) {
         if (!d.alive || d.state === 'knockdown' || d.state === 'getup') continue;
-        const c = overlap(_strike, m.radius + a.stats.reach, d, m.height);
+        const c = overlap(_strike, m.radius + a.stats.reach, d, a.strikeHeight);
         if (c) {
           contacts.push({ attacker: a, defender: d, ...c });
           break;
@@ -422,6 +422,7 @@ export class CombatSim {
 
   private applyStrike({ attacker: a, defender: d, point, zone }: Contact) {
     const m = a.move!;
+    const height = a.strikeHeight;
     const dir = new Vector3(d.pos.x - a.pos.x, 0, d.pos.z - a.pos.z);
     if (dir.lengthSq() < 1e-6) dir.copy(a.forward);
     dir.normalize();
@@ -429,23 +430,23 @@ export class CombatSim {
     if (d.state === 'defend' && d.defense) {
       const def = d.defense.def;
       const inPosition = d.defense.phase !== 'startup' || d.stateFrame >= def.startup - 1;
-      if (inPosition && def.evades.includes(m.height)) {
+      if (inPosition && def.evades.includes(height)) {
         this.markDodge(d, a, point);
         return;
       }
-      if (inPosition && m.blockable && def.blocks.includes(m.height)) {
+      if (inPosition && m.blockable && def.blocks.includes(height)) {
         this.block(a, d, m, point, dir);
         return;
       }
     }
     if (d.state === 'attack' && d.move?.evades) {
       const e = d.move.evades;
-      if (d.stateFrame >= e.from && d.stateFrame < e.to && e.heights.includes(m.height)) {
+      if (d.stateFrame >= e.from && d.stateFrame < e.to && e.heights.includes(height)) {
         this.events.push({ type: 'dodge', attacker: a, defender: d, move: m, kind: 'airborne', point });
         return;
       }
     }
-    if (d.state === 'blockstun' && m.blockable && m.height !== 'low') {
+    if (d.state === 'blockstun' && m.blockable && height !== 'low') {
       this.block(a, d, m, point, dir);
       return;
     }

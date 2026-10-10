@@ -27,8 +27,8 @@ export const DEFAULT_BINDINGS: Bindings = {
   rkick: 'KeyF',
 };
 
-/** Keys reserved for menus / debug; they can't be bound to actions. */
-export const RESERVED_KEYS = new Set(['Escape', 'F1', 'Backquote']);
+/** Keys reserved for menus / the tuning panel; they can't be bound to actions. */
+export const RESERVED_KEYS = new Set(['Escape', 'KeyL']);
 
 const STORAGE_KEY = 'brawler.bindings.v1';
 

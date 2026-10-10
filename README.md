@@ -28,7 +28,7 @@ npm run build      # typecheck + production build into dist/
 | Right kick | **F** | | B / RT | R KICK |
 
 **Esc** (or the ⚙ button) opens **Settings**, where every key can be rebound; bindings
-are saved in the browser. Debug: **F1** tuning panel · **H** hitboxes · **T** cycle
+are saved in the browser. Debug: **L** tuning panel · **H** hitboxes · **T** cycle
 slow-mo · **P** pause · **.** step one frame · **Backspace** restart · **M** mute.
 
 ## How the combat works
@@ -41,6 +41,13 @@ slow-mo · **P** pause · **.** step one frame · **Backspace** restart · **M**
 | **Right punch** | cross | cross | jab → cross, hook → cross | uppercut / cross / cross / cross |
 | **Left kick** | push kick (guard breaker) | flying kick | → push kick | push kick / push kick / sliding strike / push kick |
 | **Right kick** | low kick | sliding strike | → low kick | low kick / low kick / sliding strike / low kick |
+
+**Strikes vary where they land.** Each throw picks a target (plus a little natural
+scatter): jabs and crosses to the head or body, hooks to the head or liver, push kicks to
+the stomach, chest or thigh, the right kick to the thigh, calf or ribs (a body
+roundhouse). Body shots are mid-height attacks — they hit the body, and automatic defense
+blocks them instead of slipping. Against an opponent who is covering up, strikes favour
+the body and legs. The Brawler mixes head and body haymakers the same way.
 
 **Facing is a soft lock.** You turn toward your opponent but not instantly: strafing
 leans your body into the strafe, small offsets are tolerated, and a strike only gets a
@@ -99,7 +106,7 @@ make a correct move miss.
 
 ## Tuning workflow
 
-Open **F1**, enable *training dummy* to practise on a passive target, adjust frame data /
+Open **L**, enable *training dummy* to practise on a passive target, adjust frame data /
 hit-pause / impulses live, then **Copy tuning as JSON** and paste the values back into
 `src/sim/moves.ts` (or ask Claude to). The reach regression test
 (`tests/reach.test.ts`) fails if a pose change makes a move's declared reach dishonest.

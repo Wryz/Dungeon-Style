@@ -19,7 +19,8 @@ function measureReach(side: 'player' | 'enemy', id: string): number {
     sim.add(e, ai);
     sim.step();
     const [a, t] = side === 'player' ? [p, e] : [e, p];
-    a.startMove(a.moves[id]);
+    const m = a.moves[id];
+    a.startMove(m, false, m.aims?.[0].id ?? 'primary');
     let hit = false;
     for (let i = 0; i < 70 && !hit; i++) for (const ev of sim.step()) if (ev.type === 'hit' && ev.defender === t) hit = true;
     if (hit) best = d;

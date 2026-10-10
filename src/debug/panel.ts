@@ -18,7 +18,7 @@ const MOVE_FIELDS: [keyof MoveDef, number, number, number][] = [
   ['radius', 0.05, 0.4, 0.01],
 ];
 
-/** Live tuning panel (F1). Everything edits the running game in place. */
+/** Live tuning panel (L). Everything edits the running game in place. */
 export function buildPanel(game: Game): { toggle: () => void } {
   const container = document.createElement('div');
   container.className = 'panel';

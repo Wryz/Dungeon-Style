@@ -323,8 +323,7 @@ export class Game {
       case 'Escape':
         this.settings.toggle();
         break;
-      case 'F1':
-      case 'Backquote':
+      case 'KeyL':
         this.onTogglePanel?.();
         break;
       case 'KeyP':

@@ -59,7 +59,7 @@ describe('attacking on the move', () => {
       moving.sim.step();
       still.sim.step();
     }
-    for (const s of [still, moving]) s.player.startMove(s.player.moves.jab);
+    for (const s of [still, moving]) s.player.startMove(s.player.moves.jab, false, 'head');
     const z0 = moving.player.pos.z;
     let legDiff = 0;
     let armDiff = 0;
