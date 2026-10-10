@@ -5,6 +5,11 @@ export const CAMERA_TUNING = {
   azimuth: -0.32, // radians around Y (0 = straight from +Z)
   baseView: 7.2, // visible world height in metres
   shakeMul: 1,
+  /** How much the view widens with fighter separation. */
+  spreadMul: 0.75,
+  spreadPad: 3.2,
+  /** 0.5 frames the midpoint between fighters, 0 frames the player. */
+  focusMix: 0.5,
 };
 
 /** Orthographic camera above and to the side, following the fight with trauma-based shake. */
@@ -52,7 +57,7 @@ export class CameraRig {
     this.t += dt;
     const k = 1 - Math.exp(-dt * 5);
     this.focus.lerp(target, k);
-    const want = Math.max(CAMERA_TUNING.baseView, spread * 0.75 + 3.2) / this.zoom;
+    const want = Math.max(CAMERA_TUNING.baseView, spread * CAMERA_TUNING.spreadMul + CAMERA_TUNING.spreadPad * Math.sign(CAMERA_TUNING.spreadMul)) / this.zoom;
     this.view += (want - this.view) * (1 - Math.exp(-dt * 3));
     this.trauma = Math.max(0, this.trauma - dt * 1.6);
     this.punch = Math.max(0, this.punch - dt * 4);

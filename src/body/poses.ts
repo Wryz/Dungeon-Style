@@ -5,9 +5,10 @@ import { ANKLE_HEIGHT as A, type LimbTarget, type Pose, type PoseSpec, resolvePo
  * Limbs are placed with IK targets so fists and feet land where the move needs them.
  */
 
+// Lead hand around eye level ~30 cm out, rear hand by the chin, elbows down and in.
 const hands = (dy = 0, dx = 0, dz = 0): { handL: LimbTarget; handR: LimbTarget } => ({
-  handL: { at: [0.07 + dx, 1.47 + dy, 0.33 + dz], hint: [0.5, -1, 0] },
-  handR: { at: [-0.1 + dx, 1.44 + dy, 0.2 + dz], hint: [-0.5, -1, 0] },
+  handL: { at: [0.07 + dx, 1.53 + dy, 0.3 + dz], hint: [0.35, -1, 0] },
+  handR: { at: [-0.09 + dx, 1.48 + dy, 0.17 + dz], hint: [-0.35, -1, 0] },
 });
 
 const feet = (spread = 0, dzL = 0, dzR = 0): { footL: LimbTarget; footR: LimbTarget } => ({
@@ -16,12 +17,14 @@ const feet = (spread = 0, dzL = 0, dzR = 0): { footL: LimbTarget; footR: LimbTar
 });
 
 export const GUARD: PoseSpec = {
-  root: [0, 0.9, 0],
+  // Athletic stance: knees flexed, hips low, weight slightly forward on the balls of the feet.
+  root: [0, 0.86, 0.01],
   pelvis: [0, -0.3, 0],
-  abdomen: [0.06, 0, 0],
-  chest: [0.06, -0.1, 0],
-  head: [-0.08, 0.4, 0],
-  ...hands(),
+  abdomen: [0.1, 0, 0],
+  chest: [0.08, -0.1, 0],
+  // Chin tucked, eyes on the opponent over the lead shoulder.
+  head: [-0.04, 0.4, 0],
+  ...hands(-0.03, 0, 0.01),
   ...feet(),
 };
 
@@ -34,10 +37,11 @@ export const POSE_SPECS = {
     ...GUARD,
     root: [0, 0.89, 0.1],
     pelvis: [0, -0.38, 0],
-    chest: [0.05, -0.15, 0],
-    head: [-0.05, 0.5, 0],
-    handL: { at: [0.0, 1.5, 0.9], hint: [0.6, -0.6, 0] },
-    handR: { at: [-0.1, 1.45, 0.24], hint: [-0.5, -1, 0] },
+    // Lead shoulder rises to shield the chin; rear hand stays home.
+    chest: [0.05, -0.15, 0.09],
+    head: [0.06, 0.5, 0],
+    handL: { at: [0.0, 1.52, 0.9], hint: [0.6, -0.6, 0] },
+    handR: { at: [-0.09, 1.48, 0.18], hint: [-0.35, -1, 0] },
     ...feet(0, 0.1, 0.04),
   },
   crossWind: { ...GUARD, chest: [0.06, -0.25, 0], handR: { at: [-0.12, 1.44, 0.12], hint: [-0.6, -1, -0.2] } },
@@ -47,10 +51,11 @@ export const POSE_SPECS = {
     pelvis: [0, 0.15, 0],
     chest: [0.08, 0.3, 0],
     head: [-0.05, -0.35, 0],
-    handL: { at: [0.1, 1.45, 0.18], hint: [0.5, -1, 0] },
-    handR: { at: [-0.01, 1.5, 0.92], hint: [-0.6, -0.6, 0] },
+    handL: { at: [0.09, 1.52, 0.16], hint: [0.35, -1, 0] },
+    handR: { at: [-0.01, 1.52, 0.92], hint: [-0.6, -0.6, 0] },
     footL: { at: [0.13, A, 0.3] },
-    footR: { at: [-0.12, A + 0.02, -0.18] },
+    // Rear heel pivots up and out, knee turns in toward the target: drive from the ground.
+    footR: { at: [-0.11, A + 0.06, -0.17], hint: [0.35, 0, 1] },
   },
   hookWind: {
     ...GUARD,
@@ -75,7 +80,10 @@ export const POSE_SPECS = {
     chest: [0.06, 0.45, 0],
     head: [-0.05, -0.5, 0],
     handL: { at: [-0.1, 1.5, 0.64], hint: [1, 0.15, 0.3] },
-    handR: { at: [-0.12, 1.44, 0.18], hint: [-0.5, -1, 0] },
+    handR: { at: [-0.1, 1.48, 0.16], hint: [-0.35, -1, 0] },
+    // Lead foot pivots on the ball, knee turns in: the hook comes from the hips.
+    footL: { at: [0.13, A + 0.04, 0.27], hint: [-0.45, 0, 1] },
+    footR: { at: [-0.15, A, -0.24] },
   },
   hookFollow: {
     ...GUARD,
@@ -201,6 +209,35 @@ export const POSE_SPECS = {
     handR: { at: [-0.32, 0.05, -0.25], hint: [-1, 0, -0.3] },
     footL: { at: [0.06, 0.16, 1.05], hint: [0, 1, 0.2] },
     footR: { at: [-0.15, A, 0.25], hint: [-0.3, 0.6, 1] },
+  },
+
+  lowKickWind: {
+    ...GUARD,
+    root: [0.05, 0.88, 0.04],
+    pelvis: [0, -0.05, 0],
+    chest: [0.05, -0.1, 0],
+    head: [0.02, 0.15, 0],
+    // Lead foot steps out at an angle to open the hips.
+    footL: { at: [0.24, A, 0.33], hint: [0.6, 0, 0.8] },
+    footR: { at: [-0.22, 0.2, -0.12], hint: [-0.9, 0.3, 0.4] },
+    handL: { at: [0.08, 1.55, 0.27], hint: [0.35, -1, 0] },
+    handR: { at: [-0.2, 1.3, 0.05], hint: [-0.6, -1, -0.2] },
+  },
+  lowKickExt: {
+    ...GUARD,
+    root: [0.06, 0.88, 0.08],
+    // Hips turn over through the target; the torso stays tall and counter-leans
+    // sideways, away from the kicking leg.
+    pelvis: [0, 0.95, 0],
+    abdomen: [0.04, 0, -0.14],
+    chest: [0.04, -0.4, -0.08],
+    head: [0.02, -0.55, 0.1],
+    footL: { at: [0.22, A + 0.03, 0.3], hint: [-0.3, 0, 1] },
+    // Shin swings round in a side arc at thigh height, knee turned over.
+    footR: { at: [0.16, 0.5, 0.74], hint: [-0.7, 0.6, 0.3] },
+    handL: { at: [0.06, 1.54, 0.24], hint: [0.35, -1, 0] },
+    // Kicking-side arm swings down and back for counterbalance.
+    handR: { at: [-0.36, 1.08, -0.26], hint: [-0.4, -0.6, -1] },
   },
 
   // ---- Enemy strikes (brawler: wider, heavier) -------------------------------

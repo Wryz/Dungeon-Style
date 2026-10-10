@@ -17,7 +17,7 @@ import { BONES } from '../body/skeleton';
 import { Sfx } from '../feel/audio';
 import { Input } from '../input/input';
 import { Arena } from '../render/arena';
-import { CameraRig } from '../render/cameraRig';
+import { CAMERA_TUNING, CameraRig } from '../render/cameraRig';
 import { Effects } from '../render/particles';
 import { BRAWLER_PALETTE, FighterView, PLAYER_PALETTE, type Palette } from '../render/fighterView';
 import { DEFAULT_AI, type AIConfig } from '../sim/ai';
@@ -71,6 +71,7 @@ export class Game {
   kos = 0;
   /** Exposed for the debug panel and automated capture scripts. */
   readonly tuning = GAME_TUNING;
+  readonly cameraTuning = CAMERA_TUNING;
   onTogglePanel: (() => void) | null = null;
 
   private readonly debugGroup = new Group();
@@ -214,6 +215,11 @@ export class Game {
 
   requestStep() {
     this.stepOnce = true;
+  }
+
+  /** Debug/capture helper: run `n` fixed steps immediately (rendered on the next frame). */
+  advance(n: number) {
+    for (let i = 0; i < n; i++) this.fixedStep();
   }
 
   restart() {
@@ -477,7 +483,7 @@ export class Game {
     const focus = this.player.pos.clone();
     let spread = 0;
     if (e && e.alive && this.player.distanceTo(e) < 9) {
-      focus.lerp(e.pos, 0.5);
+      focus.lerp(e.pos, CAMERA_TUNING.focusMix);
       spread = this.player.distanceTo(e);
     }
     focus.y = 0.9;

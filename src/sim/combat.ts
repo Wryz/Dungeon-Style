@@ -57,6 +57,9 @@ export const FACING = {
   /** Offsets smaller than this are tolerated while standing still. */
   idleDeadzone: 0.14,
   lockRange: 9,
+  /** Inside this distance fighters move in stance at `stanceSpeed` × walk speed. */
+  stanceRange: 3,
+  stanceSpeed: 0.58,
   disengageRange: 3.5,
 };
 
@@ -276,13 +279,19 @@ export class CombatSim {
     const handStrike = f.state === 'attack' && f.move?.layer === 'upper';
     if (f.free || handStrike) {
       const mi = f.moveInput;
-      const len = Math.min(1, Math.hypot(mi.x, mi.z));
+      const raw = Math.hypot(mi.x, mi.z);
+      const len = Math.min(1, raw);
       _want.set(0, 0, 0);
       if (len > 0.1) {
         const fwd = f.forward;
-        const dot = (mi.x * fwd.x + mi.z * fwd.z) / len;
-        const sp = f.stats.walkSpeed * len * (dot < -0.3 ? 0.72 : 1) * (handStrike ? 0.5 : 1);
-        _want.set(mi.x / len, 0, mi.z / len).multiplyScalar(sp);
+        const dot = (mi.x * fwd.x + mi.z * fwd.z) / raw;
+        // In fighting range, fighters move in stance: shorter, more controlled footwork.
+        const t = f.target && f.target.alive ? f.target : null;
+        const d = t ? f.distanceTo(t) : Infinity;
+        const stance = d < FACING.stanceRange ? 1 : d > FACING.stanceRange + 1.5 ? 0 : 1 - (d - FACING.stanceRange) / 1.5;
+        const sp =
+          f.stats.walkSpeed * len * (dot < -0.3 ? 0.8 : 1) * (handStrike ? 0.6 : 1) * (1 - stance * (1 - FACING.stanceSpeed));
+        _want.set(mi.x / raw, 0, mi.z / raw).multiplyScalar(sp);
       }
       // Accelerate rather than snap, so starts/stops have weight.
       f.walkVel.lerp(_want, _want.lengthSq() > f.walkVel.lengthSq() ? 0.22 : 0.3);

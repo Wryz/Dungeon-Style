@@ -49,6 +49,17 @@ export function buildPanel(game: Game): { toggle: () => void } {
   lock.addBinding(FACING, 'strafeLead', { min: 0, max: 1.2, step: 0.01, label: 'strafe lean' });
   lock.addBinding(FACING, 'idleDeadzone', { min: 0, max: 0.5, step: 0.01, label: 'deadzone' });
 
+  const fw = pane.addFolder({ title: 'Footwork & idle (you)', expanded: false });
+  const ps = game.player.footwork.style;
+  const is = game.player.idle.style;
+  fw.addBinding(ps, 'stanceWidth', { min: 0.7, max: 1.5, step: 0.01, label: 'stance width' });
+  fw.addBinding(ps, 'stepFrames', { min: 4, max: 20, step: 1, label: 'step frames' });
+  fw.addBinding(ps, 'stepHeight', { min: 0, max: 0.15, step: 0.005, label: 'step height' });
+  fw.addBinding(FACING, 'stanceSpeed', { min: 0.2, max: 1, step: 0.01, label: 'in-range speed' });
+  fw.addBinding(is, 'bounceHz', { min: 0, max: 3, step: 0.05, label: 'bounce Hz' });
+  fw.addBinding(is, 'bounceAmp', { min: 0, max: 0.1, step: 0.002, label: 'bounce height' });
+  fw.addBinding(is, 'swayAmp', { min: 0, max: 0.15, step: 0.005, label: 'sway' });
+
   const cam = pane.addFolder({ title: 'Camera', expanded: false });
   cam.addBinding(CAMERA_TUNING, 'elevation', { min: 0.2, max: 1.4, step: 0.01 });
   cam.addBinding(CAMERA_TUNING, 'azimuth', { min: -1.2, max: 1.2, step: 0.01 });

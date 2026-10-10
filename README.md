@@ -47,6 +47,15 @@ leans your body into the strafe, small offsets are tolerated, and a strike only 
 little aim assist early in its wind-up, so angles matter. Punches thrown while moving
 keep the legs stepping underneath; kicks and lunges carry your momentum.
 
+**Footwork.** Feet are planted in the world and take discrete steps: the lead foot steps
+first going forward, the rear foot going back, the near-side foot going sideways (the
+other drags in), turns pivot on the lead foot, and the hips shift over the planted foot.
+Inside fighting range, fighters move in stance at reduced speed with short steps.
+Between exchanges they stay alive — bouncing in rhythm, shifting weight, scanning,
+pawing with the lead hand, re-stancing and throwing feints (purely visual: feints never
+glow red and never trigger defenses). The player is a light-footed out-fighter; the
+Brawler is a heavier plodder with shoulder rolls.
+
 **Automatic defense.** When the enemy winds up, the character picks a reaction from the
 attack's height, shape and timing: high straights → weave, hooks → duck, mid body blows →
 block (costs guard), low sweeps → slide. A successful dodge opens a short **counter
@@ -71,6 +80,8 @@ src/
     skeleton.ts 12-bone humanoid, forward kinematics, two-bone IK
     poses.ts    authored key poses (IK targets for fists/feet)
     animator.ts keyframe tracks that blend from wherever the body really is
+    footwork.ts planted-foot stepping (step-and-drag, pivots, weight transfer)
+    idle.ts     between-exchange life: rhythm, sway, scanning, paws, feints
     ragdoll.ts  Rapier powered ragdoll: joint "muscles" chase the animated pose;
                 hits relax muscles near the impact + add impulses, then recover
   render/     blocky low-poly fighters, arena, orthographic camera, particles

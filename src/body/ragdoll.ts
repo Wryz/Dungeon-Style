@@ -24,6 +24,8 @@ export const RAGDOLL_TUNING = {
   dipMul: 1,
   /** Muscle strength while knocked down. */
   limpStrength: 0.12,
+  /** Muscle gain while throwing a strike: crisp, on-time technique. */
+  strikeGain: 0.92,
 };
 
 const MASS: Record<BoneName, number> = {
@@ -57,7 +59,7 @@ const ZONE_DIPS: Record<HurtZone, Partial<Record<BoneName | 'root', number>>> = 
 
 const ZONE_BODY: Record<HurtZone, BoneName> = { head: 'head', chest: 'chest', abdomen: 'abdomen', legs: 'shinL' };
 const WEIGHT_SCALE: Record<Weight, { depth: number; hold: number; recover: number }> = {
-  light: { depth: 0.7, hold: 3, recover: 14 },
+  light: { depth: 0.45, hold: 2, recover: 10 },
   medium: { depth: 0.85, hold: 5, recover: 20 },
   heavy: { depth: 1, hold: 8, recover: 28 },
 };
@@ -294,11 +296,12 @@ export class Ragdoll {
         const target = rig.pelvis;
         const s = this.rootStrength;
         if (s <= 0.001) continue;
-        angularCorrection(rot, target.rot, T.rootGain, _w);
+        const rootGain = f.state === 'attack' ? Math.max(T.rootGain, 0.7) : T.rootGain;
+        angularCorrection(rot, target.rot, rootGain, _w);
         // Feed-forward target velocity + positional correction, at the joint origin.
         _vd.subVectors(target.pos, this.prevRootTarget).divideScalar(DT);
         if (_vd.lengthSq() > 400) _vd.set(0, 0, 0); // teleport
-        _vd.addScaledVector(_v.subVectors(target.pos, pos), T.rootGain / DT);
+        _vd.addScaledVector(_v.subVectors(target.pos, pos), rootGain / DT);
         // Convert to centre-of-mass velocity.
         _vd.add(_v.crossVectors(_w, _v2.subVectors(_com, pos)));
         lv.lerp(clampLen(_vd, MAX_LIN), s);
@@ -312,7 +315,8 @@ export class Ragdoll {
         const pLv = toV(parent.linvel());
         toV(parent.worldCom(), _pcom);
         const desired = pRot.multiply(f.pose.rot[name]);
-        angularCorrection(rot, desired, T.muscleGain, _w).add(pAv);
+        const gain = f.state === 'attack' ? T.strikeGain : T.muscleGain;
+        angularCorrection(rot, desired, gain, _w).add(pAv);
         // Velocity of the joint point as carried by the parent, then rigidly to our COM.
         _jp.copy(pos);
         _vd.copy(pLv).add(_v.crossVectors(pAv, _v2.subVectors(_jp, _pcom)));

@@ -77,7 +77,8 @@ const strike = (wind: PoseName, ext: PoseName, recover: PoseName = 'guard', foll
   ];
   if (follow) keys.push({ at: ['a', 1], pose: follow, ease: 'out' });
   else keys.push({ at: ['a', 1], pose: ext });
-  keys.push({ at: ['r', 0.85], pose: recover, ease: 'inOut' });
+  // Snap back along the same line: most of the retraction happens early in recovery.
+  keys.push({ at: ['r', 0.5], pose: recover, ease: 'out' });
   return keys;
 };
 
@@ -121,7 +122,7 @@ export const PLAYER_MOVES: Record<string, MoveDef> = {
       { at: ['s', 0.85], pose: 'hookMid', ease: 'in' },
       { at: ['a', 0], pose: 'hookExt', ease: 'linear' },
       { at: ['a', 1], pose: 'hookFollow', ease: 'out' },
-      { at: ['r', 0.85], pose: 'guard', ease: 'inOut' },
+      { at: ['r', 0.6], pose: 'guard', ease: 'out' },
     ],
   },
   counterHook: {
@@ -139,7 +140,7 @@ export const PLAYER_MOVES: Record<string, MoveDef> = {
       { at: ['s', 0.85], pose: 'hookMid', ease: 'in' },
       { at: ['a', 0], pose: 'hookExt', ease: 'linear' },
       { at: ['a', 1], pose: 'hookFollow', ease: 'out' },
-      { at: ['r', 0.85], pose: 'guard', ease: 'inOut' },
+      { at: ['r', 0.6], pose: 'guard', ease: 'out' },
     ],
   },
   counterCross: {
@@ -148,7 +149,7 @@ export const PLAYER_MOVES: Record<string, MoveDef> = {
     startup: 4, active: 3, recovery: 13,
     limb: 'handR', height: 'high', kind: 'straight', weight: 'medium',
     damage: 8, guardDamage: 12, poiseDamage: 22, hitstun: 22, blockstun: 12,
-    knockback: 1.5, impulse: 16, hitstop: 7, shake: 0.24, radius: 0.13, reach: 1.3,
+    knockback: 1.5, impulse: 16, hitstop: 7, shake: 0.24, radius: 0.13, reach: 1.45,
     lunge: { from: 0, to: 5, distance: 0.25 },
     blockable: true,
     cancel: { into: ['hook', 'frontKick', 'lowKick'], from: 5, to: 20 },
@@ -166,7 +167,7 @@ export const PLAYER_MOVES: Record<string, MoveDef> = {
       { at: ['s', 0.3], pose: 'upperWind', ease: 'out' },
       { at: ['a', 0], pose: 'upperExt', ease: 'snap' },
       { at: ['a', 1], pose: 'upperExt' },
-      { at: ['r', 0.85], pose: 'guard', ease: 'inOut' },
+      { at: ['r', 0.6], pose: 'guard', ease: 'out' },
     ],
   },
   gazelle: {
@@ -205,14 +206,15 @@ export const PLAYER_MOVES: Record<string, MoveDef> = {
     startup: 10, active: 4, recovery: 16,
     limb: 'footR', height: 'low', kind: 'kick', weight: 'medium',
     damage: 6, guardDamage: 10, poiseDamage: 35, hitstun: 20, blockstun: 12,
-    knockback: 1.0, impulse: 16, lift: 0.2, hitstop: 6, shake: 0.22, radius: 0.17, reach: 1.35,
-    lunge: { from: 2, to: 10, distance: 0.15 },
+    knockback: 1.0, impulse: 16, lift: 0.2, hitstop: 6, shake: 0.22, radius: 0.17, reach: 1.3,
+    lunge: { from: 1, to: 10, distance: 0.3 },
     blockable: false,
     keys: [
-      { at: ['s', 0.6], pose: 'sweepWind', ease: 'out' },
-      { at: ['a', 0], pose: 'sweepExt', ease: 'snap' },
-      { at: ['a', 1], pose: 'sweepExt' },
-      { at: ['r', 0.85], pose: 'guard', ease: 'inOut' },
+      { at: ['s', 0.55], pose: 'lowKickWind', ease: 'out' },
+      { at: ['a', 0], pose: 'lowKickExt', ease: 'snap' },
+      { at: ['a', 1], pose: 'lowKickExt' },
+      { at: ['r', 0.45], pose: 'lowKickWind', ease: 'inOut' },
+      { at: ['r', 0.95], pose: 'guard', ease: 'inOut' },
     ],
   },
   flyingKick: {
@@ -276,7 +278,7 @@ export const ENEMY_MOVES: Record<string, MoveDef> = {
     startup: 26, active: 4, recovery: 24,
     limb: 'handL', height: 'high', kind: 'hook', weight: 'heavy',
     damage: 13, guardDamage: 28, poiseDamage: 50, hitstun: 28, blockstun: 16,
-    knockback: 2.8, impulse: 28, lift: 0.1, hitstop: 10, shake: 0.5, radius: 0.16, reach: 1.2,
+    knockback: 2.8, impulse: 28, lift: 0.1, hitstop: 10, shake: 0.5, radius: 0.16, reach: 1.35,
     lunge: { from: 14, to: 28, distance: 0.35 },
     armor: [8, 26],
     blockable: true,

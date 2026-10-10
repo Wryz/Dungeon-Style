@@ -68,7 +68,9 @@ describe('attacking on the move', () => {
       moving.sim.step();
       still.sim.step();
       legDiff = Math.max(legDiff, moving.player.pose.rot.thighL.angleTo(still.player.pose.rot.thighL));
-      armDiff = Math.max(armDiff, moving.player.pose.rot.foreArmL.angleTo(still.player.pose.rot.foreArmL));
+      // From the active frames on, the punching arm must match the planted version.
+      if (moving.player.stateFrame >= moving.player.moves.jab.startup)
+        armDiff = Math.max(armDiff, moving.player.pose.rot.foreArmL.angleTo(still.player.pose.rot.foreArmL));
     }
     expect(moving.player.state).toBe('attack');
     expect(moving.player.pos.z - z0).toBeGreaterThan(0.05);

@@ -1,12 +1,12 @@
 import { Vector3 } from 'three';
 import { Animator, type TrackKey } from '../body/animator';
+import { Footwork, type FootworkStyle } from '../body/footwork';
+import { IdleBehavior, type IdleStyle } from '../body/idle';
 import { getPose, GUARD, type PoseName } from '../body/poses';
 import {
-  ANKLE_HEIGHT,
   forwardKinematics,
   blendPose,
   copyPose,
-  type LimbTarget,
   makePose,
   makeRig,
   type PoseSpec,
@@ -14,7 +14,27 @@ import {
   type Rig,
   solveLegs,
 } from '../body/skeleton';
-import { clamp, type Ease } from './math';
+
+export interface FighterStyle {
+  footwork: FootworkStyle;
+  idle: IdleStyle;
+}
+
+/** Light on the feet: quick low steps, bouncy rhythm, frequent feints. */
+export const OUTFIGHTER_STYLE: FighterStyle = {
+  footwork: { stanceWidth: 1, stepFrames: 9, stepHeight: 0.045 },
+  idle: {
+    bounceHz: 1.9,
+    bounceAmp: 0.045,
+    swayAmp: 0.055,
+    feintEvery: [1.1, 2.4],
+    feintWeights: { jab: 4, shoulder: 3, level: 2, step: 2 },
+    shuffleEvery: [0.6, 1.4],
+    pawEvery: [0.7, 1.6],
+    shoulderRoll: 0,
+  },
+};
+import { clamp, type Ease, Rng } from './math';
 import { DEFENSES, type DefenseDef, type DefenseKind, markerFrame, type MoveDef } from './moves';
 
 export type FighterState =
@@ -128,20 +148,26 @@ export class Fighter {
   readonly pose = makePose();
   /** World-space joint transforms of `pose`. */
   readonly rig: Rig = makeRig();
-  private walkPhase = 0;
   /** 0 = planted, 1 = stepping at full walk speed. Smoothed. */
   private moveBlend = 0;
   private readonly locoPose = makePose();
   private readonly layered = makePose();
-  private breath = Math.random() * 10;
+  private breath = 0;
+  readonly footwork: Footwork;
+  readonly idle: IdleBehavior;
+  private readonly rng: Rng;
 
   constructor(
     readonly team: Team,
     readonly name: string,
     readonly moves: Record<string, MoveDef>,
     stats: Partial<FighterStats> = {},
+    style: FighterStyle = OUTFIGHTER_STYLE,
   ) {
     this.stats = { ...DEFAULT_STATS, ...stats };
+    this.rng = new Rng(this.id * 7919 + 13);
+    this.footwork = new Footwork({ ...style.footwork });
+    this.idle = new IdleBehavior({ ...style.idle }, this.rng);
     this.hp = this.stats.maxHp;
     this.guard = this.stats.maxGuard;
     this.poise = this.stats.maxPoise;
@@ -206,6 +232,7 @@ export class Fighter {
     this.isCounterAttack = isCounter;
     this.counter = null;
     this.buffer = null;
+    this.idle.interrupt();
     this.anim.play(moveKeys(move));
   }
 
@@ -216,6 +243,7 @@ export class Fighter {
     this.defense = { def, threatSerial, phase: 'startup', success: false, side: this.weaveSide };
     this.lastDefendedSerial = threatSerial;
     this.defenseCooldown[kind] = def.cooldown;
+    this.idle.interrupt();
     this.anim.play([{ f: def.startup, pose: getPose(defensePose(kind, this.weaveSide)), ease: 'out' }]);
   }
 
@@ -291,79 +319,67 @@ export class Fighter {
   /**
    * Updates the animated target pose and its world-space FK.
    * `speed`/`localDir*` describe the actual footwork velocity; `turnRate` (rad/frame)
-   * makes the feet shuffle when turning on the spot.
+   * is used to keep stepping while pivoting.
    */
   updatePose(speed: number, localDirX: number, localDirZ: number, turnRate = 0) {
     this.breath += 1 / 60;
-    const stepSpeed = speed + Math.abs(turnRate) * 60 * 0.35;
-    const want = clamp(stepSpeed / Math.max(0.1, this.stats.walkSpeed * 0.6), 0, 1);
+    const speedFrac = clamp(speed / Math.max(0.1, this.stats.walkSpeed), 0, 1);
+    const want = clamp((speed + Math.abs(turnRate) * 20) / Math.max(0.1, this.stats.walkSpeed * 0.6), 0, 1);
     this.moveBlend += (want - this.moveBlend) * 0.25;
-    this.walkPhase += stepSpeed * (1 / 60) * 7.5;
+
+    const t = this.target && this.target.alive ? this.target : null;
+    const engaged = !!t && this.distanceTo(t) < 3.2;
+    const still = this.state === 'idle' && speed < 0.25;
+    this.idle.tick(engaged, still);
+
+    const handStrike = this.state === 'attack' && this.move?.layer === 'upper';
+    const driven = this.anim.isProcedural || (handStrike && this.moveBlend > 0.25);
+    const [offX, offZ] = this.anim.isProcedural ? this.idle.stanceOffset() : [0, 0];
+    if (driven) this.footwork.update(this, offX, offZ, localDirX, localDirZ, speedFrac);
 
     let proc;
-    if (this.anim.isProcedural) proc = this.locomotionPose(localDirX, localDirZ);
+    if (this.anim.isProcedural) proc = this.locomotionPose(localDirX, localDirZ, offX, offZ);
     this.anim.update(this.stateFrame, proc);
     copyPose(this.anim.out, this.pose);
 
-    // Hand strikes thrown on the move: keep the legs walking under the punching torso.
-    if (this.state === 'attack' && this.move?.layer === 'upper' && this.moveBlend > 0.02) {
+    // Hand strikes thrown on the move: keep the legs stepping under the punching torso.
+    if (handStrike && driven) {
       const L = this.layered;
       copyPose(this.anim.out, L);
-      // Root: walking bob/height, plus the strike's own lean and weight shift.
-      const g = getPose('guard').root;
-      L.root.x = this.anim.out.root.x - g.x + localDirX * 0.04 * this.moveBlend;
-      L.root.z = this.anim.out.root.z - g.z + localDirZ * 0.04 * this.moveBlend;
-      L.root.y = this.anim.out.root.y + this.stepBob() * 0.8;
-      const [fl, fr] = this.locomotionFeet(localDirX, localDirZ);
-      solveLegs(L, fl, fr);
+      const [wx, wz] = this.footwork.weightShift(this, 0, 0);
+      L.root.x = this.anim.out.root.x + wx * 0.5;
+      L.root.z = this.anim.out.root.z + wz * 0.5;
+      solveLegs(L, { at: this.footwork.localTarget('L', this, 0), hint: KNEE_HINT.L }, { at: this.footwork.localTarget('R', this, 0), hint: KNEE_HINT.R });
       blendPose(this.anim.out, L, this.moveBlend, this.pose);
     }
     forwardKinematics(this.pose, this.rig, this.pos, this.yaw);
+    // Authored-leg animations (kicks, defense, reactions): feet are wherever the pose put them.
+    if (!driven) this.footwork.syncToRig(this.rig);
   }
 
-  private stepBob() {
-    return -Math.abs(Math.sin(this.walkPhase)) * 0.025 * this.moveBlend;
-  }
-
-  /** Ankle targets for the stepping cycle, in fighter-local space. */
-  private locomotionFeet(dx: number, dz: number): [LimbTarget, LimbTarget] {
+  private locomotionPose(dx: number, dz: number, offX: number, offZ: number) {
     const m = this.moveBlend;
-    const ph = this.walkPhase;
-    // Turning in place (no linear direction): shuffle the feet sideways.
-    const dirLen = Math.hypot(dx, dz);
-    if (dirLen < 0.1) {
-      dx = 1;
-      dz = 0;
-    }
-    const stride = 0.13 * m;
-    const lift = 0.07 * m;
-    const sL = Math.sin(ph);
-    const sR = Math.sin(ph + Math.PI);
-    return [
-      { at: [0.13 + dx * stride * sL, ANKLE_HEIGHT + Math.max(0, Math.cos(ph)) * lift, 0.27 + dz * stride * sL] },
-      { at: [-0.15 + dx * stride * sR, ANKLE_HEIGHT + Math.max(0, -Math.cos(ph)) * lift, -0.24 + dz * stride * sR] },
-    ];
-  }
-
-  private locomotionPose(dx: number, dz: number) {
-    const m = this.moveBlend;
-    const ph = this.walkPhase;
-    const bob = Math.sin(this.breath * 2.2) * 0.008 + this.stepBob();
-    const [footL, footR] = this.locomotionFeet(dx, dz);
+    const raise = this.idle.toeRaise() * (1 - m);
+    const [wx, wz] = this.footwork.weightShift(this, offX, offZ);
     const spec: PoseSpec = {
       ...GUARD,
-      // Lean into the direction of travel.
-      root: [dx * 0.04 * m, 0.9 + bob, dz * 0.04 * m],
-      abdomen: [0.06 + dz * 0.06 * m, 0, -dx * 0.06 * m],
-      chest: [0.06 + Math.sin(this.breath * 2.2) * 0.012, -0.1 + Math.sin(ph) * 0.05 * m, 0],
-      footL,
-      footR,
-      handL: { at: [0.07, 1.47 + bob * 0.6, 0.33], hint: [0.5, -1, 0] },
-      handR: { at: [-0.1, 1.44 + bob * 0.6, 0.2], hint: [-0.5, -1, 0] },
+      // Hips ride over the support foot, lean slightly into the direction of travel.
+      root: [wx * 0.6 + dx * 0.03 * m, 0.86 - 0.012 * m, 0.01 + wz * 0.6 + dz * 0.03 * m],
+      abdomen: [0.1 + dz * 0.05 * m, 0, -dx * 0.05 * m],
+      chest: [0.08 + Math.sin(this.breath * 2.2) * 0.01, -0.1, 0],
+      footL: { at: this.footwork.localTarget('L', this, raise), hint: KNEE_HINT.L },
+      footR: { at: this.footwork.localTarget('R', this, raise), hint: KNEE_HINT.R },
     };
+    this.idle.apply(spec, 1 - m * 0.7);
     return resolvePose(spec, this.locoPose);
   }
 }
+
+/** Knees track over the toes: lead foot points slightly in, rear foot turned out. */
+export const KNEE_HINT: Record<'L' | 'R', [number, number, number]> = {
+  L: [0.15, 0, 1],
+  R: [-0.55, 0, 0.85],
+};
 
 export function defensePose(kind: DefenseKind, side: 1 | -1): PoseName {
   switch (kind) {

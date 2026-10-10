@@ -32,7 +32,8 @@ describe('declared reach matches animated geometry', () => {
   for (const [side, table] of [['player', PLAYER_MOVES], ['enemy', ENEMY_MOVES]] as const) {
     for (const m of Object.values(table)) {
       it(`${side} ${m.id}`, () => {
-        expect(Math.abs(measureReach(side, m.id) - m.reach)).toBeLessThanOrEqual(0.12);
+        const measured = measureReach(side, m.id);
+        expect(Math.abs(measured - m.reach), `${m.id}: measured ${measured.toFixed(2)} m, declared ${m.reach} m`).toBeLessThanOrEqual(0.12);
       });
     }
   }
