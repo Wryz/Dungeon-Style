@@ -60,7 +60,7 @@ export function buildPanel(game: Game): { toggle: () => void } {
   enemy.addBinding(game.aiCfg, 'blockChance', { min: 0, max: 1, step: 0.05, label: 'block chance' });
   enemy.addBinding(game.aiCfg, 'stringChance', { min: 0, max: 1, step: 0.05, label: 'string chance' });
   enemy.addButton({ title: 'Respawn enemy' }).on('click', () => game.spawnEnemy());
-  enemy.addButton({ title: 'Restart (R)' }).on('click', () => game.restart());
+  enemy.addButton({ title: 'Restart (Backspace)' }).on('click', () => game.restart());
 
   const moves = pane.addFolder({ title: 'Moves', expanded: false });
   for (const [label, table] of [['You', PLAYER_MOVES], ['Brawler', ENEMY_MOVES]] as const) {

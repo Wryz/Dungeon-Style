@@ -26,6 +26,7 @@ import type { Fighter } from '../sim/fighter';
 import { DT } from '../sim/math';
 import { createBrawler, createPlayer } from '../sim/roster';
 import { Hud } from '../ui/hud';
+import { SettingsMenu } from '../ui/settings';
 
 export const GAME_TUNING = {
   timeScale: 1,
@@ -46,6 +47,8 @@ export class Game {
   readonly sfx = new Sfx();
   readonly input: Input;
   readonly hud: Hud;
+  readonly settings: SettingsMenu;
+  private pausedBySettings = false;
   readonly world: RAPIER.World;
   readonly sim: CombatSim;
   readonly aiCfg: AIConfig = { ...DEFAULT_AI };
@@ -121,6 +124,20 @@ export class Game {
     this.input = new Input(canvas);
     this.input.onAnyInput = () => this.sfx.unlock();
     this.hud = new Hud(hudRoot);
+    this.hud.setBindings(this.input.bindings);
+    this.settings = new SettingsMenu(document.body, this.input);
+    this.settings.onChange = (b) => this.hud.setBindings(b);
+    this.settings.onOpenChange = (open) => {
+      // Pause while the menu is open (unless already paused for tuning).
+      if (open && !GAME_TUNING.paused) {
+        GAME_TUNING.paused = true;
+        this.pausedBySettings = true;
+      } else if (!open && this.pausedBySettings) {
+        GAME_TUNING.paused = false;
+        this.pausedBySettings = false;
+      }
+    };
+    this.hud.gearButton.addEventListener('click', () => this.settings.toggle());
 
     window.addEventListener('resize', () => this.resize());
     this.resize();
@@ -256,7 +273,7 @@ export class Game {
       right.z * inp.moveX + fwd.z * inp.moveY,
     );
     for (const b of inp.presses) {
-      if (!this.player.alive) continue;
+      if (!this.player.alive || this.settings.isOpen) continue;
       this.player.press(b);
       if (++this.attacksThrown === 8) this.hud.fadeHint();
     }
@@ -297,6 +314,9 @@ export class Game {
 
   private metaKey(code: string) {
     switch (code) {
+      case 'Escape':
+        this.settings.toggle();
+        break;
       case 'F1':
       case 'Backquote':
         this.onTogglePanel?.();
@@ -316,7 +336,7 @@ export class Game {
       case 'KeyH':
         GAME_TUNING.showHitboxes = !GAME_TUNING.showHitboxes;
         break;
-      case 'KeyR':
+      case 'Backspace':
         this.restart();
         break;
       case 'KeyM':

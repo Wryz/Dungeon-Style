@@ -59,5 +59,23 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #b9d3e4; col
 .touch .knob { position: absolute; left: 45px; top: 45px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255, 255, 255, 0.28); }
 .touch .tbtns { position: absolute; right: 5vw; bottom: 6vh; display: flex; gap: 16px; align-items: flex-end; pointer-events: auto; }
 .touch button { width: 84px; height: 84px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.35); background: rgba(255, 255, 255, 0.1); color: var(--ink); font-weight: 800; letter-spacing: 0.1em; font-size: 12px; touch-action: none; }
-.touch button[data-b='punch'] { width: 100px; height: 100px; margin-bottom: 30px; }
 .touch button.down { background: rgba(255, 211, 107, 0.4); }
+
+.gear { position: absolute; top: 14px; left: calc(50% + 92px); width: 30px; height: 30px; border: 0; border-radius: 3px; background: rgba(20, 24, 32, 0.55); color: var(--ink); font-size: 16px; cursor: pointer; pointer-events: auto; }
+.gear:hover { background: rgba(20, 24, 32, 0.8); }
+
+.settings { position: fixed; inset: 0; display: none; place-items: center; background: rgba(15, 18, 24, 0.55); z-index: 20; }
+.settings.show { display: grid; }
+.settings-card { width: min(420px, calc(100vw - 32px)); padding: 22px 24px; background: #1d222c; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 6px; color: var(--ink); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); }
+.settings-card h2 { margin: 0 0 4px; font-size: 16px; letter-spacing: 0.25em; text-transform: uppercase; }
+.settings-card .sub { margin: 0 0 14px; font-size: 12px; color: var(--dim); }
+.settings-card .sub.small { margin: 14px 0 0; font-size: 11px; }
+.settings-card .row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.06); font-size: 14px; }
+.settings-card .key { min-width: 110px; padding: 6px 10px; border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 3px; background: rgba(255, 255, 255, 0.06); color: var(--ink); font: inherit; font-weight: 700; cursor: pointer; }
+.settings-card .key:hover { border-color: var(--gold); }
+.settings-card .key.listening { border-color: var(--gold); color: var(--gold); font-weight: 400; }
+.settings-card .actions { display: flex; justify-content: space-between; margin-top: 18px; }
+.settings-card .actions button { padding: 8px 14px; border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 3px; background: transparent; color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; }
+.settings-card .actions button.primary { background: var(--gold); border-color: var(--gold); color: #1d222c; font-weight: 700; }
+.touch .tbtns { display: grid; grid-template-columns: repeat(2, 76px); gap: 12px; }
+.touch .tbtns button { width: 76px; height: 76px; margin: 0; font-size: 11px; }

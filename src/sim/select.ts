@@ -7,6 +7,8 @@ import {
   GAZELLE_RANGE,
   type MoveDef,
   PUNCH_RANGE,
+  SLIDE_RANGE_MAX,
+  SLIDE_RANGE_MIN,
 } from './moves';
 
 export interface MoveContext {
@@ -18,34 +20,40 @@ export interface MoveContext {
   chainFrom: string | null;
 }
 
-const PUNCH_COUNTERS: Record<DefenseKind, string> = {
-  duck: 'uppercut',
-  weave: 'counterHook',
-  slide: 'gazelle',
-  block: 'counterCross',
+/** Counter move per button after each kind of successful defense. */
+const COUNTERS: Record<Button, Record<DefenseKind, string>> = {
+  lpunch: { duck: 'counterHook', weave: 'counterHook', slide: 'gazelle', block: 'jab' },
+  rpunch: { duck: 'uppercut', weave: 'counterCross', slide: 'counterCross', block: 'counterCross' },
+  lkick: { duck: 'frontKick', weave: 'frontKick', slide: 'slideKick', block: 'frontKick' },
+  rkick: { duck: 'lowKick', weave: 'lowKick', slide: 'slideKick', block: 'lowKick' },
 };
 
-const KICK_COUNTERS: Record<DefenseKind, string> = {
-  duck: 'frontKick',
-  weave: 'frontKick',
-  slide: 'slideKick',
-  block: 'frontKick',
+/** Follow-ups per button from the move currently in its cancel window. */
+const CHAINS: Record<Button, Record<string, string>> = {
+  lpunch: { jab: 'jab', cross: 'hook', counterCross: 'hook' },
+  rpunch: { jab: 'cross', hook: 'cross', counterHook: 'cross' },
+  lkick: { jab: 'frontKick', cross: 'frontKick', counterCross: 'frontKick' },
+  rkick: { jab: 'lowKick', cross: 'lowKick', counterCross: 'lowKick', hook: 'lowKick', counterHook: 'lowKick' },
 };
-
-const PUNCH_CHAINS: Record<string, string> = { jab: 'cross', cross: 'hook', counterCross: 'hook' };
-const KICK_CHAINS: Record<string, string> = { jab: 'frontKick', cross: 'frontKick', counterCross: 'frontKick' };
 
 /**
- * Two buttons, many moves: the specific technique depends on the situation.
- * Returns null when the input can't do anything right now (e.g. mid-move, no chain).
+ * Four buttons (left/right punch, left/right kick), many moves: the specific technique
+ * depends on the situation. Returns null when the input can't do anything right now.
  */
 export function selectPlayerMove(button: Button, ctx: MoveContext): string | null {
-  if (ctx.counter) return (button === 'punch' ? PUNCH_COUNTERS : KICK_COUNTERS)[ctx.counter];
-  if (ctx.chainFrom) return (button === 'punch' ? PUNCH_CHAINS : KICK_CHAINS)[ctx.chainFrom] ?? null;
-  if (button === 'punch') {
-    return ctx.dist > PUNCH_RANGE && ctx.dist <= GAZELLE_RANGE ? 'gazelle' : 'jab';
+  if (ctx.counter) return COUNTERS[button][ctx.counter];
+  if (ctx.chainFrom) return CHAINS[button][ctx.chainFrom] ?? null;
+  const d = ctx.dist;
+  switch (button) {
+    case 'lpunch':
+      return d > PUNCH_RANGE && d <= GAZELLE_RANGE ? 'gazelle' : 'jab';
+    case 'rpunch':
+      return 'cross';
+    case 'lkick':
+      return d >= FLYING_KICK_MIN && d <= FLYING_KICK_MAX ? 'flyingKick' : 'frontKick';
+    case 'rkick':
+      return d >= SLIDE_RANGE_MIN && d <= SLIDE_RANGE_MAX ? 'slideKick' : 'lowKick';
   }
-  return ctx.dist >= FLYING_KICK_MIN && ctx.dist <= FLYING_KICK_MAX ? 'flyingKick' : 'frontKick';
 }
 
 export function moveContext(f: Fighter): MoveContext {

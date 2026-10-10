@@ -31,16 +31,28 @@ const hits = (ev: CombatEvent[], defender: Fighter) =>
   ev.filter((e): e is Extract<CombatEvent, { type: 'hit' }> => e.type === 'hit' && e.defender === defender);
 
 describe('move selection', () => {
-  it('picks moves from context', () => {
-    expect(selectPlayerMove('punch', { dist: 1.0, counter: null, chainFrom: null })).toBe('jab');
-    expect(selectPlayerMove('punch', { dist: 2.0, counter: null, chainFrom: null })).toBe('gazelle');
-    expect(selectPlayerMove('kick', { dist: 3.0, counter: null, chainFrom: null })).toBe('flyingKick');
-    expect(selectPlayerMove('kick', { dist: 1.0, counter: null, chainFrom: null })).toBe('frontKick');
-    expect(selectPlayerMove('punch', { dist: 1.0, counter: 'duck', chainFrom: null })).toBe('uppercut');
-    expect(selectPlayerMove('punch', { dist: 1.0, counter: 'weave', chainFrom: null })).toBe('counterHook');
-    expect(selectPlayerMove('kick', { dist: 1.0, counter: 'slide', chainFrom: null })).toBe('slideKick');
-    expect(selectPlayerMove('punch', { dist: 1.0, counter: null, chainFrom: 'jab' })).toBe('cross');
-    expect(selectPlayerMove('punch', { dist: 1.0, counter: null, chainFrom: 'cross' })).toBe('hook');
+  const ctx = (dist: number, counter: null | 'duck' | 'weave' | 'slide' | 'block' = null, chainFrom: string | null = null) => ({ dist, counter, chainFrom });
+  it('picks moves per button from range', () => {
+    expect(selectPlayerMove('lpunch', ctx(1.0))).toBe('jab');
+    expect(selectPlayerMove('lpunch', ctx(2.0))).toBe('gazelle');
+    expect(selectPlayerMove('rpunch', ctx(1.0))).toBe('cross');
+    expect(selectPlayerMove('lkick', ctx(1.0))).toBe('frontKick');
+    expect(selectPlayerMove('lkick', ctx(3.0))).toBe('flyingKick');
+    expect(selectPlayerMove('rkick', ctx(1.0))).toBe('lowKick');
+    expect(selectPlayerMove('rkick', ctx(2.2))).toBe('slideKick');
+  });
+  it('picks counters per button', () => {
+    expect(selectPlayerMove('rpunch', ctx(1.0, 'duck'))).toBe('uppercut');
+    expect(selectPlayerMove('lpunch', ctx(1.0, 'duck'))).toBe('counterHook');
+    expect(selectPlayerMove('lpunch', ctx(1.0, 'weave'))).toBe('counterHook');
+    expect(selectPlayerMove('rpunch', ctx(1.0, 'weave'))).toBe('counterCross');
+    expect(selectPlayerMove('lkick', ctx(1.0, 'slide'))).toBe('slideKick');
+  });
+  it('chains per button', () => {
+    expect(selectPlayerMove('rpunch', ctx(1.0, null, 'jab'))).toBe('cross');
+    expect(selectPlayerMove('lpunch', ctx(1.0, null, 'jab'))).toBe('jab');
+    expect(selectPlayerMove('lpunch', ctx(1.0, null, 'cross'))).toBe('hook');
+    expect(selectPlayerMove('rkick', ctx(1.0, null, 'hook'))).toBe('lowKick');
   });
 });
 
@@ -48,7 +60,7 @@ describe('offense', () => {
   it('jab lands on an idle dummy in range', () => {
     const { sim, player, enemy } = setup(1.0);
     run(sim, 2);
-    player.press('punch');
+    player.press('lpunch');
     const ev = run(sim, 25);
     const h = hits(ev, enemy);
     expect(h.length).toBe(1);
@@ -65,14 +77,16 @@ describe('offense', () => {
     expect(hits(ev, enemy).length).toBe(0);
   });
 
-  it('chains jab -> cross -> hook with repeated presses', () => {
+  it('chains jab -> cross -> hook with left, right, left', () => {
     const { sim, player } = setup(0.95);
     run(sim, 2);
     const used: string[] = [];
-    player.press('punch');
+    const seq = ['lpunch', 'rpunch', 'lpunch'] as const;
+    let next = 0;
+    player.press(seq[next++]);
     run(sim, 80, (ev, i) => {
       for (const e of ev) if (e.type === 'attackStart' && e.f === player) used.push(e.move.id);
-      if (i % 7 === 0 && used.length < 3) player.press('punch');
+      if (i % 7 === 0 && next < seq.length && used.length === next) player.press(seq[next++]);
     });
     expect(used.slice(0, 3)).toEqual(['jab', 'cross', 'hook']);
   });
@@ -80,7 +94,7 @@ describe('offense', () => {
   it('gazelle punch closes distance and lands', () => {
     const { sim, player, enemy } = setup(2.1);
     run(sim, 1);
-    player.press('punch');
+    player.press('lpunch');
     const ev = run(sim, 40);
     const h = hits(ev, enemy);
     expect(h.map((e) => e.move.id)).toEqual(['gazelle']);
@@ -89,7 +103,7 @@ describe('offense', () => {
   it('flying kick from far knocks down', () => {
     const { sim, player, enemy } = setup(3.2);
     run(sim, 1);
-    player.press('kick');
+    player.press('lkick');
     const ev = run(sim, 50);
     const h = hits(ev, enemy);
     expect(h.map((e) => e.move.id)).toEqual(['flyingKick']);
@@ -114,7 +128,7 @@ describe('automatic defense', () => {
     expect(defended).toEqual(['duck']);
     expect(hits(ev, player).length).toBe(0);
     expect(player.counter?.kind).toBe('duck');
-    player.press('punch');
+    player.press('rpunch');
     const ev2 = run(sim, 25);
     const h = hits(ev2, enemy);
     expect(h.map((e) => e.move.id)).toEqual(['uppercut']);
@@ -171,7 +185,7 @@ describe('full fight smoke test', () => {
     let presses = 0;
     run(sim, 60 * 40, (_e, i) => {
       if (i % 23 === 0) {
-        player.press(i % 3 === 0 ? 'kick' : 'punch');
+        player.press((['lpunch', 'rpunch', 'lkick', 'rkick'] as const)[presses % 4]);
         presses++;
       }
       player.moveInput.set(enemy.pos.x - player.pos.x, 0, enemy.pos.z - player.pos.z).normalize().multiplyScalar(0.5);

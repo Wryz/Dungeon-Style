@@ -19,27 +19,33 @@ npm run build      # typecheck + production build into dist/
 
 ## Controls
 
-| Action | Keyboard / mouse | Gamepad | Touch |
-|---|---|---|---|
-| Move | WASD / arrows | left stick | left stick |
-| Punch | J (or Z) / left click | X / Y / RB | PUNCH |
-| Kick | K (or X) / right click | A / B / RT | KICK |
+| Action | Keyboard (default) | Mouse | Gamepad | Touch |
+|---|---|---|---|---|
+| Move | WASD (+ arrows) | | left stick | stick |
+| Left punch | **Q** | left click | X / LB | L PUNCH |
+| Right punch | **E** | right click | Y / RB | R PUNCH |
+| Left kick | **R** | | A / LT | L KICK |
+| Right kick | **F** | | B / RT | R KICK |
 
-Debug: **F1** tuning panel · **H** hitboxes · **T** cycle slow-mo · **P** pause ·
-**.** step one frame · **R** restart · **M** mute.
+**Esc** (or the ⚙ button) opens **Settings**, where every key can be rebound; bindings
+are saved in the browser. Debug: **F1** tuning panel · **H** hitboxes · **T** cycle
+slow-mo · **P** pause · **.** step one frame · **Backspace** restart · **M** mute.
 
 ## How the combat works
 
-**Two buttons, many moves.** The move you get depends on the situation:
+**Four buttons, many moves.** The technique depends on the button and the situation:
 
-| Situation | Punch | Kick |
-|---|---|---|
-| Close | Jab → Cross → Hook (press again during each move) | Push kick (guard breaker) |
-| Mid range (1.3–2.5 m) | Gazelle punch (lunging) | Flying kick (from 1.8 m) |
-| Just ducked a hook | **Uppercut** (knockdown) | Push kick |
-| Just weaved a straight | **Counter hook** | Push kick |
-| Just slid away | Gazelle punch | **Sliding strike** (sweep) |
-| Just blocked | Counter cross | Push kick |
+| | Close | Mid range | In a chain | After duck / weave / slide / block |
+|---|---|---|---|---|
+| **Left punch** | jab | gazelle punch (lunge) | jab → jab, cross → hook | hook / hook / gazelle / jab |
+| **Right punch** | cross | cross | jab → cross, hook → cross | uppercut / cross / cross / cross |
+| **Left kick** | push kick (guard breaker) | flying kick | → push kick | push kick / push kick / sliding strike / push kick |
+| **Right kick** | low kick | sliding strike | → low kick | low kick / low kick / sliding strike / low kick |
+
+**Facing is a soft lock.** You turn toward your opponent but not instantly: strafing
+leans your body into the strafe, small offsets are tolerated, and a strike only gets a
+little aim assist early in its wind-up, so angles matter. Punches thrown while moving
+keep the legs stepping underneath; kicks and lunges carry your momentum.
 
 **Automatic defense.** When the enemy winds up, the character picks a reaction from the
 attack's height, shape and timing: high straights → weave, hooks → duck, mid body blows →
@@ -59,7 +65,7 @@ src/
     combat.ts   step loop, hit detection, block/dodge/counter resolution, events
     fighter.ts  fighter state machine + animated target pose
     moves.ts    frame data for every move and defensive reaction
-    select.ts   context move selection + automatic defense choice
+    select.ts   context move selection (per button) + automatic defense choice
     ai.ts       Brawler AI (spacing, telegraphed attacks, strings, blocking)
   body/
     skeleton.ts 12-bone humanoid, forward kinematics, two-bone IK
@@ -69,7 +75,9 @@ src/
                 hits relax muscles near the impact + add impulses, then recover
   render/     blocky low-poly fighters, arena, orthographic camera, particles
   feel/       procedural impact audio (WebAudio, no assets)
+  input/      rebindable keyboard, mouse, gamepad and touch input
   game/       glue: fixed-step loop, hit-pause, shake, slow-mo KO, respawns
+  ui/         HUD and the settings (key rebinding) menu
   debug/      Tweakpane live tuning (frame data, feel, physics, AI)
 ```
 

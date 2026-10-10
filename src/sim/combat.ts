@@ -257,6 +257,7 @@ export class CombatSim {
     const id = selectPlayerMove(b.button, ctx);
     const move = id ? f.moves[id] : undefined;
     if (!move) return;
+    if (f.state === 'attack' && ctx.chainFrom && !f.move!.cancel!.into.includes(move.id)) return;
     f.startMove(move, ctx.counter !== null);
     this.events.push({ type: 'attackStart', f, move });
   }

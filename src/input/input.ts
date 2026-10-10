@@ -1,49 +1,78 @@
-import type { Button } from '../sim/fighter';
+import { type Button, BUTTONS } from '../sim/fighter';
+import { type Action, type Bindings, loadBindings, saveBindings } from './bindings';
 
 export interface InputFrame {
   /** Screen-space movement: x right, y up (−1..1). */
   moveX: number;
   moveY: number;
   presses: Button[];
-  /** Debug / meta keys pressed this frame (KeyboardEvent.code). */
+  /** Menu / debug keys pressed this frame (KeyboardEvent.code). */
   keys: string[];
 }
 
-const PUNCH_KEYS = new Set(['KeyJ', 'KeyZ', 'Numpad1']);
-const KICK_KEYS = new Set(['KeyK', 'KeyX', 'Numpad2']);
-const META_KEYS = new Set(['F1', 'Backquote', 'KeyP', 'Period', 'KeyT', 'KeyH', 'KeyR', 'KeyM']);
+const META_KEYS = new Set(['Escape', 'F1', 'Backquote', 'KeyP', 'Period', 'KeyT', 'KeyH', 'Backspace', 'KeyM']);
+const ARROWS: Partial<Record<string, Action>> = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
 
-/** Keyboard + mouse + gamepad + touch, collapsed into one frame of intent. */
+/** Keyboard (rebindable) + mouse + gamepad + touch, collapsed into one frame of intent. */
 export class Input {
-  private readonly held = new Set<string>();
+  private readonly held = new Set<Action>();
   private presses: Button[] = [];
   private keys: string[] = [];
   private gpPrev: boolean[] = [];
   private touchMove = { x: 0, y: 0 };
+  private codeToAction = new Map<string, Action>();
+  bindings: Bindings;
+  /** While set, the next key press goes here instead of the game (rebinding). */
+  capture: ((code: string) => void) | null = null;
   onAnyInput: (() => void) | null = null;
 
   constructor(target: HTMLElement) {
+    this.bindings = loadBindings();
+    this.rebuildMap();
     window.addEventListener('keydown', (e) => {
+      if (this.capture) {
+        e.preventDefault();
+        const cb = this.capture;
+        this.capture = null;
+        cb(e.code);
+        return;
+      }
       if (e.repeat) return;
       this.onAnyInput?.();
-      if (PUNCH_KEYS.has(e.code)) this.presses.push('punch');
-      else if (KICK_KEYS.has(e.code)) this.presses.push('kick');
-      if (META_KEYS.has(e.code)) {
+      const action = this.codeToAction.get(e.code) ?? ARROWS[e.code];
+      if (action) {
+        this.held.add(action);
+        if ((BUTTONS as string[]).includes(action)) this.presses.push(action as Button);
+        e.preventDefault();
+      } else if (META_KEYS.has(e.code)) {
         this.keys.push(e.code);
-        if (e.code === 'F1') e.preventDefault();
+        e.preventDefault();
       }
-      this.held.add(e.code);
-      if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
     });
-    window.addEventListener('keyup', (e) => this.held.delete(e.code));
+    window.addEventListener('keyup', (e) => {
+      const action = this.codeToAction.get(e.code) ?? ARROWS[e.code];
+      if (action) this.held.delete(action);
+    });
     window.addEventListener('blur', () => this.held.clear());
     target.addEventListener('mousedown', (e) => {
       this.onAnyInput?.();
-      if (e.button === 0) this.presses.push('punch');
-      else if (e.button === 2) this.presses.push('kick');
+      if (e.button === 0) this.presses.push('lpunch');
+      else if (e.button === 2) this.presses.push('rpunch');
     });
     target.addEventListener('contextmenu', (e) => e.preventDefault());
     if ('ontouchstart' in window || navigator.maxTouchPoints > 0) this.buildTouch();
+  }
+
+  setBindings(b: Bindings) {
+    this.bindings = b;
+    saveBindings(b);
+    this.rebuildMap();
+    this.held.clear();
+  }
+
+  private rebuildMap() {
+    this.codeToAction.clear();
+    for (const [action, code] of Object.entries(this.bindings) as [Action, string][]) this.codeToAction.set(code, action);
   }
 
   private buildTouch() {
@@ -51,7 +80,10 @@ export class Input {
     wrap.className = 'touch';
     wrap.innerHTML = `
       <div class="stick"><div class="knob"></div></div>
-      <div class="tbtns"><button data-b="kick">KICK</button><button data-b="punch">PUNCH</button></div>`;
+      <div class="tbtns">
+        <button data-b="lpunch">L PUNCH</button><button data-b="rpunch">R PUNCH</button>
+        <button data-b="lkick">L KICK</button><button data-b="rkick">R KICK</button>
+      </div>`;
     document.body.appendChild(wrap);
     document.body.classList.add('has-touch');
     const stick = wrap.querySelector<HTMLDivElement>('.stick')!;
@@ -106,10 +138,10 @@ export class Input {
     let x = 0;
     let y = 0;
     const h = this.held;
-    if (h.has('KeyA') || h.has('ArrowLeft')) x -= 1;
-    if (h.has('KeyD') || h.has('ArrowRight')) x += 1;
-    if (h.has('KeyW') || h.has('ArrowUp')) y += 1;
-    if (h.has('KeyS') || h.has('ArrowDown')) y -= 1;
+    if (h.has('left')) x -= 1;
+    if (h.has('right')) x += 1;
+    if (h.has('up')) y += 1;
+    if (h.has('down')) y -= 1;
     x += this.touchMove.x;
     y += this.touchMove.y;
 
@@ -122,9 +154,12 @@ export class Input {
         x += ax;
         y -= ay;
       }
+      // X/LB left punch, Y/RB right punch, A/LT left kick, B/RT right kick.
       const map: [number, Button][] = [
-        [2, 'punch'], [3, 'punch'], [5, 'punch'],
-        [0, 'kick'], [1, 'kick'], [7, 'kick'],
+        [2, 'lpunch'], [4, 'lpunch'],
+        [3, 'rpunch'], [5, 'rpunch'],
+        [0, 'lkick'], [6, 'lkick'],
+        [1, 'rkick'], [7, 'rkick'],
       ];
       for (const [i, b] of map) {
         const down = !!gp.buttons[i]?.pressed;
@@ -134,6 +169,8 @@ export class Input {
         }
         this.gpPrev[i] = down;
       }
+      if (gp.buttons[9]?.pressed && !this.gpPrev[9]) this.keys.push('Escape');
+      this.gpPrev[9] = !!gp.buttons[9]?.pressed;
       break;
     }
     const l = Math.hypot(x, y);

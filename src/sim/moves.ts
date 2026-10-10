@@ -64,6 +64,8 @@ export interface MoveDef {
 }
 
 export const PUNCH_RANGE = 1.3;
+export const SLIDE_RANGE_MIN = 1.4;
+export const SLIDE_RANGE_MAX = 3.0;
 export const GAZELLE_RANGE = 2.5;
 export const FLYING_KICK_MIN = 1.8;
 export const FLYING_KICK_MAX = 4.1;
@@ -89,7 +91,7 @@ export const PLAYER_MOVES: Record<string, MoveDef> = {
     knockback: 0.8, impulse: 9, hitstop: 4, shake: 0.12, radius: 0.12, reach: 1.3,
     lunge: { from: 1, to: 6, distance: 0.18 },
     blockable: true,
-    cancel: { into: ['cross', 'frontKick'], from: 6, to: 19 },
+    cancel: { into: ['jab', 'cross', 'frontKick', 'lowKick'], from: 6, to: 19 },
     keys: strike('jabWind', 'jabExt'),
   },
   cross: {
@@ -101,7 +103,7 @@ export const PLAYER_MOVES: Record<string, MoveDef> = {
     knockback: 1.3, impulse: 14, hitstop: 6, shake: 0.2, radius: 0.12, reach: 1.35,
     lunge: { from: 1, to: 8, distance: 0.22 },
     blockable: true,
-    cancel: { into: ['hook', 'frontKick'], from: 8, to: 23 },
+    cancel: { into: ['hook', 'frontKick', 'lowKick'], from: 8, to: 23 },
     keys: strike('crossWind', 'crossExt'),
   },
   hook: {
@@ -113,6 +115,7 @@ export const PLAYER_MOVES: Record<string, MoveDef> = {
     knockback: 2.6, impulse: 24, lift: 0.1, hitstop: 9, shake: 0.38, radius: 0.15, reach: 1.1,
     lunge: { from: 2, to: 10, distance: 0.2 },
     blockable: true,
+    cancel: { into: ['cross', 'lowKick'], from: 14, to: 31 },
     keys: [
       { at: ['s', 0.45], pose: 'hookWind', ease: 'out' },
       { at: ['s', 0.85], pose: 'hookMid', ease: 'in' },
@@ -130,6 +133,7 @@ export const PLAYER_MOVES: Record<string, MoveDef> = {
     knockback: 3.0, impulse: 30, lift: 0.1, hitstop: 11, shake: 0.45, radius: 0.16, reach: 1.2,
     lunge: { from: 1, to: 8, distance: 0.3 },
     blockable: true,
+    cancel: { into: ['cross', 'lowKick'], from: 12, to: 29 },
     keys: [
       { at: ['s', 0.4], pose: 'hookWind', ease: 'out' },
       { at: ['s', 0.85], pose: 'hookMid', ease: 'in' },
@@ -147,7 +151,7 @@ export const PLAYER_MOVES: Record<string, MoveDef> = {
     knockback: 1.5, impulse: 16, hitstop: 7, shake: 0.24, radius: 0.13, reach: 1.3,
     lunge: { from: 0, to: 5, distance: 0.25 },
     blockable: true,
-    cancel: { into: ['hook', 'frontKick'], from: 5, to: 20 },
+    cancel: { into: ['hook', 'frontKick', 'lowKick'], from: 5, to: 20 },
     keys: strike('crossWind', 'crossExt'),
   },
   uppercut: {
@@ -194,6 +198,21 @@ export const PLAYER_MOVES: Record<string, MoveDef> = {
       { at: ['a', 1], pose: 'kickExt' },
       { at: ['r', 0.4], pose: 'kickChamber', ease: 'inOut' },
       { at: ['r', 0.95], pose: 'guard', ease: 'inOut' },
+    ],
+  },
+  lowKick: {
+    id: 'lowKick', name: 'Low Kick',
+    startup: 10, active: 4, recovery: 16,
+    limb: 'footR', height: 'low', kind: 'kick', weight: 'medium',
+    damage: 6, guardDamage: 10, poiseDamage: 35, hitstun: 20, blockstun: 12,
+    knockback: 1.0, impulse: 16, lift: 0.2, hitstop: 6, shake: 0.22, radius: 0.17, reach: 1.35,
+    lunge: { from: 2, to: 10, distance: 0.15 },
+    blockable: false,
+    keys: [
+      { at: ['s', 0.6], pose: 'sweepWind', ease: 'out' },
+      { at: ['a', 0], pose: 'sweepExt', ease: 'snap' },
+      { at: ['a', 1], pose: 'sweepExt' },
+      { at: ['r', 0.85], pose: 'guard', ease: 'inOut' },
     ],
   },
   flyingKick: {

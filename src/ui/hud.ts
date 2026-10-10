@@ -1,4 +1,5 @@
 import type { Camera, Vector3 } from 'three';
+import { type Bindings, keyLabel } from '../input/bindings';
 import type { Fighter } from '../sim/fighter';
 
 /** DOM overlay: health/guard bars, combo counter, pop-up callouts, controls hint. */
@@ -35,13 +36,8 @@ export class Hud {
       <div class="wave"></div>
       <div class="combo"></div>
       <div class="banner"></div>
-      <div class="hint">
-        <span><b>WASD</b> move</span>
-        <span><b>J</b> / <b>LMB</b> punch</span>
-        <span><b>K</b> / <b>RMB</b> kick</span>
-        <span class="dim">defense is automatic</span>
-        <span class="dim"><b>F1</b> tuning</span>
-      </div>`;
+      <div class="hint"></div>
+      <button class="gear" title="Settings (Esc)">⚙</button>`;
     root.appendChild(this.el);
     const q = <T extends HTMLElement>(s: string) => this.el.querySelector<T>(s)!;
     this.pHp = q('.left .hp .fill');
@@ -78,6 +74,21 @@ export class Hud {
     this.wave.textContent = `ROUND ${wave}${kos ? `  ·  ${kos} KO` : ''}`;
     this.comboTimer -= dt;
     if (this.comboTimer <= 0) this.combo.classList.remove('show');
+  }
+
+  /** Rebuilds the controls hint from the current key bindings. */
+  setBindings(b: Bindings) {
+    const k = (code: string) => `<b>${keyLabel(code)}</b>`;
+    this.hint.innerHTML = `
+      <span>${k(b.up)}${k(b.left)}${k(b.down)}${k(b.right)} move</span>
+      <span>${k(b.lpunch)} ${k(b.rpunch)} punch L / R</span>
+      <span>${k(b.lkick)} ${k(b.rkick)} kick L / R</span>
+      <span class="dim">defense is automatic</span>
+      <span class="dim"><b>Esc</b> settings</span>`;
+  }
+
+  get gearButton(): HTMLButtonElement {
+    return this.el.querySelector('.gear')!;
   }
 
   showCombo(n: number) {

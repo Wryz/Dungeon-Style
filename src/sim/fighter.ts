@@ -29,7 +29,9 @@ export type FighterState =
   | 'getup'
   | 'ko';
 
-export type Button = 'punch' | 'kick';
+/** Attack inputs: left/right punch, left/right kick. */
+export type Button = 'lpunch' | 'rpunch' | 'lkick' | 'rkick';
+export const BUTTONS: Button[] = ['lpunch', 'rpunch', 'lkick', 'rkick'];
 export type Team = 'player' | 'enemy';
 
 export interface FighterStats {
