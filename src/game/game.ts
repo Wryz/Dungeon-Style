@@ -387,7 +387,7 @@ export class Game {
   // Gauntlet
   // ---------------------------------------------------------------------------
 
-  /** Round n: new arena, new opponents. */
+  /** Round n: new arena, new opponent. */
   startRound(n: number) {
     this.resetArena();
     this.round = n;
@@ -408,8 +408,7 @@ export class Game {
       this.camRig.addTrauma(0.35);
       this.sfx.knockdown();
     } else {
-      const k = spec.spawns.length;
-      this.banner(`ROUND ${n}`, `${this.theme.name}${k > 1 ? ` · ${k} opponents` : ''}`, 'intro');
+      this.banner(`ROUND ${n}`, `${this.theme.name} · ${ARCHETYPES[spec.spawns[0].kind].name}`, 'intro');
     }
     this.setMenuPause(false);
   }
@@ -904,9 +903,8 @@ export class Game {
   private label(): string {
     if (this.mode === 'training') return `TRAINING · ROUND ${this.wave}${this.kos ? `  ·  ${this.kos} KO` : ''}`;
     if (this.tutorial || this.round === 0) return 'WARM-UP';
-    const left = this.enemies.filter((e) => e.alive).length;
     const best = this.save.bestRound > 0 ? `  ·  BEST ${this.save.bestRound}` : '';
-    return `ROUND ${this.round}  ·  ${this.theme.name.toUpperCase()}  ·  ${left} LEFT${best}`;
+    return `ROUND ${this.round}  ·  ${this.theme.name.toUpperCase()}${best}`;
   }
 
   private updateDebug() {

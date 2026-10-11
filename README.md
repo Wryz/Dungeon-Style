@@ -1,10 +1,10 @@
 # Roguelike Brawler
 
 A 3D low-poly roguelike where combat is automatic and physics-driven: **you only choose
-when and how to attack — the character defends on its own.** Fight round after round in
-a gladiator gauntlet whose arena keeps changing — a boxing ring, the street, a grocery
-store, the Roman colosseum — against tougher and tougher opponents, groups, demons and
-giant bosses.
+when and how to attack — the character defends on its own.** Fight round after round,
+one on one, in a gladiator gauntlet whose arena keeps changing — a boxing ring, the
+street, a grocery store, the Roman colosseum — against tougher and tougher opponents,
+demons and giant bosses.
 
 ## What's in
 
@@ -12,9 +12,9 @@ giant bosses.
   counters, powered-ragdoll hit reactions, boxer footwork and contextual movement
   (distance zones + fight state), hit-pause, shake, procedural audio, blood and facial
   damage that build up with punishment.
-- **The gauntlet:** each round swaps the arena theme (ring → street → grocery store →
-  colosseum). Opponents get tougher every round; groups grow from 1 to 4 (an attack
-  director makes them take turns); every 4th round is a **boss** in the colosseum.
+- **The gauntlet:** one opponent at a time; each round swaps the arena theme (ring →
+  street → grocery store → colosseum) and the opponents get tougher; every 4th round is
+  a **boss** in the colosseum.
   Falling sends you back to round 1 — coins and gear stay. Your best round is saved.
 - **Opponents:** Rookie (quick jabs), Brawler (haymakers), Kicker (teep / low kick /
   body roundhouse), Bruiser (slow, armored, heavy), and from round 6 mythical creatures:
@@ -22,8 +22,7 @@ giant bosses.
   the venue — trunks and gloves in the ring, hoodies on the street, aprons in the store,
   helmets in the colosseum.
 - **Bosses (giants):** The Champion (1.6×), The Minotaur (1.75×, horns and snout) and
-  The Cyclops (1.85×). Size scales reach, step length, mass and hit weight; later bosses
-  bring imp minions.
+  The Cyclops (1.85×). Size scales reach, step length, mass and hit weight.
 - **Economy:** KOs burst into coins and each cleared round pays a bonus; between rounds
   a shop sells helmet, chestplate, leggings, boots and fist cuffs (3 tiers each) that
   change your stats and show on your character. Progress is saved in the browser.

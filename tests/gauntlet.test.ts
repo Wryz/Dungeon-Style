@@ -11,9 +11,9 @@ describe('gauntlet rounds', () => {
     for (let r = 1; r <= 8; r++) expect(roundSpec(r, new Rng(1)).theme).toBe(THEME_ORDER[(r - 1) % 4]);
   });
 
-  it('gets harder: more total health, more opponents, tougher modifiers', () => {
-    expect(totalHp(9)).toBeGreaterThan(totalHp(1) * 2);
-    expect(roundSpec(10, new Rng(3)).spawns.length).toBeGreaterThan(roundSpec(1, new Rng(3)).spawns.length);
+  it('one opponent at a time, getting tougher every round', () => {
+    for (let r = 1; r <= 20; r++) expect(roundSpec(r, new Rng(r)).spawns).toHaveLength(1);
+    expect(totalHp(9)).toBeGreaterThan(totalHp(1) * 1.8);
     expect(roundSpec(12, new Rng(1)).spawns[0].dmgMul!).toBeGreaterThan(roundSpec(1, new Rng(1)).spawns[0].dmgMul!);
   });
 
