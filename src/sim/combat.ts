@@ -53,7 +53,7 @@ export type CombatEvent =
       /** A limb (or the head) cut off. */
       sever: BoneName | null;
     }
-  | { type: 'block'; attacker: Fighter; defender: Fighter; move: MoveDef; point: Vector3; dir: Vector3; guardBreak: boolean; wound: Wound | null }
+  | { type: 'block'; attacker: Fighter; defender: Fighter; move: MoveDef; point: Vector3; dir: Vector3; guardBreak: boolean; wound: Wound | null; parry: boolean }
   | { type: 'pickup'; f: Fighter; drop: Drop }
   | { type: 'drop'; drop: Drop }
   | { type: 'bleedout'; f: Fighter }
@@ -156,6 +156,8 @@ function readiness(f: Fighter): number {
 
 /** Something to block with: at least one forearm left. */
 const canGuard = (f: Fighter) => !(f.isSevered('foreArmL') && f.isSevered('foreArmR'));
+/** Frames after the guard is up during which meeting a strike parries it. */
+const PARRY_WINDOW = 4;
 /** Frames into a stagger before the guard can come back up. */
 const COVER_AFTER = 8;
 /** How far ahead of a strike landing (in multiples of the defence's startup) people react. */
@@ -918,7 +920,14 @@ export class CombatSim {
     // Taking a heavy weapon (or a giant's fist) on the guard drives you back.
     const kb = thrown ? m.knockback : m.knockback * a.stats.knockbackMul * pushScale(a, d, m.weapon ? a.weapon : null);
     let guardBreak = false;
-    if (d.guard <= 0) {
+    // A parry: the guard came up just as it arrived, meeting it rather than absorbing
+    // it — the attacker is knocked off balance, the defender's hardly checked.
+    const parry = !thrown && m.weight !== 'heavy' && d.state === 'defend' && d.defense?.def.kind === 'block' && d.stateFrame <= DEFENSES.block.startup + PARRY_WINDOW;
+    if (parry) {
+      d.guard += m.guardDamage * 0.75;
+      d.enterBlockstun(4);
+      d.counter = { kind: 'block', frames: DEFENSES.block.counterWindow + 10 };
+    } else if (d.guard <= 0) {
       guardBreak = true;
       d.guard = d.stats.maxGuard * 0.5;
       d.enterGuardBreak(48);
@@ -939,9 +948,14 @@ export class CombatSim {
         wound = this.addWound(d, side, point, m.damage * w.damageMul * 0.4, w.cut);
       }
     }
-    this.events.push({ type: 'block', attacker: a, defender: d, move: m, point: point.clone(), dir: dir.clone(), guardBreak, wound });
+    this.events.push({ type: 'block', attacker: a, defender: d, move: m, point: point.clone(), dir: dir.clone(), guardBreak, wound, parry });
     // Stopped by the guard: a blade bites into the forearm, anything else bounces off.
     if (thrown) return;
+    if (parry) {
+      a.enterHitstun(16, 'stagger', 0.7);
+      a.vel.addScaledVector(dir, -0.6);
+      return;
+    }
     if (wound) a.impact('stick', 6, 11);
     else a.impact('rebound', 2, m.weapon ? 11 : 8);
   }

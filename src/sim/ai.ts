@@ -272,16 +272,23 @@ export class BrawlerAI {
       mx = self.moveInput.x;
       mz = self.moveInput.z;
     }
-    if (--this.strafeTimer <= 0) {
+    // Circling: in range, a fighter doesn't stand in front of you — it works round you,
+    // changing direction, the better ones more; and it steps off the line of someone
+    // throwing the same thing again and again.
+    const close = dist < plan.attackRange + 0.8 * self.scale;
+    const spamming = target.repeatCount >= 2 && target.state === 'attack';
+    if (--this.strafeTimer <= 0 || (spamming && this.strafe === 0)) {
+      const still = close ? 1 : 3;
       this.strafe = this.rng.pickWeighted<number>([
-        [0, 3],
-        [1, 1],
-        [-1, 1],
+        [0, spamming ? 0 : still],
+        [1, 1 + self.readSkill],
+        [-1, 1 + self.readSkill],
       ]);
-      this.strafeTimer = Math.floor(this.rng.range(40, 100));
+      this.strafeTimer = Math.floor(this.rng.range(30, 80));
     }
-    mx += -fz * this.strafe * 0.35;
-    mz += fx * this.strafe * 0.35;
+    const circle = close ? 0.4 + 0.35 * self.readSkill : 0.35;
+    mx += -fz * this.strafe * circle;
+    mz += fx * this.strafe * circle;
     const ml = Math.hypot(mx, mz);
     if (ml > 1) {
       mx /= ml;
@@ -363,7 +370,7 @@ export class BrawlerAI {
     let best: import('./moves').MoveDef | null = null;
     // Armed, it answers with the weapon (which outreaches a fist anyway).
     const armed = !!self.weapon;
-    for (const id of [plan.punish, ...plan.moves.map(([m]) => m), ...(this.plan.counters ?? ['rookieJab'])]) {
+    for (const id of [plan.punish, ...plan.moves.map(([m]) => m), ...(this.plan.counters ?? ['rookieJab']), 'teep', 'kLowKick']) {
       const m = self.moveDef(id);
       if (!m || m.noHit || m.air || m.throw || m.spin || !self.canUse(m) || !self.canReach(m)) continue;
       if (best && armed && best.weapon && !m.weapon) continue;

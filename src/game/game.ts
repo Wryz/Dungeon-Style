@@ -994,8 +994,8 @@ export class Game {
         } else this.effects.sparks(e.point, e.dir, e.guardBreak ? 8 : 4, '#dbe6ee', 1.5, 0.014);
         this.ragdolls.get(e.defender)?.applyBlock(e.dir, e.move);
         if (e.guardBreak) this.marker('GUARD BREAK', e.point, 'armor');
-        // Your guard took it and you've got the opening back: a parry.
-        else if (e.defender === this.player) this.marker(this.player.counter ? 'PARRY' : 'BLOCK', e.point, this.player.counter ? 'parry' : 'block');
+        else if (e.parry) this.marker(e.defender === this.player ? 'PARRY!' : 'PARRIED', e.point, e.defender === this.player ? 'parry' : 'hurt');
+        else if (e.defender === this.player) this.marker('BLOCK', e.point, 'block');
         else this.marker('BLOCKED', e.point, 'block');
         break;
       }
