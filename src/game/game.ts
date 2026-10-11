@@ -117,6 +117,8 @@ export class Game {
   private readonly views = new Map<Fighter, FighterView>();
   private readonly dropViews = new Map<number, DropView>();
   private readonly shownWounds = new WeakSet<Wound>();
+  /** How sweaty each fighter has got this round (0..1). */
+  private readonly sweat = new Map<Fighter, number>();
   private readonly ragdolls = new Map<Fighter, Ragdoll>();
   private hitstop = 0;
   private hitstopVictim: Fighter | null = null;
@@ -321,6 +323,8 @@ export class Game {
     p.weapon = null;
     p.pickupRequest = 0;
     this.views.get(p)?.clearWounds();
+    this.views.get(p)?.clean();
+    this.sweat.delete(p);
     p.enterLocomotion(1);
     p.updatePose(0, 0, 0);
     const rd = this.ragdolls.get(p);
@@ -439,6 +443,7 @@ export class Game {
     this.cine.stop();
     this.hud.mood('');
     this.lastHitBy.clear();
+    this.sweat.clear();
     this.clearEnemies();
     this.clearDrops();
     this.coins.clear();
@@ -897,8 +902,15 @@ export class Game {
           this.hitstop,
           Math.round(m.hitstop * GAME_TUNING.hitstopMul * (e.counter ? 1.35 : 1) * (e.ko ? 1.8 : 1) * (e.armored ? 0.5 : 1) * (big ? 1.25 : 1)),
         );
+        // Real blows don't freeze time: only a short catch (unless cues are on).
+        if (!this.cues) this.hitstop = Math.min(this.hitstop, Math.max(2, Math.round(m.hitstop * 0.45)));
         this.hitstopVictim = e.defender;
-        this.camRig.addTrauma(m.shake * (e.counter ? 1.3 : 1) * (e.ko ? 1.6 : 1) * (big ? 1.6 : 1));
+        this.camRig.addTrauma(m.shake * (e.counter ? 1.3 : 1) * (e.ko ? 1.6 : 1) * (big ? 1.6 : 1) * (this.cues ? 1 : 0.6));
+        // Blood picked up by whatever did the hitting.
+        const av = this.views.get(e.attacker);
+        const bleeding = e.defender.wounds.length > 0 || (this.trauma.get(e.defender)?.cut ?? false);
+        if (av && e.weapon) av.bloodyWeapon(e.weapon.edge === 'blade' ? 0.35 : e.zone === 'head' && bleeding ? 0.12 : 0);
+        else if (av && !m.weapon && bleeding && e.zone === 'head' && (m.limb === 'handL' || m.limb === 'handR')) av.bloodyFist(m.limb === 'handL' ? 'L' : 'R', 0.08);
         if (heavy || e.counter || big) this.camRig.zoomPunch(1);
         // What it sounds like depends on what hit what.
         const w = e.weapon;
@@ -917,7 +929,8 @@ export class Game {
         } else if (!e.weapon || e.weapon.edge === 'blunt') {
           // Real impacts don't spark: sweat flies off a face or body that gets hit.
           const head = e.zone === 'head';
-          this.effects.sparks(e.point, e.dir.clone().setY(head ? 0.35 : 0.1), (head ? 10 : 5) * (heavy ? 1.6 : 1), '#dbe6ee', head ? 2.6 : 1.6, 0.016);
+          const wet = 0.4 + (this.sweat.get(e.defender) ?? 0) * 1.2;
+          this.effects.sparks(e.point, e.dir.clone().setY(head ? 0.35 : 0.1), Math.round((head ? 10 : 5) * (heavy ? 1.6 : 1) * wet), '#dbe6ee', head ? 2.6 : 1.6, 0.016);
         }
         const rd = this.ragdolls.get(e.defender);
         rd?.applyHit(e.zone, e.point, e.dir, m, (e.armored ? 0.4 : 1) * Math.min(1.8, e.attacker.scale / e.defender.scale));
@@ -1003,6 +1016,21 @@ export class Game {
     }
   }
 
+  private breathT = 0;
+  private breathOut = false;
+
+  /** You can hear yourself sucking air when you're gassed. */
+  private panting(dt: number) {
+    const p = this.player;
+    const tired = Math.max(0, Math.min(1, (0.4 - p.stamina) / 0.35));
+    if (!p.alive || tired <= 0) return;
+    this.breathT -= dt;
+    if (this.breathT > 0) return;
+    this.breathOut = !this.breathOut;
+    this.sfx.pant(this.breathOut, 0.5 + tired);
+    this.breathT = this.breathOut ? 0.42 - tired * 0.12 : 0.3 - tired * 0.08;
+  }
+
   /** Feet that landed this step, on whatever the floor is made of. */
   private footsteps() {
     const surface = FLOOR[this.theme.id];
@@ -1010,7 +1038,11 @@ export class Game {
       const landed = f.footwork.landed;
       if (!landed.length) continue;
       const speed = Math.hypot(f.walkVel.x, f.walkVel.z) / f.scale;
-      for (let i = 0; i < landed.length; i++) this.sfx.footstep(surface, Math.min(1, speed / 3.8), f.scale);
+      for (let i = 0; i < landed.length; i++) {
+        this.sfx.footstep(surface, Math.min(1, speed / 3.8), f.scale);
+        // Sand kicks up under a moving foot.
+        if (surface === 'sand' && speed > 1) this.effects.dust(f.footwork.foot(landed[i]).pos, 2 + Math.round(speed), 0.08 * f.scale);
+      }
       landed.length = 0;
     }
   }
@@ -1137,6 +1169,7 @@ export class Game {
     }
     this.themeView?.update(this.time);
     this.updateWeaponsAndWounds(simDt);
+    if (simDt > 0) this.panting(realDt);
 
     // Camera: frame the nearest fight, look ahead while moving freely.
     const p = this.player;
@@ -1179,7 +1212,23 @@ export class Game {
   private updateWeaponsAndWounds(simDt: number) {
     for (const [f, view] of this.views) {
       view.setWeapon(f.isSevered('foreArmR') ? null : f.weapon);
-      if (f.weapon) view.updateWeapon(f, f.weapon.length);
+      if (f.weapon) {
+        view.updateWeapon(f, f.weapon.length);
+        // A bloodied blade drips for a while.
+        if (simDt > 0 && view.weaponBlood > 0.08 && this.blood.enabled) {
+          view.weaponBlood *= 0.999;
+          if (Math.random() < view.weaponBlood * simDt * 5) {
+            const tip = view.weaponTip(f.weapon.length, f.scale);
+            if (tip) this.blood.drip(tip);
+          }
+        }
+      }
+      // Sweat builds with time and exertion.
+      if (simDt > 0) {
+        const s = Math.min(1, (this.sweat.get(f) ?? 0) + simDt * (0.006 + 0.035 * (1 - f.stamina)));
+        this.sweat.set(f, s);
+        view.setSweat(s);
+      }
       for (const w of f.wounds) {
         if (!this.shownWounds.has(w)) {
           this.shownWounds.add(w);

@@ -70,6 +70,16 @@ demons and giant bosses.
 - **Presentation:** no game-style sparks on flesh — sweat flies off a face that gets
   hit. Hit flashes, telegraph rings, glowing limbs and popups are optional
   (Settings → Combat cues, off by default).
+- **Small things:** the head stays level and faces where the eyes need to be (the neck
+  soaks up the hips' and shoulders' swing; it turns to keep the opponent in view).
+  Eyes blink, screw shut for a moment when hit, squint as a strike comes in and close
+  when knocked out. A jab barely moves a head, a full power shot snaps it. Stamina:
+  every strike, defence and sprint costs gas and body shots empty the tank — a tired
+  fighter punches slower, drops the hands, loses the bounce, heaves for breath (you
+  hear yourself panting) and throws less; easing off brings it back. Skin goes from
+  dry to glistening as a fight wears on (and more sweat flies off a soaked face),
+  blades stay red and drip after cutting, gloves pick up blood from a bleeding face,
+  sand kicks up underfoot in the colosseum, and hits don't freeze time.
 - **Movement:** in a fight, boxer footwork; out of range, a real run (~3.8 m/s) with a
   clocked stride, flight phase, forward lean, pumping arms and a lean into turns.
 - **Tutorial:** the first visit is a warm-up in the ring against a sparring partner —

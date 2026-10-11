@@ -8,6 +8,7 @@ export class Hud {
   private readonly pHp: HTMLDivElement;
   private readonly pHpLag: HTMLDivElement;
   private readonly pGuard: HTMLDivElement;
+  private readonly pStamina: HTMLDivElement;
   private readonly eWrap: HTMLDivElement;
   private readonly eHp: HTMLDivElement;
   private readonly eHpLag: HTMLDivElement;
@@ -32,6 +33,7 @@ export class Hud {
         <div class="name">YOU</div>
         <div class="bar hp"><div class="lag"></div><div class="fill"></div></div>
         <div class="bar guard"><div class="fill"></div></div>
+        <div class="bar stamina"><div class="fill"></div></div>
       </div>
       <div class="bars right">
         <div class="name enemy-name">BRAWLER</div>
@@ -53,6 +55,7 @@ export class Hud {
     this.pHp = q('.left .hp .fill');
     this.pHpLag = q('.left .hp .lag');
     this.pGuard = q('.left .guard .fill');
+    this.pStamina = q('.left .stamina .fill');
     this.eWrap = q('.bars.right');
     this.eHp = q('.right .hp .fill');
     this.eHpLag = q('.right .hp .lag');
@@ -122,6 +125,8 @@ export class Hud {
     this.pHpLag.style.width = `${this.lagP * 100}%`;
     this.pGuard.style.width = `${(player.guard / player.stats.maxGuard) * 100}%`;
     this.pGuard.parentElement!.classList.toggle('low', player.guard < 30);
+    this.pStamina.style.width = `${player.stamina * 100}%`;
+    this.pStamina.parentElement!.classList.toggle('low', player.stamina < 0.3);
     if (enemy) {
       const eh = enemy.hp / enemy.stats.maxHp;
       this.lagE = Math.max(eh, this.lagE - dt * 0.5);

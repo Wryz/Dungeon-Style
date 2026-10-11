@@ -77,3 +77,45 @@ describe('realistic reactions and timing', () => {
     expect(DEFAULT_PREFS.cues).toBe(false);
   });
 });
+
+describe('stamina', () => {
+  it('drains with every strike and comes back when you ease off', () => {
+    const { sim, player } = pair(4);
+    const start = player.stamina;
+    for (let k = 0; k < 10; k++) {
+      player.press(k % 2 ? 'rpunch' : 'lpunch');
+      for (let i = 0; i < 30; i++) sim.step();
+    }
+    const spent = player.stamina;
+    expect(spent).toBeLessThan(start - 0.25);
+    for (let i = 0; i < 300; i++) sim.step();
+    expect(player.stamina).toBeGreaterThan(spent + 0.2);
+  });
+
+  it('a gassed fighter punches slower and drops the hands', () => {
+    const fresh = pair(4);
+    const tired = pair(4);
+    tired.player.stamina = 0.05;
+    for (let i = 0; i < 90; i++) {
+      fresh.sim.step();
+      tired.sim.step();
+      tired.player.stamina = 0.05;
+    }
+    fresh.player.startMove(fresh.player.moves.cross);
+    tired.player.startMove(tired.player.moves.cross);
+    expect(tired.player.move!.startup).toBeGreaterThan(fresh.player.move!.startup);
+    expect(tired.player.motion.guardY).toBeLessThan(fresh.player.motion.guardY - 0.03);
+  });
+
+  it('body shots take more out of you than head shots', () => {
+    const a = pair(1.0);
+    const b = pair(1.0);
+    a.player.startMove({ ...a.player.moves.hook, knockdown: false, poiseDamage: 5 }, false, 'liver');
+    b.player.startMove({ ...b.player.moves.hook, knockdown: false, poiseDamage: 5 }, false, 'head');
+    for (let i = 0; i < 30; i++) {
+      a.sim.step();
+      b.sim.step();
+    }
+    expect(a.enemy.stamina).toBeLessThan(b.enemy.stamina);
+  });
+});

@@ -59,6 +59,8 @@ export interface MotionInputs {
   hpFrac: number;
   guardFrac: number;
   framesSinceHit: number;
+  /** 0 = gassed, 1 = fresh. */
+  stamina?: number;
   /** An opponent strike is winding up / live and in range. */
   threat: boolean;
   /** The opponent is down or getting up. */
@@ -67,7 +69,7 @@ export interface MotionInputs {
   pressing: boolean;
 }
 
-export type MotionMods = 'hurt' | 'guardLow' | 'threat' | 'cautious' | 'pressing' | 'opponentDown';
+export type MotionMods = 'hurt' | 'guardLow' | 'threat' | 'cautious' | 'pressing' | 'opponentDown' | 'tired';
 
 const KEYS = Object.keys(ZONE_PROFILES.striking) as (keyof MotionProfile)[];
 
@@ -109,8 +111,17 @@ export function targetProfile(i: MotionInputs, out: MotionProfile): { weights: R
     cautious: i.framesSinceHit < 90 ? 1 - i.framesSinceHit / 90 : 0,
     pressing: i.pressing ? 1 : 0,
     opponentDown: i.opponentDown ? 1 : 0,
+    tired: ramp(0.45 - (i.stamina ?? 1), 0, 0.35),
   };
   const m = mods;
+  // Gassed: hands sag, the bounce and the feints go, feet get heavy.
+  out.guardY -= 0.07 * m.tired;
+  out.bounce *= 1 - 0.7 * m.tired;
+  out.feints *= 1 - 0.7 * m.tired;
+  out.paws *= 1 - 0.5 * m.tired;
+  out.speed *= 1 - 0.15 * m.tired;
+  out.stepFrames *= 1 + 0.2 * m.tired;
+  out.crouch -= 0.015 * m.tired;
   // Hurt / tired: heavier, slower, hands drop, rhythm dies, a bit wobbly.
   out.speed *= 1 - 0.18 * m.hurt;
   out.stepFrames *= 1 + 0.25 * m.hurt;

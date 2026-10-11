@@ -175,6 +175,13 @@ export class Sfx {
     else this.noiseBurst('bandpass', 4200 * low, 2.2, 0.06, 0.005, 0.07, 3000 * low);
   }
 
+  /** One breath of a gassed fighter: in (higher) or out (lower, longer). */
+  pant(out: boolean, intensity: number) {
+    if (!this.ctx) return;
+    if (out) this.noiseBurst('bandpass', 950, 1.8, 0.05 * intensity, 0.04, 0.22, 650);
+    else this.noiseBurst('bandpass', 1600, 2.2, 0.03 * intensity, 0.06, 0.16, 2000);
+  }
+
   /** A grunt when a big one lands. */
   grunt(scale = 1) {
     if (!this.ctx) return;

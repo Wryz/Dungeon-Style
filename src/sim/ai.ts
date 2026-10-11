@@ -177,7 +177,8 @@ export class BrawlerAI {
       }
     }
 
-    this.cooldown -= this.cfg.aggression;
+    // Tired fighters throw less.
+    this.cooldown -= this.cfg.aggression * (0.45 + 0.55 * self.stamina);
     // With a weapon, crowded is bad: only the haft can land. Make room first — push them
     // off with a teep, or keep backing out to weapon range.
     const crowded = !!self.weapon && dist < plan.range * 0.72;

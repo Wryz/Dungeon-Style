@@ -199,6 +199,13 @@ export class CombatSim {
 
   private tickTimers(f: Fighter) {
     if (f.counter && --f.counter.frames <= 0) f.counter = null;
+    // Stamina: running burns it; easing off brings it back (slower when hurt).
+    if (f.alive) {
+      const run = f.footwork.run * f.motion.gait;
+      const resting = f.free ? (run > 0.3 ? -0.035 * run : 0.085) : f.state === 'attack' ? 0 : 0.03;
+      const hurt = 0.5 + 0.5 * (f.hp / f.stats.maxHp);
+      f.stamina = Math.max(0, Math.min(1, f.stamina + (resting > 0 ? resting * hurt : resting) * DT));
+    }
     for (const k of Object.keys(f.defenseCooldown) as DefenseKind[]) {
       if (f.defenseCooldown[k] > 0) f.defenseCooldown[k]--;
     }
@@ -610,6 +617,8 @@ export class CombatSim {
     if (w) dmg *= w.damageMul;
     if (m.weapon) dmg *= Math.min(1, power) * (haft ? 0.45 : 1);
     d.hp = Math.max(d.minHp, d.hp - dmg);
+    // Body shots empty the tank.
+    d.stamina = Math.max(0, d.stamina - (zone === 'abdomen' ? 0.09 : zone === 'chest' ? 0.04 : 0.02) * Math.min(2, dmg / 8));
     d.framesSinceHit = 0;
     a.framesSinceLanded = 0;
     const comboing = d.state === 'hitstun' || d.state === 'guardbreak';
@@ -633,7 +642,9 @@ export class CombatSim {
       d.enterKnockdown();
       d.vel.addScaledVector(dir, kb);
     } else {
-      d.enterHitstun(Math.round(m.hitstun * (counter ? 1.2 : 1)), reactionFor(m, zone, a.aim?.id));
+      // How far it rocks them: the force of the blow, and who is hitting whom.
+      const rock = (0.25 + dmg / 12) * Math.max(0.5, Math.min(1.5, a.scale / d.scale)) * (counter ? 1.15 : 1);
+      d.enterHitstun(Math.round(m.hitstun * (counter ? 1.2 : 1)), reactionFor(m, zone, a.aim?.id), rock);
       d.vel.addScaledVector(dir, kb);
     }
     // Edges cut (and keep bleeding); heavy edges can take a limb off.

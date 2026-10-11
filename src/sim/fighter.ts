@@ -39,7 +39,7 @@ export const OUTFIGHTER_STYLE: FighterStyle = {
     shoulderRoll: 0,
   },
 };
-import { clamp, type Ease, Rng } from './math';
+import { angleDelta, clamp, type Ease, Rng } from './math';
 import { type Aim, DEFENSES, type DefenseDef, type DefenseKind, type Height, markerFrame, type MoveDef } from './moves';
 
 export type FighterState =
@@ -137,10 +137,14 @@ export class Fighter {
   /** The weapon is stuck in the opponent until this state frame. */
   stuckUntil = 0;
   private readonly impactPose = makePose();
+  private readonly reactPose = makePose();
   /** Head / chest pitch toward the opponent's face (smoothed; + = looking down). */
   private lookPitch = 0;
   /** Lean into a turn while running (smoothed roll; + = leaning right). */
   private bank = 0;
+  private breathPhase = 0;
+  /** Neck turn keeping the eyes on the opponent (smoothed). */
+  private headTrack = 0;
   private turnRate = 0;
   attackSerial = 0;
   hitThisAttack = false;
@@ -166,6 +170,9 @@ export class Fighter {
   lockedOn = false;
   /** Health never drops below this (sparring partners can't be knocked out). */
   minHp = 0;
+  /** Gas in the tank: 1 fresh, 0 exhausted. Strikes, defending, running and body shots
+   * drain it; easing off brings it back. */
+  stamina = 1;
   /** Frames left on a request to pick up / drop a weapon. */
   pickupRequest = 0;
   /** Weapon in hand (null = fists). */
@@ -338,7 +345,10 @@ export class Fighter {
   startMove(move: MoveDef, isCounter = false, aimId?: string) {
     // Timing fits the body and the tool: big bodies move their limbs slower (like a
     // longer pendulum), small ones quicker; heavy weapons take longer to bring round.
-    const tempo = Math.sqrt(this.scale) * (move.weapon && this.weapon ? this.weapon.tempo : 1);
+    // Tired arms are slow arms.
+    const tempo = Math.sqrt(this.scale) * (move.weapon && this.weapon ? this.weapon.tempo : 1) * (1 + (1 - this.stamina) * 0.3);
+    const cost = (move.weight === 'light' ? 0.035 : move.weight === 'medium' ? 0.055 : 0.085) * (move.weapon && this.weapon ? this.weapon.tempo : 1) * (isCounter ? 0.8 : 1);
+    this.stamina = Math.max(0, this.stamina - cost);
     move = timed(move, tempo);
     this.setState('attack');
     this.move = move;
@@ -432,6 +442,7 @@ export class Fighter {
     if (kind === 'weave') this.weaveSide = this.weaveSide === 1 ? -1 : 1;
     this.defense = { def, threatSerial, phase: 'startup', success: false, side: this.weaveSide };
     this.lastDefendedSerial = threatSerial;
+    this.stamina = Math.max(0, this.stamina - 0.015);
     this.defenseCooldown[kind] = def.cooldown;
     this.idle.interrupt();
     this.anim.play([{ f: def.startup, pose: getPose(defensePose(kind, this.weaveSide)), ease: 'out' }]);
@@ -444,14 +455,21 @@ export class Fighter {
     this.anim.play([{ f: this.defense.def.recovery, pose: getPose('guard'), ease: 'inOut' }]);
   }
 
-  enterHitstun(frames: number, reaction: PoseName) {
+  /**
+   * Rocked by a blow. `intensity` 0..1 sizes the reaction: a jab barely moves the head,
+   * a full power shot snaps it all the way.
+   */
+  enterHitstun(frames: number, reaction: PoseName, intensity = 1) {
     this.setState('hitstun');
     this.stunFrames = frames;
     this.hitReaction = reaction;
+    const home = getPose(this.weapon ? (this.weapon.style === 'oneHand' ? 'wGuard1' : 'wGuard2') : 'guard');
+    const k = Math.max(0.2, Math.min(1, intensity));
+    const peak = k >= 0.99 ? getPose(reaction) : blendPose(home, getPose(reaction), k, this.reactPose);
     this.anim.play([
-      { f: 2, pose: getPose(reaction), ease: 'out' },
-      { f: Math.max(3, Math.floor(frames * 0.55)), pose: getPose(reaction) },
-      { f: frames, pose: getPose('guard'), ease: 'inOut' },
+      { f: 2, pose: peak, ease: 'out' },
+      { f: Math.max(3, Math.floor(frames * (0.35 + 0.2 * k))), pose: peak },
+      { f: frames, pose: home, ease: 'inOut' },
     ]);
   }
 
@@ -562,6 +580,13 @@ export class Fighter {
     if (!driven) this.footwork.syncToRig(this.rig);
   }
 
+  /** Chest rising and falling: slow and shallow when fresh, fast and heaving when gassed. */
+  private breathing(): number {
+    const e = 1 - this.stamina;
+    this.breathPhase += (2.2 + 4.5 * e) / 60;
+    return Math.sin(this.breathPhase) * (0.01 + 0.045 * e * e);
+  }
+
   /** Two-handed grip: the lead hand holds the haft just below the rear hand. */
   private gripWithBothHands() {
     // Kicks and reactions leave the hands where the animation has them.
@@ -585,6 +610,7 @@ export class Fighter {
         hpFrac: this.hp / this.stats.maxHp,
         guardFrac: this.guard / this.stats.maxGuard,
         framesSinceHit: this.framesSinceHit,
+        stamina: this.stamina,
         threat,
         opponentDown: !!this.target && (this.target.state === 'knockdown' || this.target.state === 'getup'),
         pressing: !!t && (t.hp / t.stats.maxHp < 0.4 || t.state === 'hitstun' || this.framesSinceLanded < 60),
@@ -668,16 +694,24 @@ export class Fighter {
     const bob = run * (0.022 - 0.05 * compress);
     const mix = (a: V3, b: V3): V3 => [a[0] * f + b[0] * g, a[1] * f + b[1] * g, a[2] * f + b[2] * g];
     const kneeR = mix(KNEE_HINT.R, [-0.15, 0, 1]);
+    // The head stays level and pointed where the eyes need to be — the neck soaks up the
+    // hips' and shoulders' swing (as it does when people walk and run) and turns the
+    // face toward the opponent when the body isn't square to them.
+    const pelvisYaw = -0.3 * f + swing * 0.25 * (1 - run) + pump * 0.16 * run;
+    const chestYaw = -0.1 * f - swing * 0.45 * (1 - run) - pump * 0.3 * run;
+    let track = 0;
+    if (t) track = Math.max(-0.6, Math.min(0.6, angleDelta(this.yaw, Math.atan2(t.pos.x - this.pos.x, t.pos.z - this.pos.z)))) * 0.85;
+    this.headTrack += (track - this.headTrack) * 0.15;
     const spec: PoseSpec = {
       ...GUARD,
       // Hips ride over the support foot; walking stands a little taller.
       root: [wx * 0.6 + dx * 0.03 * m, 0.86 + M.crouch + 0.03 * g - 0.012 * m - 0.04 * run + bob, 0.01 + wz * 0.6 + fwd * 0.03 * m],
       // Bladed stance → square hips when walking; the chest counter-rotates with the arm swing.
-      pelvis: [0, -0.3 * f + swing * 0.25 * (1 - run) + pump * 0.16 * run, 0],
+      pelvis: [0, pelvisYaw, 0],
       // Running leans the whole body into the stride.
       abdomen: [(0.1 + M.lean) * f + 0.04 * g + 0.13 * run + fwd * 0.05 * m + back * 0.03 * m, 0, -dx * 0.05 * m * f + this.bank],
-      chest: [0.08 * f + 0.02 * g + 0.04 * run + this.lookPitch * 0.25 + Math.sin(this.breath * 2.2) * 0.01, -0.1 * f - swing * 0.45 * (1 - run) - pump * 0.3 * run, 0],
-      head: [-0.04 * f - 0.15 * run + this.lookPitch, 0.4 * f, 0],
+      chest: [0.08 * f + 0.02 * g + 0.04 * run + this.lookPitch * 0.25 + this.breathing(), chestYaw, 0],
+      head: [-0.04 * f - 0.15 * run + this.lookPitch, -(pelvisYaw + chestYaw) + this.headTrack, 0],
       handL: { at: mix(guardL.at, relaxedL), hint: mix(guardL.hint ?? [0.35, -1, 0], hintL) },
       handR: { at: mix(guardR.at, relaxedR), hint: mix(guardR.hint ?? [-0.35, -1, 0], hintR) },
       footL: { at: footL, hint: KNEE_HINT.L },

@@ -35,6 +35,8 @@ export function buildWeapon(def: WeaponDef): Group {
   const g = new Group();
   const part = (geo: BufferGeometry, m: string, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0) => {
     const mesh = new Mesh(geo, mat(m));
+    // Metal and bare-wood striking surfaces take blood.
+    mesh.userData.bloodies = m === 'steel' || m === 'iron' || m === 'ash' || m === 'bone';
     mesh.position.set(x, y, z);
     mesh.rotation.set(rx, ry, rz);
     mesh.castShadow = true;

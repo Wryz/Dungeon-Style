@@ -132,3 +132,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #b9d3e4; col
 .hud.dying .vignette { opacity: 1; }
 body.dying canvas { filter: saturate(0.35) contrast(1.1); transition: filter 1.2s; }
 canvas { transition: filter 0.6s; }
+
+.bar.stamina { height: 4px; margin-top: 3px; width: 55%; }
+.bar.stamina .fill { background: #e8c35a; }
+.bar.stamina.low .fill { background: #ff9a4a; }

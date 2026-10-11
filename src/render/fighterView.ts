@@ -76,6 +76,10 @@ export class FighterView {
   readonly bones = {} as Record<BoneName, Group>;
   private readonly mats = {} as Record<BoneName, MeshStandardMaterial[]>;
   private flash = 0;
+  private readonly eyes: Mesh[] = [];
+  private blinkIn = 1 + Math.random() * 4;
+  private blinkT = 0;
+  private lid = 1;
   private cuesShown = true;
   readonly shiver = new Vector3();
 
@@ -92,7 +96,65 @@ export class FighterView {
   private mat(bone: BoneName, slot: Slot): MeshStandardMaterial {
     const m = new MeshStandardMaterial({ color: this.palette[slot], flatShading: true, roughness: 0.7, metalness: 0 });
     this.mats[bone].push(m);
+    if (slot === 'skin') this.skinMats.push(m);
+    if (slot === 'gloves') (bone === 'foreArmL' ? this.gloveMats.L : this.gloveMats.R).push(m);
     return m;
+  }
+
+  private readonly skinMats: MeshStandardMaterial[] = [];
+  private readonly gloveMats = { L: [] as MeshStandardMaterial[], R: [] as MeshStandardMaterial[] };
+  private gloveBlood = { L: 0, R: 0 };
+  /** How much blood is on the weapon in hand (0..1). */
+  weaponBlood = 0;
+  private sweat = 0;
+
+  /** Skin goes from dry to glistening as the fight wears on. */
+  setSweat(s: number) {
+    if (Math.abs(s - this.sweat) < 0.02) return;
+    this.sweat = s;
+    for (const m of this.skinMats) m.roughness = 0.72 - 0.42 * s;
+  }
+
+  /** Blood picked up by a fist off a bleeding face. */
+  bloodyFist(side: 'L' | 'R', amount: number) {
+    this.gloveBlood[side] = Math.min(0.55, this.gloveBlood[side] + amount);
+    const base = new Color(this.palette.gloves);
+    for (const m of this.gloveMats[side]) m.color.copy(base).lerp(BLOODY, this.gloveBlood[side]);
+  }
+
+  /** A blade / club that has gone into someone stays red. */
+  bloodyWeapon(amount: number) {
+    this.weaponBlood = Math.min(1, this.weaponBlood + amount);
+    this.tintWeapon();
+  }
+
+  private tintWeapon() {
+    const k = Math.min(0.92, this.weaponBlood * 1.1);
+    this.weaponMesh?.traverse((o) => {
+      if (!(o instanceof Mesh) || !o.userData.bloodies) return;
+      const m = o.material as MeshStandardMaterial;
+      if (!o.userData.base) o.userData.base = m.color.clone();
+      m.color.copy(o.userData.base as Color).lerp(BLOODY, k);
+      // Wet: blood is glossy.
+      m.roughness = Math.min(m.roughness, 0.3);
+    });
+  }
+
+  /** World position of the weapon's tip (where blood drips off). */
+  weaponTip(length: number, scale: number, out = new Vector3()): Vector3 | null {
+    const w = this.weaponMesh;
+    if (!w) return null;
+    w.updateMatrixWorld();
+    void scale;
+    return w.localToWorld(out.set(0, length, 0));
+  }
+
+  /** Washed up between rounds: dry skin, clean gloves. */
+  clean() {
+    this.gloveBlood = { L: 0, R: 0 };
+    for (const side of ['L', 'R'] as const) for (const m of this.gloveMats[side]) m.color.set(this.palette.gloves);
+    this.sweat = 1;
+    this.setSweat(0);
   }
 
   private add(bone: BoneName, geo: BufferGeometry, slot: Slot, pos: [number, number, number], scale?: [number, number, number]) {
@@ -137,8 +199,8 @@ export class FighterView {
       this.bones[bone].add(mesh);
       return mesh;
     };
-    if (A.cyclops) addMesh('head', box(0.1, 0.08, 0.02), eyeMat('head'), [0, 0.19, 0.136]);
-    else for (const s of [1, -1]) addMesh('head', box(0.045, 0.05, 0.02), eyeMat('head'), [s * 0.06, 0.18, 0.135]);
+    if (A.cyclops) this.eyes.push(addMesh('head', box(0.1, 0.08, 0.02), eyeMat('head'), [0, 0.19, 0.136]));
+    else for (const s of [1, -1]) this.eyes.push(addMesh('head', box(0.045, 0.05, 0.02), eyeMat('head'), [s * 0.06, 0.18, 0.135]));
     if (A.snout) this.add('head', box(0.16, 0.1, 0.1), 'skin', [0, 0.1, 0.16]);
     if (A.horns) {
       const hm = new MeshStandardMaterial({ color: A.horns === 'bull' ? '#e8dcc0' : '#1c1414', flatShading: true, roughness: 0.5 });
@@ -279,6 +341,7 @@ export class FighterView {
     holder.add(buildWeapon(def));
     this.root.add(holder);
     this.weaponMesh = holder;
+    this.weaponBlood = 0;
     this.edge.set(0, 0, 0);
     this.prevBlade.set(0, 0, 0);
   }
@@ -406,8 +469,32 @@ export class FighterView {
    * Per-frame emissive cues: white hit flash, red telegraph on the attacking limb,
    * gold fists while a counter window is open.
    */
+  /**
+   * Eyes: the odd blink, screwed shut for a moment when hit, squinting as a strike
+   * comes in, closed once knocked out.
+   */
+  private updateEyes(dt: number, f: Fighter) {
+    this.blinkIn -= dt;
+    if (this.blinkIn <= 0) {
+      this.blinkT = 0.13;
+      this.blinkIn = 2 + Math.random() * 4.5;
+    }
+    this.blinkT = Math.max(0, this.blinkT - dt);
+    const t = f.target;
+    const incoming = !!t && t.state === 'attack' && !!t.move && t.framesToActive >= -2 && t.framesToActive < 6 && f.distanceTo(t) < (t.move.reach + 0.3) * t.scale;
+    let open = 1;
+    if (f.state === 'ko') open = 0.08;
+    else if (f.framesSinceHit < 7 || this.blinkT > 0) open = 0.12;
+    else if (f.state === 'knockdown' || f.state === 'getup') open = 0.45;
+    else if (incoming) open = 0.5;
+    // Lids snap shut fast and open a little slower.
+    this.lid += (open - this.lid) * (open < this.lid ? 0.7 : 0.3);
+    for (const e of this.eyes) e.scale.y = Math.max(0.08, this.lid);
+  }
+
   updateCues(dt: number, f: Fighter, enabled = true) {
     this.flash = Math.max(0, this.flash - dt * 9);
+    this.updateEyes(dt, f);
     if (!enabled) {
       if (this.cuesShown) {
         for (const b of BONES) for (const m of this.mats[b]) m.emissive.setRGB(0, 0, 0);
@@ -449,6 +536,7 @@ export class FighterView {
 
 const TMP = new Color();
 
+const BLOODY = new Color('#7a0a0a');
 const WOUND_MAT = new MeshStandardMaterial({ color: '#5e0a0a', roughness: 0.35, flatShading: true });
 const WET_MAT = new MeshStandardMaterial({ color: '#b3121a', roughness: 0.15, metalness: 0.1, flatShading: true });
 const STUMP_MAT = new MeshStandardMaterial({ color: '#9e1016', roughness: 0.3, flatShading: true });
