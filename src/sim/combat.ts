@@ -1264,8 +1264,10 @@ export class CombatSim {
     const cuts = w.edge === 'blade' ? head && leading : head;
     const mass = w.mass * p.scale ** 3;
     // Kinetic energy does the damage; momentum against the body's mass does the pushing.
-    const energy = 0.5 * mass * speed * speed;
-    const dmg = energy / 18;
+    // (Damage is reckoned at a man's size, as it is for blows struck in the hand — a
+    // giant's own strength is in its stats.)
+    const v1 = speed / Math.sqrt(p.scale);
+    const dmg = (0.5 * w.mass * v1 * v1) / 18;
     const height: Height = c.zone === 'head' ? 'high' : c.zone === 'legs' ? 'low' : 'mid';
     const m: MoveDef = {
       id: 'thrown', name: 'Thrown ' + w.name, startup: 1, active: 1, recovery: 1,

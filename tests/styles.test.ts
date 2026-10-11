@@ -106,6 +106,28 @@ describe('spins', () => {
   });
 });
 
+describe("a giant's spin", () => {
+  it("comes down to a man's chest rather than sweeping over his head", () => {
+    const sim = new CombatSim(2);
+    sim.walkable = new RectWalkable(-20, 20, -20, 20);
+    const p = createPlayer();
+    p.autoDefense = false;
+    p.minHp = 1;
+    p.yaw = Math.PI / 2;
+    const { fighter: m, ai } = createEnemy('minotaur', sim.rng);
+    ai.cfg.passive = true;
+    m.pos.set(2.2, 0, 0);
+    m.yaw = -Math.PI / 2;
+    sim.add(p);
+    sim.add(m, ai);
+    for (let i = 0; i < 20; i++) sim.step();
+    m.startMove(WEAPON_MOVES.spinCleave);
+    let edge = false;
+    for (let i = 0; i < 90; i++) for (const ev of sim.step()) if (ev.type === 'hit' && ev.attacker === m && ev.weapon) edge = true;
+    expect(edge).toBe(true);
+  });
+});
+
 describe('thrown weapons', () => {
   it('fly on a ballistic arc, arrive edge first at the distance thrown, and end up on the floor', () => {
     const { sim, p, e } = stage(6, 'axe');

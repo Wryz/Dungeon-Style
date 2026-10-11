@@ -279,13 +279,15 @@ All of it is physical:
   are in the air (h = g·t²/8). The take-off speed is fixed and there's no steering in
   the air. A flip turns the body about its centre of mass at a steady rate. Hit in
   mid-air, a fighter goes down. A body flying into someone stops against them.
-- **Spins** turn the whole body under the weapon. A spinning back kick stops turning
+- **Spins** turn the whole body under the weapon. A giant pitches its spin down to a
+  man's chest rather than sweeping over his head. A spinning back kick stops turning
   while the leg drives out, then finishes the turn.
 - **Thrown weapons** are rigid bodies: gravity, end-over-end spin, sub-stepped
   collisions. An axe cuts only if the edge is leading when it arrives. A practised
   thrower judges the spin for the distance, so it does from where they stood. Step in
   or out and it may arrive handle-first. Knives fly point first. Damage comes from
-  kinetic energy and the push from momentum. Automatic defence reads things thrown at
+  kinetic energy, reckoned at a man's size as it is for blows in the hand. The push
+  comes from momentum, all of it into the body: Δv = p / (M + m). Automatic defence reads things thrown at
   you (a big axe more readily than a small knife). Anything thrown ends up on the
   floor for whoever gets to it first.
 

@@ -427,7 +427,9 @@ export class Fighter {
     // Fit the strike to the opponent in front of us: up for a giant, down for a small one.
     // (Not a spin, a flip or a throw: there the body's turn or the flight does the aiming.)
     const free = !!move.spin || !!move.air?.flip || !!move.throw;
-    const dy = free ? 0 : Math.max(-0.75, Math.min(0.45, this.heightGap(move, this.aim)));
+    // (A spin is still pitched at the height of whoever it's for: a giant brings its
+    // spinning axe down to a man's chest rather than sweeping over his head.)
+    const dy = free && !move.spin ? 0 : Math.max(-0.75, Math.min(0.45, this.heightGap(move, this.aim)));
     this.swingJitter = jitter;
     this.swingDy = dy;
     const keys = moveKeys(move, this.aim, jitter, dy, free ? Infinity : this.reachFit(move), free ? null : this.weaponFit(move, this.aim));
