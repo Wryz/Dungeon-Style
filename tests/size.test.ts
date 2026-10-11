@@ -3,6 +3,7 @@ import { type CombatEvent, CombatSim } from '../src/sim/combat';
 import { createEnemy, type EnemyKind } from '../src/sim/enemies';
 import { createPlayer } from '../src/sim/roster';
 import { RectWalkable } from '../src/world/collision';
+import { WEAPON_MOVES } from '../src/sim/weapons';
 
 /** Player vs an enemy of some size, `gap` apart (enemy-scaled). */
 function face(kind: EnemyKind, gap: number) {
@@ -68,5 +69,40 @@ describe('fighting opponents of different sizes', () => {
     // Hips sink and the body folds forward to get down to it.
     expect(lowest).toBeLessThan(1.38);
     expect(enemy.hp).toBeLessThan(enemy.stats.maxHp);
+  });
+});
+
+describe('a giant with an axe', () => {
+  it('lands the axe head, not the haft, whatever the distance', () => {
+    let edge = 0;
+    let haft = 0;
+    for (const d of [1.6, 2.0, 2.4, 2.8, 3.2]) {
+      for (const id of ['sweep', 'sweepBack', 'overhead']) {
+        const { sim, player, enemy } = face('minotaur', d);
+        player.pos.set(0, 0, 0);
+        enemy.pos.set(d, 0, 0);
+        enemy.startMove(WEAPON_MOVES[id], false, 'head');
+        for (let i = 0; i < 70; i++) {
+          for (const e of sim.step()) {
+            if (e.type === 'hit' && e.attacker === enemy) e.weapon ? edge++ : haft++;
+          }
+        }
+      }
+    }
+    expect(edge).toBeGreaterThanOrEqual(12);
+    expect(haft).toBe(0);
+  });
+
+  it('backs off to axe range instead of swinging the haft at close quarters', () => {
+    const { sim, player, enemy } = face('minotaur', 1.3);
+    sim.ais.get(enemy)!.cfg.passive = false;
+    enemy.pos.set(1.3, 0, 0);
+    let hafts = 0;
+    for (let i = 0; i < 600; i++) {
+      player.pos.set(0, 0, 0);
+      for (const e of sim.step()) if (e.type === 'hit' && e.attacker === enemy && e.move.weapon && !e.weapon) hafts++;
+    }
+    expect(hafts).toBe(0);
+    expect(enemy.distanceTo(player)).toBeGreaterThan(1.8);
   });
 });

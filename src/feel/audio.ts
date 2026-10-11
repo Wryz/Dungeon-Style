@@ -1,5 +1,9 @@
 import type { Weight } from '../sim/moves';
 
+export type Surface = 'canvas' | 'asphalt' | 'tile' | 'sand';
+export type Ambience = 'ring' | 'street' | 'grocery' | 'colosseum';
+export type Material = 'wood' | 'metal' | 'pan' | 'axe';
+
 /** Procedural impact sounds (no assets): noise bursts + pitched thumps through a compressor. */
 export class Sfx {
   private ctx: AudioContext | null = null;
@@ -27,6 +31,209 @@ export class Sfx {
     this.noise = ctx.createBuffer(1, len, ctx.sampleRate);
     const d = this.noise.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    if (this.wantAmbience) this.setAmbience(this.wantAmbience);
+  }
+
+  // -------------------------------------------------------------------------
+  // Ambience: the room you fight in, and a crowd that reacts.
+  // -------------------------------------------------------------------------
+
+  private wantAmbience: Ambience | null = null;
+  private ambNodes: AudioNode[] = [];
+  private ambSources: AudioScheduledSourceNode[] = [];
+  private crowdGain: GainNode | null = null;
+
+  /** A looping, filtered noise bed (gain, filter, optional slow swell). */
+  private bed(type: BiquadFilterType, freq: number, q: number, gain: number, lfoHz = 0, lfoDepth = 0): GainNode {
+    const ctx = this.ctx!;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    src.loop = true;
+    src.playbackRate.value = 0.5 + Math.random() * 0.2;
+    const f = ctx.createBiquadFilter();
+    f.type = type;
+    f.frequency.value = freq;
+    f.Q.value = q;
+    const g = ctx.createGain();
+    g.gain.value = gain;
+    src.connect(f).connect(g).connect(this.master);
+    src.start();
+    this.ambSources.push(src);
+    this.ambNodes.push(f, g);
+    if (lfoHz > 0) {
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = lfoHz;
+      const depth = ctx.createGain();
+      depth.gain.value = gain * lfoDepth;
+      lfo.connect(depth).connect(g.gain);
+      lfo.start();
+      this.ambSources.push(lfo);
+      this.ambNodes.push(depth);
+    }
+    return g;
+  }
+
+  private hum(freq: number, gain: number) {
+    const ctx = this.ctx!;
+    const o = ctx.createOscillator();
+    o.frequency.value = freq;
+    const g = ctx.createGain();
+    g.gain.value = gain;
+    o.connect(g).connect(this.master);
+    o.start();
+    this.ambSources.push(o);
+    this.ambNodes.push(g);
+  }
+
+  /** Swap the background sound for an arena. */
+  setAmbience(kind: Ambience) {
+    this.wantAmbience = kind;
+    if (!this.ctx) return;
+    for (const s of this.ambSources) {
+      try {
+        s.stop();
+      } catch {
+        // already stopped
+      }
+    }
+    for (const n of this.ambNodes) n.disconnect();
+    this.ambSources = [];
+    this.ambNodes = [];
+    this.crowdGain = null;
+    switch (kind) {
+      case 'ring':
+        // Packed hall: murmur, the odd shout swelling up.
+        this.crowdGain = this.bed('bandpass', 900, 0.6, 0.05, 0.13, 0.5);
+        this.bed('lowpass', 220, 0.7, 0.03);
+        break;
+      case 'colosseum':
+        // Tens of thousands in the open air: a big rolling roar.
+        this.crowdGain = this.bed('bandpass', 700, 0.5, 0.08, 0.09, 0.6);
+        this.bed('bandpass', 1800, 0.8, 0.02, 0.21, 0.7);
+        this.bed('lowpass', 160, 0.7, 0.03);
+        break;
+      case 'street':
+        // City at night: traffic rumble, distant hiss, a few onlookers.
+        this.bed('lowpass', 110, 0.8, 0.07, 0.05, 0.4);
+        this.bed('highpass', 3500, 0.5, 0.008);
+        this.crowdGain = this.bed('bandpass', 1000, 0.8, 0.012, 0.3, 0.6);
+        break;
+      case 'grocery':
+        // Fridges and air-conditioning, fluorescent buzz.
+        this.hum(60, 0.012);
+        this.hum(120, 0.008);
+        this.bed('lowpass', 380, 0.7, 0.025);
+        this.crowdGain = this.bed('bandpass', 1100, 0.9, 0.006, 0.25, 0.5);
+        break;
+    }
+  }
+
+  /** The crowd reacts: 0..1 (a gasp for a big hit, a roar for a knockout). */
+  crowd(intensity: number) {
+    if (!this.ctx || !this.crowdGain) return;
+    const scale = this.wantAmbience === 'colosseum' ? 1.4 : this.wantAmbience === 'ring' ? 1 : 0.3;
+    const g = intensity * scale;
+    this.noiseBurst('bandpass', 850, 0.5, 0.25 * g, 0.12, 1.2 + intensity, 1300);
+    this.noiseBurst('bandpass', 1700, 0.9, 0.12 * g, 0.18, 1.0 + intensity, 2400);
+  }
+
+  // -------------------------------------------------------------------------
+  // Bodies: feet, breath, flesh.
+  // -------------------------------------------------------------------------
+
+  /** A foot landing. `weight` 0..1 (walk → sprint), bigger bodies thud lower. */
+  footstep(surface: Surface, weight: number, scale = 1) {
+    if (!this.ctx) return;
+    const w = 0.35 + 0.65 * weight;
+    const low = 1 / Math.sqrt(scale);
+    switch (surface) {
+      case 'canvas':
+        this.thump(110 * low, 60 * low, 0.18 * w * scale, 0.07);
+        this.noiseBurst('lowpass', 900, 0.7, 0.07 * w, 0.002, 0.05);
+        if (Math.random() < 0.15) this.noiseBurst('bandpass', 2600, 6, 0.03, 0.005, 0.05); // shoe squeak
+        break;
+      case 'asphalt':
+        this.thump(130 * low, 70 * low, 0.12 * w * scale, 0.05);
+        this.noiseBurst('bandpass', 1600, 1.2, 0.09 * w, 0.002, 0.07, 900);
+        break;
+      case 'tile':
+        this.noiseBurst('highpass', 3000, 0.9, 0.08 * w, 0.001, 0.03);
+        this.thump(180 * low, 90 * low, 0.1 * w * scale, 0.04);
+        break;
+      case 'sand':
+        this.noiseBurst('lowpass', 1100, 0.6, 0.11 * w, 0.01, 0.12, 500);
+        this.thump(90 * low, 50 * low, 0.08 * w * scale, 0.06);
+        break;
+    }
+  }
+
+  /** Breath out on a strike — a sharp "tss" for quick ones, a heavier "hah" for big ones. */
+  exhale(heavy: boolean, scale = 1) {
+    if (!this.ctx) return;
+    const low = 1 / Math.sqrt(scale);
+    if (heavy) this.noiseBurst('bandpass', 1100 * low, 1.6, 0.11, 0.02, 0.16, 700 * low);
+    else this.noiseBurst('bandpass', 4200 * low, 2.2, 0.06, 0.005, 0.07, 3000 * low);
+  }
+
+  /** A grunt when a big one lands. */
+  grunt(scale = 1) {
+    if (!this.ctx) return;
+    const low = 1 / Math.sqrt(scale);
+    this.noiseBurst('bandpass', 420 * low, 3, 0.18, 0.01, 0.16, 300 * low);
+    this.thump(150 * low, 110 * low, 0.08, 0.14, 'sawtooth');
+  }
+
+  /** Fist or foot on a body: a crisp slap on the face, a deep thud to the body. */
+  flesh(head: boolean, weight: Weight) {
+    if (!this.ctx) return;
+    const w = weight === 'light' ? 0.6 : weight === 'medium' ? 0.8 : 1;
+    if (head) {
+      this.noiseBurst('highpass', 1800, 0.7, 0.45 * w, 0.001, 0.05);
+      this.thump(220, 90, 0.4 * w, 0.08);
+    } else {
+      this.noiseBurst('lowpass', 700, 0.8, 0.5 * w, 0.002, 0.09);
+      this.thump(110, 45, 0.75 * w, 0.16);
+    }
+  }
+
+  /** What the weapon is made of, when it lands. */
+  impact(material: Material, heavy: boolean) {
+    if (!this.ctx) return;
+    switch (material) {
+      case 'wood':
+        // Bat / club / haft: a hollow knock.
+        this.thump(380, 180, 0.4, 0.09, 'triangle');
+        this.noiseBurst('bandpass', 900, 3, 0.4, 0.001, 0.07);
+        this.thump(100, 45, heavy ? 0.7 : 0.45, 0.16);
+        break;
+      case 'pan': {
+        // A frying pan rings like a bell.
+        const f = 480 + Math.random() * 60;
+        this.thump(f, f * 0.99, 0.22, 0.9, 'sine');
+        this.thump(f * 2.76, f * 2.74, 0.08, 0.5, 'sine');
+        this.thump(f * 5.4, f * 5.38, 0.04, 0.3, 'sine');
+        this.thump(110, 50, 0.5, 0.12);
+        break;
+      }
+      case 'metal':
+        // Folding chair: a clattering bang.
+        for (let i = 0; i < 3; i++) this.thump(700 + Math.random() * 900, 400, 0.08, 0.12 + i * 0.05, 'square');
+        this.noiseBurst('bandpass', 2400, 2, 0.4, 0.001, 0.14);
+        this.thump(120, 50, 0.6, 0.14);
+        break;
+      case 'axe':
+        // Heavy blade biting in: a deep chop.
+        this.thump(140, 45, 0.9, 0.22);
+        this.noiseBurst('lowpass', 1400, 0.8, 0.6, 0.001, 0.12, 400);
+        break;
+    }
+  }
+
+  /** A weapon thudding against a body with nothing behind it. */
+  bump() {
+    if (!this.ctx) return;
+    this.thump(140, 70, 0.3, 0.08);
+    this.noiseBurst('lowpass', 600, 0.8, 0.2, 0.002, 0.06);
   }
 
   setVolume(v: number) {

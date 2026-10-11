@@ -225,7 +225,7 @@ describe('strikes stop at the body', () => {
   it('only a blow that cuts clean through follows through', () => {
     const { sim, player, enemy } = duel('axe', 1.8);
     enemy.limbDamage.head = 30;
-    const [h] = hits(swing(sim, player, 'overhead', 22));
+    const [h] = hits(swing(sim, player, 'overhead', 30));
     expect(h.sever).toBe('head');
     expect(player.attackEnd).toBe(0);
   });

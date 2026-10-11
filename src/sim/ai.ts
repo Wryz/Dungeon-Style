@@ -178,6 +178,18 @@ export class BrawlerAI {
     }
 
     this.cooldown -= this.cfg.aggression;
+    // With a weapon, crowded is bad: only the haft can land. Make room first — push them
+    // off with a teep, or keep backing out to weapon range.
+    const crowded = !!self.weapon && dist < plan.range * 0.72;
+    if (crowded) {
+      self.moveInput.set(-fx, 0, -fz).multiplyScalar(0.85);
+      const teep = self.moves.teep;
+      if (teep && this.cooldown <= 0 && self.canUse(teep) && this.rng.chance(0.04 * this.cfg.aggression)) {
+        self.startMove(teep);
+        this.cooldown = this.rng.range(40, 80);
+      }
+      return;
+    }
     if (this.cooldown <= 0 && dist < plan.attackRange && (!this.director || this.director.canAttack())) {
       this.start(self, this.rng.pickWeighted<string>(plan.moves));
     }

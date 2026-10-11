@@ -633,7 +633,7 @@ export class CombatSim {
       d.enterKnockdown();
       d.vel.addScaledVector(dir, kb);
     } else {
-      d.enterHitstun(Math.round(m.hitstun * (counter ? 1.2 : 1)), reactionFor(m, zone));
+      d.enterHitstun(Math.round(m.hitstun * (counter ? 1.2 : 1)), reactionFor(m, zone, a.aim?.id));
       d.vel.addScaledVector(dir, kb);
     }
     // Edges cut (and keep bleeding); heavy edges can take a limb off.
@@ -795,9 +795,27 @@ export class CombatSim {
   }
 }
 
-function reactionFor(m: MoveDef, zone: HurtZone): PoseName {
+/** Which side of the defender a strike arrives from: +1 their right, -1 their left. */
+function arrivesFrom(m: MoveDef): number {
+  if (m.weapon) return m.id === 'backslash' || m.id === 'sweepBack' ? 1 : m.id === 'slash' || m.id === 'sweep' ? -1 : 0;
+  // Facing each other, the attacker's left side is the defender's right.
+  return m.limb === 'handL' || m.limb === 'footL' ? 1 : -1;
+}
+
+/**
+ * How the body reacts to where and how it was hit, like it does in real fights: a
+ * straight snaps the head back, a hook whips it round away from the blow, an uppercut
+ * throws the chin up, a body shot folds you, a liver shot caves in the right side.
+ */
+function reactionFor(m: MoveDef, zone: HurtZone, aimId?: string): PoseName {
   if (zone === 'legs') return 'hitLow';
+  if (aimId === 'liver') return 'hitLiver';
   if (zone === 'abdomen' || (zone === 'chest' && m.height === 'mid')) return 'hitBody';
+  if (zone === 'head') {
+    if (m.kind === 'uppercut') return 'hitUpper';
+    const side = arrivesFrom(m);
+    if ((m.kind === 'hook' || m.kind === 'kick') && side !== 0) return side > 0 ? 'hitHookL' : 'hitHookR';
+  }
   return m.weight === 'heavy' ? 'stagger' : 'hitHigh';
 }
 

@@ -32,6 +32,8 @@ export interface WeaponDef {
   cleave: number;
   /** Frames an edge stays bitten into the body before it's wrenched free. */
   bite: number;
+  /** Swing time multiplier: heavy weapons are slower to bring round. */
+  tempo: number;
   /** How it's used: quick strike (Q), committed strike (E), and what Q chains into. */
   light: string;
   heavy: string;
@@ -42,14 +44,14 @@ const ONE_HAND_CUTS = { light: 'slash', heavy: 'chop', chain: { slash: 'backslas
 const TWO_HAND = { light: 'sweep', heavy: 'overhead', chain: { sweep: 'sweepBack' } };
 
 export const WEAPONS: Record<WeaponId, WeaponDef> = {
-  cleaver: { id: 'cleaver', name: 'Meat Cleaver', style: 'oneHand', edge: 'blade', length: 0.36, strikeFrom: 0.12, radius: 0.07, damageMul: 1.25, cut: 0.85, cleave: 0.6, bite: 12, light: 'hack', heavy: 'chop', chain: { hack: 'hack' } },
-  machete: { id: 'machete', name: 'Machete', style: 'oneHand', edge: 'blade', length: 0.6, strikeFrom: 0.14, radius: 0.06, damageMul: 1.2, cut: 0.9, cleave: 0.45, bite: 9, ...ONE_HAND_CUTS },
-  gladius: { id: 'gladius', name: 'Gladius', style: 'oneHand', edge: 'blade', length: 0.64, strikeFrom: 0.14, radius: 0.06, damageMul: 1.3, cut: 0.85, cleave: 0.5, bite: 10, light: 'thrust', heavy: 'slash', chain: { thrust: 'thrust', slash: 'backslash' } },
-  pan: { id: 'pan', name: 'Frying Pan', style: 'oneHand', edge: 'blunt', length: 0.46, strikeFrom: 0.24, radius: 0.11, damageMul: 1.25, cut: 0, cleave: 0, bite: 0, ...ONE_HAND_CUTS },
-  axe: { id: 'axe', name: 'Battle Axe', style: 'twoHand', edge: 'blade', length: 0.98, strikeFrom: 0.45, radius: 0.1, damageMul: 1.6, cut: 1, cleave: 1, bite: 18, ...TWO_HAND },
-  bat: { id: 'bat', name: 'Baseball Bat', style: 'twoHand', edge: 'blunt', length: 0.88, strikeFrom: 0.3, radius: 0.07, damageMul: 1.45, cut: 0, cleave: 0, bite: 0, ...TWO_HAND },
-  chair: { id: 'chair', name: 'Folding Chair', style: 'twoHand', edge: 'blunt', length: 0.66, strikeFrom: 0.2, radius: 0.16, damageMul: 1.35, cut: 0, cleave: 0, bite: 0, ...TWO_HAND },
-  club: { id: 'club', name: 'Spiked Club', style: 'twoHand', edge: 'blunt', length: 1.0, strikeFrom: 0.35, radius: 0.11, damageMul: 1.6, cut: 0.3, cleave: 0, bite: 6, ...TWO_HAND },
+  cleaver: { id: 'cleaver', name: 'Meat Cleaver', style: 'oneHand', edge: 'blade', length: 0.36, strikeFrom: 0.12, radius: 0.07, damageMul: 1.25, cut: 0.85, cleave: 0.6, bite: 12, tempo: 0.9, light: 'hack', heavy: 'chop', chain: { hack: 'hack' } },
+  machete: { id: 'machete', name: 'Machete', style: 'oneHand', edge: 'blade', length: 0.6, strikeFrom: 0.14, radius: 0.06, damageMul: 1.2, cut: 0.9, cleave: 0.45, bite: 9, tempo: 1, ...ONE_HAND_CUTS },
+  gladius: { id: 'gladius', name: 'Gladius', style: 'oneHand', edge: 'blade', length: 0.64, strikeFrom: 0.14, radius: 0.06, damageMul: 1.3, cut: 0.85, cleave: 0.5, bite: 10, tempo: 0.95, light: 'thrust', heavy: 'slash', chain: { thrust: 'thrust', slash: 'backslash' } },
+  pan: { id: 'pan', name: 'Frying Pan', style: 'oneHand', edge: 'blunt', length: 0.46, strikeFrom: 0.24, radius: 0.11, damageMul: 1.25, cut: 0, cleave: 0, bite: 0, tempo: 1, ...ONE_HAND_CUTS },
+  axe: { id: 'axe', name: 'Battle Axe', style: 'twoHand', edge: 'blade', length: 0.98, strikeFrom: 0.45, radius: 0.1, damageMul: 1.6, cut: 1, cleave: 1, bite: 18, tempo: 1.15, ...TWO_HAND },
+  bat: { id: 'bat', name: 'Baseball Bat', style: 'twoHand', edge: 'blunt', length: 0.88, strikeFrom: 0.3, radius: 0.07, damageMul: 1.45, cut: 0, cleave: 0, bite: 0, tempo: 1, ...TWO_HAND },
+  chair: { id: 'chair', name: 'Folding Chair', style: 'twoHand', edge: 'blunt', length: 0.66, strikeFrom: 0.2, radius: 0.16, damageMul: 1.35, cut: 0, cleave: 0, bite: 0, tempo: 1.1, ...TWO_HAND },
+  club: { id: 'club', name: 'Spiked Club', style: 'twoHand', edge: 'blunt', length: 1.0, strikeFrom: 0.35, radius: 0.11, damageMul: 1.6, cut: 0.3, cleave: 0, bite: 6, tempo: 1.2, ...TWO_HAND },
 };
 
 

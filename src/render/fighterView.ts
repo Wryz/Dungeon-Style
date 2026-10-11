@@ -76,6 +76,7 @@ export class FighterView {
   readonly bones = {} as Record<BoneName, Group>;
   private readonly mats = {} as Record<BoneName, MeshStandardMaterial[]>;
   private flash = 0;
+  private cuesShown = true;
   readonly shiver = new Vector3();
 
   constructor(readonly palette: Palette) {
@@ -124,9 +125,9 @@ export class FighterView {
     }
     const A = P.addons ?? {};
     const eyeMat = (bone: BoneName) => {
-      const m = new MeshStandardMaterial({ color: A.eyes ?? P.hair, emissive: A.eyes ?? '#000000', emissiveIntensity: A.eyes ? 1.6 : 0, flatShading: true });
-      this.mats[bone].push(m);
-      return m;
+      // Kept out of `mats` so hit flashes / cues never overwrite the glow.
+      void bone;
+      return new MeshStandardMaterial({ color: A.eyes ?? P.hair, emissive: A.eyes ?? '#000000', emissiveIntensity: A.eyes ? 1.6 : 0, flatShading: true });
     };
     const addMesh = (bone: BoneName, geo: BufferGeometry, mat: MeshStandardMaterial, pos: [number, number, number], rot?: [number, number, number]) => {
       const mesh = new Mesh(geo, mat);
@@ -405,8 +406,16 @@ export class FighterView {
    * Per-frame emissive cues: white hit flash, red telegraph on the attacking limb,
    * gold fists while a counter window is open.
    */
-  updateCues(dt: number, f: Fighter) {
+  updateCues(dt: number, f: Fighter, enabled = true) {
     this.flash = Math.max(0, this.flash - dt * 9);
+    if (!enabled) {
+      if (this.cuesShown) {
+        for (const b of BONES) for (const m of this.mats[b]) m.emissive.setRGB(0, 0, 0);
+        this.cuesShown = false;
+      }
+      return;
+    }
+    this.cuesShown = true;
     let tele = 0;
     let teleBones: BoneName[] = [];
     let armored = false;

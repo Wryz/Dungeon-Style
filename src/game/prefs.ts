@@ -1,10 +1,12 @@
 /** Player preferences (separate from progress saves). */
 export interface Prefs {
   blood: boolean;
+  /** Game-style readability cues (hit flashes, telegraph rings, glowing limbs, popups). */
+  cues: boolean;
 }
 
 const KEY = 'brawler.prefs.v1';
-export const DEFAULT_PREFS: Prefs = { blood: true };
+export const DEFAULT_PREFS: Prefs = { blood: true, cues: false };
 
 export function loadPrefs(): Prefs {
   try {

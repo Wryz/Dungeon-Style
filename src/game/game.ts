@@ -15,7 +15,7 @@ import { THEMES, type ThemeDef, type ThemeId } from '../arena/themes';
 import { ThemeView } from '../arena/themeView';
 import { GROUP_ENV, groups, Ragdoll } from '../body/ragdoll';
 import { BONES } from '../body/skeleton';
-import { Sfx } from '../feel/audio';
+import { Sfx, type Surface } from '../feel/audio';
 import { Input } from '../input/input';
 import { CAMERA_TUNING, CameraRig } from '../render/cameraRig';
 import { Blood } from '../render/blood';
@@ -54,6 +54,8 @@ export const GAME_TUNING = {
 };
 
 const TIME_SCALES = [1, 0.5, 0.25, 0.1];
+/** What each arena's floor is, for footsteps. */
+const FLOOR: Record<ThemeId, Surface> = { ring: 'canvas', street: 'asphalt', grocery: 'tile', colosseum: 'sand' };
 const PLAYER_BASE: FighterStats = { ...DEFAULT_STATS, maxHp: 100, walkSpeed: 2.6 };
 /** Enemies stand still for this long while the round is announced (real seconds). */
 const INTRO_HOLD = 1.6;
@@ -291,7 +293,7 @@ export class Game {
     this.enemies.push(fighter);
     this.enemyKind.set(fighter, kind);
     if (fx) {
-      this.effects.ring(fighter.pos, 1.2 * fighter.scale, '#ff5040', 0.6);
+      if (this.cues) this.effects.ring(fighter.pos, 1.2 * fighter.scale, '#ff5040', 0.6);
       this.effects.dust(fighter.pos, 14, 0.6 * fighter.scale);
     }
     return fighter;
@@ -395,6 +397,7 @@ export class Game {
     this.themeView?.dispose();
     this.themeView = new ThemeView(this.scene, def, (Date.now() & 0xffff) + this.round * 131);
     this.scene.background = this.themeView.background;
+    this.sfx.setAmbience(def.id);
     this.sim.walkable = new ArenaWalkable(def.shape, def.obstacles);
 
     if (this.envBody) this.world.removeRigidBody(this.envBody);
@@ -628,6 +631,11 @@ export class Game {
     this.cine.resize(w / h);
   }
 
+  /** Game-style readability cues on? (Off by default: realistic presentation.) */
+  get cues() {
+    return this.settings.prefs.cues;
+  }
+
   /** The camera the frame is seen through (a cut, or the gameplay camera). */
   get viewCamera() {
     return this.cine.active ? this.cine.camera : this.camRig.camera;
@@ -857,6 +865,7 @@ export class Game {
 
     const events = this.sim.step();
     for (const e of events) this.handleEvent(e);
+    this.footsteps();
     if (this.mode === 'gauntlet') this.updateGauntlet();
 
     for (const [f, rd] of this.ragdolls) {
@@ -891,10 +900,25 @@ export class Game {
         this.hitstopVictim = e.defender;
         this.camRig.addTrauma(m.shake * (e.counter ? 1.3 : 1) * (e.ko ? 1.6 : 1) * (big ? 1.6 : 1));
         if (heavy || e.counter || big) this.camRig.zoomPunch(1);
-        this.sfx.hit(m.weight, e.counter);
+        // What it sounds like depends on what hit what.
+        const w = e.weapon;
+        if (w?.edge === 'blade') {
+          if (w.id === 'axe') this.sfx.impact('axe', heavy);
+        }
+        else if (w) this.sfx.impact(w.id === 'pan' ? 'pan' : w.id === 'chair' ? 'metal' : 'wood', heavy);
+        else if (m.weapon) this.sfx.impact('wood', false); // caught with the haft
+        else this.sfx.flesh(e.zone === 'head', m.weight);
+        if (e.damage >= 9) this.sfx.grunt(e.defender.scale);
+        this.sfx.crowd(e.ko ? 1 : e.sever ? 0.9 : e.knockdown ? 0.6 : e.damage >= 12 ? 0.35 : 0);
         const col = e.armored ? '#ff9a3c' : e.counter ? '#ffd36b' : '#fff0c8';
-        this.effects.flash(e.point, heavy ? 0.42 : 0.26, e.counter ? '#ffd36b' : '#fff3d6');
-        this.effects.sparks(e.point, e.dir, heavy ? 22 : 12, col, heavy ? 6.5 : 4.5);
+        if (this.cues) {
+          this.effects.flash(e.point, heavy ? 0.42 : 0.26, e.counter ? '#ffd36b' : '#fff3d6');
+          this.effects.sparks(e.point, e.dir, heavy ? 22 : 12, col, heavy ? 6.5 : 4.5);
+        } else if (!e.weapon || e.weapon.edge === 'blunt') {
+          // Real impacts don't spark: sweat flies off a face or body that gets hit.
+          const head = e.zone === 'head';
+          this.effects.sparks(e.point, e.dir.clone().setY(head ? 0.35 : 0.1), (head ? 10 : 5) * (heavy ? 1.6 : 1), '#dbe6ee', head ? 2.6 : 1.6, 0.016);
+        }
         const rd = this.ragdolls.get(e.defender);
         rd?.applyHit(e.zone, e.point, e.dir, m, (e.armored ? 0.4 : 1) * Math.min(1.8, e.attacker.scale / e.defender.scale));
         if (e.knockdown || e.ko) {
@@ -902,7 +926,7 @@ export class Game {
           rd?.launch(e.dir.clone().multiplyScalar((m.knockback * 0.9 + (e.ko ? 1 : 0)) * k).add(new Vector3(0, 1.2 + (m.lift ?? 0) * 3, 0)));
           this.sfx.knockdown();
         }
-        this.views.get(e.defender)?.hitFlash();
+        if (this.cues) this.views.get(e.defender)?.hitFlash();
         this.bleed(e.defender, e.zone, m, e.damage, e.counter, e.dir);
         if (e.weapon?.edge === 'blade') {
           this.sfx.slice(heavy);
@@ -915,9 +939,11 @@ export class Game {
           const at = e.point.clone();
           this.cut({ focus: () => at, side: this.across(e.attacker.pos, e.defender.pos, 0.3), distance: 2.3 * Math.max(1, e.defender.scale * 0.8), height: 0.25, orbit: 0.3, fov: 38, duration: 0.8, slow: 0.22, priority: 1 });
         }
-        if (byPlayer && e.combo >= 2) this.hud.showCombo(e.combo);
-        if (byPlayer && e.counter) this.hud.popup('COUNTER', e.point, this.viewCamera, 'counter');
-        if (byPlayer && e.armored) this.hud.popup('ARMORED', e.point, this.viewCamera, 'armor');
+        if (this.cues) {
+          if (byPlayer && e.combo >= 2) this.hud.showCombo(e.combo);
+          if (byPlayer && e.counter) this.hud.popup('COUNTER', e.point, this.viewCamera, 'counter');
+          if (byPlayer && e.armored) this.hud.popup('ARMORED', e.point, this.viewCamera, 'armor');
+        }
         if (e.ko) this.onKO(e.defender);
         break;
       }
@@ -926,17 +952,19 @@ export class Game {
         this.hitstopVictim = e.defender;
         this.camRig.addTrauma(e.guardBreak ? 0.35 : 0.1);
         this.sfx.block(e.move.weight === 'heavy');
-        this.effects.sparks(e.point, e.dir, e.guardBreak ? 18 : 8, '#8fd0ff', 3.5, 0.03);
-        this.effects.flash(e.point, 0.2, '#9fd8ff');
+        if (this.cues) {
+          this.effects.sparks(e.point, e.dir, e.guardBreak ? 18 : 8, '#8fd0ff', 3.5, 0.03);
+          this.effects.flash(e.point, 0.2, '#9fd8ff');
+        } else this.effects.sparks(e.point, e.dir, e.guardBreak ? 8 : 4, '#dbe6ee', 1.5, 0.014);
         this.ragdolls.get(e.defender)?.applyBlock(e.dir, e.move);
-        if (e.guardBreak) this.hud.popup('GUARD BREAK', e.point, this.viewCamera, 'armor');
+        if (e.guardBreak && this.cues) this.hud.popup('GUARD BREAK', e.point, this.viewCamera, 'armor');
         break;
       }
       case 'dodge': {
         this.sfx.dodge();
         if (e.defender === this.player && e.kind !== 'airborne') {
           this.sfx.counterReady();
-          this.effects.ring(this.player.pos, 0.9, '#ffd36b', 0.45, () => this.player.pos);
+          if (this.cues) this.effects.ring(this.player.pos, 0.9, '#ffd36b', 0.45, () => this.player.pos);
         }
         break;
       }
@@ -945,6 +973,7 @@ export class Game {
         break;
       case 'swing':
         this.sfx.whoosh(e.move.weight);
+        this.sfx.exhale(e.move.weight !== 'light', e.f.scale);
         if (e.move.id === 'slideKick' || e.move.id === 'flyingKick') this.effects.dust(e.f.pos, 8, 0.4);
         break;
       case 'getup':
@@ -952,20 +981,37 @@ export class Game {
         break;
       case 'pickup':
         this.sfx.clank(true);
-        this.effects.ring(e.drop.pos, 0.6, '#ffd36b', 0.35);
-        if (e.f === this.player) this.hud.popup(e.drop.weapon.name.toUpperCase(), new Vector3(e.f.pos.x, 2.1, e.f.pos.z), this.camRig.camera, 'counter');
+        if (this.cues) {
+          this.effects.ring(e.drop.pos, 0.6, '#ffd36b', 0.35);
+          if (e.f === this.player) this.hud.popup(e.drop.weapon.name.toUpperCase(), new Vector3(e.f.pos.x, 2.1, e.f.pos.z), this.viewCamera, 'counter');
+        }
         this.syncDropViews();
         break;
       case 'drop':
         this.sfx.clank(false);
         this.syncDropViews();
         break;
+      case 'bump':
+        this.sfx.bump();
+        break;
       case 'bleedout':
-        this.hud.popup('BLED OUT', new Vector3(e.f.pos.x, 1.6, e.f.pos.z), this.viewCamera, 'armor');
+        if (this.cues) this.hud.popup('BLED OUT', new Vector3(e.f.pos.x, 1.6, e.f.pos.z), this.viewCamera, 'armor');
         this.onKO(e.f);
         break;
       default:
         break;
+    }
+  }
+
+  /** Feet that landed this step, on whatever the floor is made of. */
+  private footsteps() {
+    const surface = FLOOR[this.theme.id];
+    for (const f of this.sim.fighters) {
+      const landed = f.footwork.landed;
+      if (!landed.length) continue;
+      const speed = Math.hypot(f.walkVel.x, f.walkVel.z) / f.scale;
+      for (let i = 0; i < landed.length; i++) this.sfx.footstep(surface, Math.min(1, speed / 3.8), f.scale);
+      landed.length = 0;
     }
   }
 
@@ -995,7 +1041,7 @@ export class Game {
       priority: 3,
     });
     const label = bone === 'head' ? 'DECAPITATED' : bone.startsWith('thigh') || bone.startsWith('shin') ? 'LEG OFF' : 'ARM OFF';
-    this.hud.popup(label, point, this.viewCamera, 'armor');
+    if (this.cues) this.hud.popup(label, point, this.viewCamera, 'armor');
   }
 
   /** Accumulate trauma and spill blood where it makes sense (mouth, nose, brow). */
@@ -1062,14 +1108,14 @@ export class Game {
       const rd = this.ragdolls.get(f);
       if (rd) view.syncFromRagdoll(rd, alpha);
       else view.syncFromRig(f);
-      view.updateCues(realDt, f);
+      view.updateCues(realDt, f, this.cues);
     }
 
     // Telegraph ring when an enemy starts winding up.
     for (const e of this.enemies) {
       if (e.state === 'attack' && e.move && e.attackSerial !== this.telegraphed.get(e)) {
         this.telegraphed.set(e, e.attackSerial);
-        this.effects.ring(e.pos, 0.85 * e.scale, e.move.armor ? '#ff7a20' : '#ff3828', (e.move.startup / 60) * 1.1, () => e.pos);
+        if (this.cues) this.effects.ring(e.pos, 0.85 * e.scale, e.move.armor ? '#ff7a20' : '#ff3828', (e.move.startup / 60) * 1.1, () => e.pos);
       }
     }
 

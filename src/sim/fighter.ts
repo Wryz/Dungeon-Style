@@ -139,6 +139,9 @@ export class Fighter {
   private readonly impactPose = makePose();
   /** Head / chest pitch toward the opponent's face (smoothed; + = looking down). */
   private lookPitch = 0;
+  /** Lean into a turn while running (smoothed roll; + = leaning right). */
+  private bank = 0;
+  private turnRate = 0;
   attackSerial = 0;
   hitThisAttack = false;
   /** The attack was a counter (thrown from a counter window). */
@@ -333,6 +336,10 @@ export class Fighter {
 
   /** @param aimId force a specific aim (tests, scripted moves); otherwise one is picked. */
   startMove(move: MoveDef, isCounter = false, aimId?: string) {
+    // Timing fits the body and the tool: big bodies move their limbs slower (like a
+    // longer pendulum), small ones quicker; heavy weapons take longer to bring round.
+    const tempo = Math.sqrt(this.scale) * (move.weapon && this.weapon ? this.weapon.tempo : 1);
+    move = timed(move, tempo);
     this.setState('attack');
     this.move = move;
     this.attackEnd = 0;
@@ -349,7 +356,7 @@ export class Fighter {
     const jitter: [number, number, number] = aimId ? [0, 0, 0] : [this.rng.range(-0.04, 0.04), this.rng.range(-0.035, 0.035), 0];
     // Fit the strike to the opponent in front of us: up for a giant, down for a small one.
     const dy = Math.max(-0.75, Math.min(0.45, this.heightGap(move, this.aim)));
-    this.anim.play(moveKeys(move, this.aim, jitter, dy, this.reachFit(move)));
+    this.anim.play(moveKeys(move, this.aim, jitter, dy, this.reachFit(move), this.weaponFit(move, this.aim)));
   }
 
   private pickAim(move: MoveDef, aimId?: string): Aim | null {
@@ -367,6 +374,30 @@ export class Fighter {
         return [a, a.weight * (covering && (a.height === 'mid' || a.height === 'low') ? 3 : 1) * Math.exp(-miss * 5)];
       }),
     );
+  }
+
+  /**
+   * Where a weapon strike should land (fighter-local, unscaled, after the lunge): the
+   * aimed part of the target, at the front of their body.
+   */
+  private weaponFit(move: MoveDef, aim: Aim | null): WeaponFit | null {
+    const t = this.target;
+    const w = this.weapon;
+    if (!t || !t.alive || !w || !move.weapon) return null;
+    const lunge = (move.lunge?.distance ?? 0) * this.scale;
+    const stop = (0.74 * (this.scale + t.scale)) / 2;
+    const ahead = Math.max(stop, this.distanceTo(t) - lunge) - 0.1 * t.scale;
+    // Side offset of the target relative to our facing.
+    const fx = Math.sin(this.yaw);
+    const fz = Math.cos(this.yaw);
+    const ox = t.pos.x - this.pos.x;
+    const oz = t.pos.z - this.pos.z;
+    const side = (ox * fz - oz * fx) / Math.max(0.01, Math.hypot(ox, oz));
+    const h = targetHeight(t, aim?.height ?? move.height);
+    return {
+      target: [side * ahead * 0.5 / this.scale, h / this.scale, ahead / this.scale],
+      strikeAt: Math.max(w.strikeFrom + 0.06, w.length - (w.edge === 'blade' && w.style === 'twoHand' ? 0.14 : 0.08)),
+    };
   }
 
   /**
@@ -493,6 +524,7 @@ export class Fighter {
    */
   updatePose(speed: number, localDirX: number, localDirZ: number, turnRate = 0) {
     this.breath += 1 / 60;
+    this.turnRate = turnRate;
     const speedFrac = clamp(speed / Math.max(0.1, this.stats.walkSpeed), 0, 1);
     const want = clamp((speed + Math.abs(turnRate) * 20) / Math.max(0.1, this.stats.walkSpeed * 0.6), 0, 1);
     this.moveBlend += (want - this.moveBlend) * 0.25;
@@ -590,6 +622,9 @@ export class Fighter {
       want = Math.max(-0.55, Math.min(0.5, -Math.atan2(up, Math.max(0.4, this.distanceTo(t))) * 0.9));
     }
     this.lookPitch += (want - this.lookPitch) * 0.1;
+    // Runners lean into a turn (turning left: lean left), like a cyclist.
+    const lean = Math.max(-0.28, Math.min(0.28, -this.turnRate * 7)) * this.footwork.run * this.motion.gait;
+    this.bank += (lean - this.bank) * 0.15;
     const m = this.moveBlend;
     const M = this.motion;
     // 0 = fighting stance, 1 = walking like a person (square hips, arm swing, hands down).
@@ -640,7 +675,7 @@ export class Fighter {
       // Bladed stance → square hips when walking; the chest counter-rotates with the arm swing.
       pelvis: [0, -0.3 * f + swing * 0.25 * (1 - run) + pump * 0.16 * run, 0],
       // Running leans the whole body into the stride.
-      abdomen: [(0.1 + M.lean) * f + 0.04 * g + 0.13 * run + fwd * 0.05 * m + back * 0.03 * m, 0, -dx * 0.05 * m * f],
+      abdomen: [(0.1 + M.lean) * f + 0.04 * g + 0.13 * run + fwd * 0.05 * m + back * 0.03 * m, 0, -dx * 0.05 * m * f + this.bank],
       chest: [0.08 * f + 0.02 * g + 0.04 * run + this.lookPitch * 0.25 + Math.sin(this.breath * 2.2) * 0.01, -0.1 * f - swing * 0.45 * (1 - run) - pump * 0.3 * run, 0],
       head: [-0.04 * f - 0.15 * run + this.lookPitch, 0.4 * f, 0],
       handL: { at: mix(guardL.at, relaxedL), hint: mix(guardL.hint ?? [0.35, -1, 0], hintL) },
@@ -654,6 +689,30 @@ export class Fighter {
     this.idle.apply(spec, (1 - m * 0.7) * f);
     return resolvePose(spec, this.locoPose);
   }
+}
+
+const _timed = new Map<string, MoveDef>();
+
+/** A move with its frame data stretched (>1 slower) — cached per move and tempo. */
+export function timed(m: MoveDef, tempo: number): MoveDef {
+  if (Math.abs(tempo - 1) < 0.03) return m;
+  const key = `${m.id}@${tempo.toFixed(2)}`;
+  let t = _timed.get(key);
+  if (!t) {
+    const f = (n: number) => Math.round(n * tempo);
+    t = {
+      ...m,
+      startup: Math.max(3, f(m.startup)),
+      active: Math.max(2, f(m.active)),
+      recovery: Math.max(4, f(m.recovery)),
+      lunge: m.lunge && { ...m.lunge, from: f(m.lunge.from), to: Math.max(f(m.lunge.from) + 1, f(m.lunge.to)) },
+      armor: m.armor && [f(m.armor[0]), f(m.armor[1])],
+      evades: m.evades && { ...m.evades, from: f(m.evades.from), to: f(m.evades.to) },
+      cancel: m.cancel && { ...m.cancel, from: f(m.cancel.from), to: f(m.cancel.to) },
+    };
+    _timed.set(key, t);
+  }
+  return t;
 }
 
 const _localRig = makeRig();
@@ -696,7 +755,18 @@ const addV = (a: V3 | undefined, b: V3 | undefined): V3 | undefined =>
  * the body rises and looks up at a big opponent, or bends the knees, leans in and looks
  * down at a small one.
  */
-export function moveKeys(m: MoveDef, aim: Aim | null = null, jitter: V3 = [0, 0, 0], dy = 0, reachZ = Infinity): TrackKey[] {
+/** Where the weapon should land: target point (fighter-local, unscaled) and the
+ * distance along the weapon of the part that should hit it. */
+export interface WeaponFit {
+  target: V3;
+  strikeAt: number;
+}
+
+/** Rear shoulder (fighter-local) and how far the rear fist reaches from it. */
+const REAR_SHOULDER: V3 = [-0.2, 1.43, 0.12];
+const ARM_REACH = 0.58;
+
+export function moveKeys(m: MoveDef, aim: Aim | null = null, jitter: V3 = [0, 0, 0], dy = 0, reachZ = Infinity, wfit: WeaponFit | null = null): TrackKey[] {
   const scatter = jitter[0] !== 0 || jitter[1] !== 0 || jitter[2] !== 0;
   return m.keys.map((k) => {
     let pose = getPose(k.pose);
@@ -705,7 +775,10 @@ export function moveKeys(m: MoveDef, aim: Aim | null = null, jitter: V3 = [0, 0,
     const share = active ? 1 : k.at[0] === 's' ? 0.5 : 0;
     const authored = (POSE_SPECS[k.pose] as PoseSpec)[m.limb]?.at;
     const short = k.at[0] !== 'r' && !!authored && authored[2] > reachZ;
-    const fit = (dy !== 0 && share > 0) || short;
+    // Weapon contact: point the weapon's striking part at the target.
+    const contact = !!wfit && m.weapon && k.at[0] === 'a' && k.at[1] === 0;
+    if (wfit && m.weapon) dy = 0;
+    const fit = (dy !== 0 && share > 0) || short || contact;
     if ((active && (aim?.offset || aim?.add || scatter)) || fit) {
       const spec: PoseSpec = { ...POSE_SPECS[k.pose] };
       const limb = spec[m.limb];
@@ -721,6 +794,38 @@ export function moveKeys(m: MoveDef, aim: Aim | null = null, jitter: V3 = [0, 0,
           const d = aim?.add?.[part];
           if (d) spec[part] = addV(spec[part], d);
         }
+      }
+      if (contact && wfit && limb) {
+        const T = wfit.target;
+        const P = spec[m.limb]!.at;
+        // Line from the authored hands to the target; slide the hands along it so the
+        // striking part (not the haft) is what arrives — within the arm's reach.
+        let dx = T[0] - P[0];
+        let dyy = T[1] - P[1];
+        let dz = T[2] - P[2];
+        let len = Math.hypot(dx, dyy, dz) || 1;
+        let hand: V3 = [T[0] - (dx / len) * wfit.strikeAt, T[1] - (dyy / len) * wfit.strikeAt, T[2] - (dz / len) * wfit.strikeAt];
+        // Keep the hands out in front of the body and within reach of the shoulder.
+        hand[2] = Math.max(0.2, hand[2]);
+        const S = REAR_SHOULDER;
+        const sx = hand[0] - S[0];
+        const sy = hand[1] - S[1];
+        const sz = hand[2] - S[2];
+        const sl = Math.hypot(sx, sy, sz);
+        if (sl > ARM_REACH) hand = [S[0] + (sx / sl) * ARM_REACH, S[1] + (sy / sl) * ARM_REACH, S[2] + (sz / sl) * ARM_REACH];
+        dx = T[0] - hand[0];
+        dyy = T[1] - hand[1];
+        dz = T[2] - hand[2];
+        len = Math.hypot(dx, dyy, dz) || 1;
+        spec[m.limb] = { at: hand, hint: spec[m.limb]!.hint };
+        spec.blade = [dx / len, dyy / len, dz / len];
+        // Body follows the aim: fold in to strike low, open up to strike high.
+        const low = Math.max(-0.6, Math.min(0.4, T[1] - 1.45));
+        if (low < 0) {
+          spec.root = addV(spec.root, [0, Math.max(-0.18, low * 0.3), 0]);
+          spec.abdomen = addV(spec.abdomen, [Math.min(0.35, -low * 0.45), 0, 0]);
+        } else spec.chest = addV(spec.chest, [-low * 0.3, 0, 0]);
+        spec.head = addV(spec.head, [-low * 0.5, 0, 0]);
       }
       if (dy !== 0 && share > 0) {
         const u = dy * share;

@@ -56,8 +56,22 @@ demons and giant bosses.
   from the side, following them down), huge hits (a quick punch-in), your death (from
   above, colour draining, red vignette), the win (you, arms up, from just below) and
   each boss's entrance (a low angle looking up at the giant).
+- **Real timing and reactions:** heavy weapons are slower to bring round, giants move
+  their limbs slower (like a longer pendulum) and small creatures quicker. A straight
+  snaps the head back, a hook whips it round away from the blow, an uppercut throws the
+  chin up, a body shot folds you, a liver shot caves in the right side. Armed fighters
+  keep their weapon's distance — crowded, they back out or push you off with a teep —
+  and every weapon blow is aimed so the edge / head lands, not the haft.
+- **Sound:** footsteps that match the floor (canvas, asphalt, tile, sand; giants thud),
+  fighters exhale on every strike and grunt when a big one lands, punches slap the face
+  and thud into the body, a bat knocks, a pan rings, a chair clatters, an axe chops.
+  Each arena has its own ambience — a murmuring crowd that roars at knockdowns and
+  severed limbs, traffic on the street, fridges humming in the store. All procedural.
+- **Presentation:** no game-style sparks on flesh — sweat flies off a face that gets
+  hit. Hit flashes, telegraph rings, glowing limbs and popups are optional
+  (Settings → Combat cues, off by default).
 - **Movement:** in a fight, boxer footwork; out of range, a real run (~3.8 m/s) with a
-  clocked stride, flight phase, forward lean and pumping arms.
+  clocked stride, flight phase, forward lean, pumping arms and a lean into turns.
 - **Tutorial:** the first visit is a warm-up in the ring against a sparring partner —
   punches, a combo, automatic defense, countering, kicks — with few-word prompts.
 

@@ -423,6 +423,49 @@ export const POSE_SPECS = {
     handR: { at: [-0.3, 1.22, 0.0] },
     footL: { at: [0.13, A, 0.2] },
   },
+  // Hook / side blow landing on the right of the face: head whips round to the left,
+  // shoulders follow, weight thrown onto the left foot, guard knocked open.
+  hitHookL: {
+    ...GUARD,
+    root: [0.07, 0.87, -0.03],
+    pelvis: [0, -0.15, 0],
+    abdomen: [-0.05, 0.15, 0.12],
+    chest: [-0.05, 0.3, 0.1],
+    head: [-0.2, 0.75, 0.3],
+    handL: { at: [0.38, 1.32, 0.05], hint: [0.6, -1, -0.3] },
+    handR: { at: [-0.12, 1.28, 0.2], hint: [-0.5, -1, 0] },
+  },
+  // Mirror: blow on the left of the face, head whips round to the right.
+  hitHookR: {
+    ...GUARD,
+    root: [-0.07, 0.87, -0.03],
+    pelvis: [0, -0.45, 0],
+    abdomen: [-0.05, -0.15, -0.12],
+    chest: [-0.05, -0.45, -0.1],
+    head: [-0.2, 0.0, -0.3],
+    handL: { at: [0.12, 1.3, 0.25], hint: [0.5, -1, 0] },
+    handR: { at: [-0.38, 1.3, -0.02], hint: [-0.6, -1, -0.3] },
+  },
+  // Uppercut: chin snapped up, head and chest thrown back, heels lift.
+  hitUpper: {
+    ...GUARD,
+    root: [0, 0.92, -0.06],
+    abdomen: [-0.2, 0, 0],
+    chest: [-0.25, -0.1, 0],
+    head: [-0.85, 0.35, 0],
+    handL: { at: [0.3, 1.4, 0.12], hint: [0.6, -1, 0] },
+    handR: { at: [-0.28, 1.35, 0.05], hint: [-0.6, -1, 0] },
+  },
+  // Liver shot: the right side caves in, knees dip, the right elbow clamps to the ribs.
+  hitLiver: {
+    ...GUARD,
+    root: [-0.04, 0.76, -0.04],
+    abdomen: [0.4, 0, -0.3],
+    chest: [0.25, -0.15, -0.15],
+    head: [-0.1, 0.25, -0.15],
+    handL: { at: [0.18, 1.2, 0.25], hint: [0.5, -1, 0] },
+    handR: { at: [-0.14, 0.98, 0.08], hint: [-0.3, -1, -0.2] },
+  },
   hitBody: {
     ...GUARD,
     root: [0, 0.8, -0.06],

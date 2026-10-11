@@ -86,6 +86,8 @@ export class Footwork {
   readonly R = makeFoot('R');
   /** Total steps taken (useful for tests / debugging). */
   steps = 0;
+  /** Feet that touched down since the game last read this (footstep sounds). */
+  readonly landed: Side[] = [];
   firstStepper: Side | null = null;
   private lastStepper: Side | null = null;
   /** Live multipliers from the contextual motion profile. */
@@ -175,6 +177,7 @@ export class Footwork {
         f.stepping = false;
         f.pos.copy(f.to);
         errors[f.side] = 0;
+        if (this.landed.length < 4) this.landed.push(f.side);
       }
     }
 
