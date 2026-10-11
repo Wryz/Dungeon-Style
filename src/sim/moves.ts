@@ -8,6 +8,14 @@ export type Limb = 'handL' | 'handR' | 'footL' | 'footR';
 export type StrikeKind = 'straight' | 'hook' | 'uppercut' | 'kick' | 'sweep';
 export type Weight = 'light' | 'medium' | 'heavy';
 
+/** How far round (0..1 of the whole turn) a spin has got by `frame`. */
+export function spinProgress(sp: NonNullable<MoveDef['spin']>, frame: number): number {
+  const ease = (u: number) => u * u * (3 - 2 * u);
+  const seg = (a: number, b: number) => Math.min(1, Math.max(0, (frame - a) / Math.max(1, b - a)));
+  if (!sp.hold) return ease(seg(sp.from, sp.to));
+  return 0.5 * ease(seg(sp.from, sp.hold[0])) + 0.5 * ease(seg(sp.hold[1], sp.to));
+}
+
 /** Keyframe time marker: [phase, fraction] where phase is startup/active/recovery. */
 export type Marker = ['s' | 'a' | 'r', number];
 
@@ -68,6 +76,26 @@ export interface MoveDef {
   armor?: [number, number];
   /** Airborne/low-profile frames that make low/high attacks whiff (relative to move start). */
   evades?: { from: number; to: number; heights: Height[] };
+  /**
+   * Off the ground for frames [from, to): a real jump. How high follows from how long
+   * (apex = g·t²/8 — no hanging in the air), the horizontal speed is fixed at take-off
+   * (no steering in mid-air), and the body turns at a constant rate: `flip` radians of
+   * somersault (+ forward, − backward) about the centre of mass.
+   */
+  air?: { from: number; to: number; flip?: number };
+  /**
+   * The whole body turns through `turns` revolutions over frames [from, to), easing in
+   * and out — stopping dead over `hold` (half the turn either side), as a spinning back
+   * kick stops turning while the leg drives out.
+   */
+  spin?: { from: number; to: number; turns: number; hold?: [number, number] };
+  /**
+   * Lets go at frame `release`: the weapon in hand (or one from the belt: `ammo`)
+   * flies at `speed` m/s, turning end over end at about `spin` rev/s (0 = point first).
+   */
+  throw?: { release: number; speed: number; spin: number; ammo?: boolean };
+  /** Strikes nothing itself (an evasive flip; a throw — the weapon does the hitting). */
+  noHit?: boolean;
   blockable: boolean;
   /**
    * 'upper': hands-only strike; while moving, the legs keep walking underneath and the
@@ -380,6 +408,202 @@ export const ENEMY_MOVES: Record<string, MoveDef> = {
 
 // Haymaker thrown as the second hit of a string: shorter wind-up.
 ENEMY_MOVES.hookChain = { ...ENEMY_MOVES.hook, id: 'hookChain', startup: 17, armor: [4, 17], lunge: { from: 6, to: 19, distance: 0.35 } };
+
+// ---- Fighting styles: each opponent's own techniques -----------------------
+const ALL_HEIGHTS: Height[] = ['high', 'mid', 'low'];
+Object.assign(ENEMY_MOVES, {
+  // The rookie's wild one: wound up from miles back, looping in, carrying him past.
+  haymaker: {
+    id: 'haymaker', name: 'Haymaker',
+    startup: 24, active: 4, recovery: 28,
+    limb: 'handR', height: 'high', kind: 'hook', weight: 'heavy',
+    damage: 12, guardDamage: 22, poiseDamage: 45, hitstun: 28, blockstun: 16,
+    knockback: 2.2, impulse: 28, hitstop: 9, shake: 0.4, radius: 0.12, reach: 1.45,
+    lunge: { from: 10, to: 26, distance: 0.35 },
+    blockable: true,
+    aims: [HEAD],
+    keys: [
+      { at: ['s', 0.55], pose: 'haymakerWind', ease: 'inOut' },
+      { at: ['a', 0], pose: 'haymakerExt', ease: 'inOut' },
+      { at: ['a', 1], pose: 'haymakerFollow', ease: 'out' },
+      { at: ['r', 0.65], pose: 'guard', ease: 'inOut' },
+    ],
+  },
+  // The champion's superman punch: a hop off the rear knee closes the distance in the air.
+  superman: {
+    id: 'superman', name: 'Superman Punch',
+    startup: 20, active: 4, recovery: 20,
+    limb: 'handR', height: 'high', kind: 'straight', weight: 'heavy',
+    damage: 13, guardDamage: 20, poiseDamage: 50, hitstun: 28, blockstun: 14,
+    knockback: 2.4, impulse: 30, hitstop: 10, shake: 0.42, radius: 0.12, reach: 2.4,
+    lunge: { from: 8, to: 22, distance: 1.1 },
+    air: { from: 8, to: 22 },
+    blockable: true,
+    aims: [HEAD],
+    keys: [
+      { at: ['s', 0.3], pose: 'smChamber', ease: 'inOut' },
+      { at: ['s', 0.7], pose: 'smAir', ease: 'out' },
+      { at: ['a', 0], pose: 'smExt', ease: 'inOut' },
+      { at: ['a', 1], pose: 'smExt' },
+      { at: ['r', 0.4], pose: 'crossExt', ease: 'in' },
+      { at: ['r', 1], pose: 'guard', ease: 'inOut' },
+    ],
+  },
+  jumpKick: {
+    id: 'jumpKick', name: 'Jumping Front Kick',
+    startup: 20, active: 5, recovery: 22,
+    limb: 'footL', height: 'mid', kind: 'kick', weight: 'heavy',
+    damage: 12, guardDamage: 26, poiseDamage: 70, hitstun: 28, blockstun: 16,
+    knockback: 3.0, impulse: 34, lift: 0.2, hitstop: 10, shake: 0.5, radius: 0.17, reach: 2.3,
+    lunge: { from: 6, to: 30, distance: 1.2 },
+    air: { from: 6, to: 30 },
+    blockable: true,
+    aims: [{ id: 'chest', weight: 3 }, { id: 'head', weight: 1, offset: [0, 0.22, 0], height: 'high' }],
+    keys: [
+      { at: ['s', 0.3], pose: 'flyCrouch', ease: 'out' },
+      { at: ['s', 0.65], pose: 'jkAir', ease: 'out' },
+      { at: ['a', 0], pose: 'jkExt', ease: 'inOut' },
+      { at: ['a', 1], pose: 'jkExt' },
+      { at: ['r', 0.35], pose: 'flyLand', ease: 'in' },
+      { at: ['r', 0.95], pose: 'guard', ease: 'inOut' },
+    ],
+  },
+  // Spinning back kick: the body turns its back on you — and keeps turning, so the rear
+  // leg driving out behind it arrives at you halfway round.
+  spinBackKick: {
+    id: 'spinBackKick', name: 'Spinning Back Kick',
+    startup: 20, active: 4, recovery: 20,
+    limb: 'footR', height: 'mid', kind: 'kick', weight: 'heavy',
+    damage: 15, guardDamage: 30, poiseDamage: 75, hitstun: 30, blockstun: 16,
+    knockback: 3.4, impulse: 38, lift: 0.1, hitstop: 11, shake: 0.55, radius: 0.18, reach: 1.2,
+    lunge: { from: 4, to: 20, distance: 0.35 },
+    spin: { from: 2, to: 40, turns: 1, hold: [18, 25] },
+    blockable: true,
+    keys: [
+      { at: ['s', 0.3], pose: 'sbkTurn', ease: 'inOut' },
+      { at: ['s', 0.55], pose: 'sbkTurn' },
+      { at: ['a', 0], pose: 'sbkExt', ease: 'inOut' },
+      { at: ['a', 1], pose: 'sbkExt' },
+      { at: ['r', 0.5], pose: 'sbkRecover', ease: 'inOut' },
+      { at: ['r', 1], pose: 'guard', ease: 'inOut' },
+    ],
+  },
+  // The bruiser's shoulder charge: a run at you with all his weight behind the shoulder.
+  shoulderCharge: {
+    id: 'shoulderCharge', name: 'Shoulder Charge',
+    startup: 24, active: 6, recovery: 28,
+    limb: 'handL', height: 'mid', kind: 'straight', weight: 'heavy',
+    damage: 12, guardDamage: 40, poiseDamage: 90, hitstun: 30, blockstun: 22,
+    knockback: 4.2, knockdown: true, impulse: 50, lift: 0.15, hitstop: 12, shake: 0.6, radius: 0.2, reach: 3.8,
+    lunge: { from: 6, to: 30, distance: 2.8 },
+    armor: [6, 30],
+    blockable: true,
+    keys: [
+      { at: ['s', 0.25], pose: 'chargeRun', ease: 'inOut' },
+      { at: ['s', 0.9], pose: 'chargeRun' },
+      { at: ['a', 0], pose: 'chargeHit', ease: 'inOut' },
+      { at: ['a', 1], pose: 'chargeHit' },
+      { at: ['r', 0.6], pose: 'guard', ease: 'inOut' },
+    ],
+  },
+  // The demon's pounce: a crouch and a leap from out of reach, both hands raking down.
+  pounce: {
+    id: 'pounce', name: 'Pounce',
+    startup: 34, active: 6, recovery: 24,
+    limb: 'handR', height: 'high', kind: 'straight', weight: 'heavy',
+    damage: 14, guardDamage: 30, poiseDamage: 80, hitstun: 30, blockstun: 18,
+    knockback: 3.2, knockdown: true, impulse: 42, lift: 0.1, hitstop: 12, shake: 0.6, radius: 0.18, reach: 4.25,
+    lunge: { from: 8, to: 38, distance: 3.0 },
+    air: { from: 8, to: 38 },
+    blockable: true,
+    keys: [
+      { at: ['s', 0.2], pose: 'pounceCrouch', ease: 'inOut' },
+      { at: ['s', 0.3], pose: 'pounceCrouch' },
+      { at: ['s', 0.55], pose: 'pounceAir', ease: 'out' },
+      { at: ['a', 0], pose: 'pounceExt', ease: 'inOut' },
+      { at: ['a', 1], pose: 'pounceExt' },
+      { at: ['r', 0.35], pose: 'flyLand', ease: 'in' },
+      { at: ['r', 1], pose: 'guard', ease: 'inOut' },
+    ],
+  },
+  // A giant's stomp: whatever's under that foot when it comes down.
+  stomp: {
+    id: 'stomp', name: 'Stomp',
+    startup: 22, active: 4, recovery: 24,
+    limb: 'footR', height: 'low', kind: 'kick', weight: 'heavy',
+    damage: 13, guardDamage: 30, poiseDamage: 90, hitstun: 30, blockstun: 18,
+    knockback: 2.0, knockdown: true, impulse: 40, lift: 0.05, hitstop: 12, shake: 0.7, radius: 0.2, reach: 1.25,
+    blockable: false,
+    keys: [
+      { at: ['s', 0.6], pose: 'stompRaise', ease: 'inOut' },
+      { at: ['a', 0], pose: 'stompExt', ease: 'in' },
+      { at: ['a', 1], pose: 'stompExt' },
+      { at: ['r', 0.6], pose: 'guard', ease: 'inOut' },
+    ],
+  },
+  // A standing back flip out of trouble: about two-thirds of a second in the air.
+  backflip: {
+    id: 'backflip', name: 'Back Flip',
+    startup: 8, active: 40, recovery: 14,
+    limb: 'footL', height: 'low', kind: 'kick', weight: 'medium',
+    damage: 0, guardDamage: 0, poiseDamage: 0, hitstun: 0, blockstun: 0,
+    knockback: 0, impulse: 0, hitstop: 0, shake: 0, radius: 0, reach: 0,
+    lunge: { from: 8, to: 48, distance: -1.5 },
+    air: { from: 8, to: 48, flip: -Math.PI * 2 },
+    evades: { from: 6, to: 48, heights: ALL_HEIGHTS },
+    blockable: false,
+    noHit: true,
+    keys: [
+      { at: ['s', 0.9], pose: 'bfCrouch', ease: 'inOut' },
+      { at: ['a', 0.05], pose: 'bfLaunch', ease: 'out' },
+      { at: ['a', 0.25], pose: 'tuck', ease: 'out' },
+      { at: ['a', 0.75], pose: 'tuck' },
+      { at: ['a', 1], pose: 'bfOpen', ease: 'inOut' },
+      { at: ['r', 0.45], pose: 'bfLand', ease: 'in' },
+      { at: ['r', 1], pose: 'guard', ease: 'inOut' },
+    ],
+  },
+  // Front flip into a heel drop: coming over the top, the straight leg comes down on you.
+  frontFlipKick: {
+    id: 'frontFlipKick', name: 'Flip Heel Drop',
+    startup: 38, active: 7, recovery: 16,
+    limb: 'footR', height: 'high', kind: 'kick', weight: 'heavy',
+    damage: 14, guardDamage: 30, poiseDamage: 85, hitstun: 30, blockstun: 18,
+    knockback: 2.6, knockdown: true, impulse: 40, hitstop: 12, shake: 0.6, radius: 0.18, reach: 2.85,
+    lunge: { from: 8, to: 46, distance: 1.7 },
+    air: { from: 8, to: 46, flip: Math.PI * 2 },
+    evades: { from: 10, to: 44, heights: ['low'] },
+    blockable: true,
+    keys: [
+      { at: ['s', 0.2], pose: 'bfCrouch', ease: 'inOut' },
+      { at: ['s', 0.3], pose: 'bfLaunch', ease: 'out' },
+      { at: ['s', 0.55], pose: 'tuck', ease: 'out' },
+      { at: ['s', 0.8], pose: 'tuck' },
+      { at: ['a', 0], pose: 'ffOpen', ease: 'inOut' },
+      { at: ['a', 1], pose: 'ffOpen' },
+      { at: ['r', 0.4], pose: 'bfLand', ease: 'in' },
+      { at: ['r', 1], pose: 'guard', ease: 'inOut' },
+    ],
+  },
+  // A knife off the belt with the free hand: quick, and it can be thrown on the move.
+  kunaiThrow: {
+    id: 'kunaiThrow', name: 'Kunai',
+    layer: 'upper',
+    startup: 10, active: 2, recovery: 12,
+    limb: 'handL', height: 'high', kind: 'straight', weight: 'light',
+    damage: 0, guardDamage: 0, poiseDamage: 0, hitstun: 0, blockstun: 0,
+    knockback: 0, impulse: 0, hitstop: 0, shake: 0, radius: 0, reach: 9,
+    throw: { release: 10, speed: 19, spin: 0, ammo: true },
+    blockable: false,
+    noHit: true,
+    keys: [
+      { at: ['s', 0.6], pose: 'kThrowWind', ease: 'inOut' },
+      { at: ['a', 0], pose: 'kThrowRel', ease: 'in' },
+      { at: ['a', 1], pose: 'kThrowRel' },
+      { at: ['r', 0.7], pose: 'guard', ease: 'inOut' },
+    ],
+  },
+} satisfies Record<string, MoveDef>);
 
 // ---- Other archetypes' moves (built from the shared poses) -------------------
 const P = PLAYER_MOVES;

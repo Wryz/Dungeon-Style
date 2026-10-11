@@ -6,7 +6,8 @@ import { type Fighter } from './fighter';
 import { RectWalkable, type Walkable } from '../world/collision';
 import { bodyCapsules, overlap as capsuleOverlap, segDist as segDistance, strikingLimbs } from './bodyShapes';
 import { angleDelta, approachAngle, DT, Rng } from './math';
-import { DEFENSES, type DefenseKind, type Height, type MoveDef, moveLength } from './moves';
+import { aimBallistic, centreOfMass, integrate, type Projectile, projectileDir, projectilePoints, pointVelocity, substeps } from './projectiles';
+import { DEFENSES, type DefenseKind, type Height, type MoveDef, moveLength, spinProgress } from './moves';
 import { chooseDefense, moveContext, selectPlayerMove } from './select';
 import { bladePoints, heft, LIMB_TOUGHNESS, limbBones, sampleOffsets, SEVER_AT, selectWeaponMove, WEAPON_MOVES, type WeaponDef, type Wound } from './weapons';
 
@@ -45,6 +46,8 @@ export type CombatEvent =
       weapon: WeaponDef | null;
       /** How hard it drove the body (mass ratio × what was behind it), see pushScale. */
       push: number;
+      /** Struck by a weapon in flight rather than one in the hand. */
+      thrown: boolean;
       /** A new cut, if the weapon has an edge. */
       wound: Wound | null;
       /** A limb (or the head) cut off. */
@@ -59,7 +62,11 @@ export type CombatEvent =
   | { type: 'clang'; f: Fighter; point: Vector3; metal: boolean }
   | { type: 'dodge'; attacker: Fighter; defender: Fighter; move: MoveDef; kind: DefenseKind | 'airborne'; point: Vector3 }
   | { type: 'defend'; f: Fighter; kind: DefenseKind }
-  | { type: 'getup'; f: Fighter };
+  | { type: 'getup'; f: Fighter }
+  /** A weapon thrown (or let fly from the belt). */
+  | { type: 'throw'; f: Fighter; projectile: Projectile }
+  /** A weapon in flight hit something that isn't a person: the floor, a wall, a prop. */
+  | { type: 'thud'; projectile: Projectile; point: Vector3; speed: number; wall: boolean };
 
 interface Contact {
   attacker: Fighter;
@@ -129,14 +136,20 @@ export function pushScale(a: Fighter, d: Fighter, weapon: WeaponDef | null, powe
  * more and more get through.
  */
 export function readChance(f: Fighter, o: Fighter, opponents: Fighter[]): number {
-  let p = 0.82;
-  p *= 0.5 + 0.5 * f.stamina;
-  if (f.framesSinceHit < 40) p *= 0.6;
-  if (f.framesSinceDefend < 24) p *= 0.75;
+  let p = readiness(f);
   const m = o.move!;
   p *= Math.max(0.8, Math.min(1.1, 0.75 + m.startup * 0.02));
   for (const x of opponents) if (x !== o && x.state === 'attack' && !x.hitThisAttack) p *= 0.55;
   return Math.max(0.12, Math.min(0.95, p));
+}
+
+/** How sharp a fighter is right now: fresh and settled, or tired, rattled, already reacting. */
+function readiness(f: Fighter): number {
+  let p = 0.82;
+  p *= 0.5 + 0.5 * f.stamina;
+  if (f.framesSinceHit < 40) p *= 0.6;
+  if (f.framesSinceDefend < 24) p *= 0.75;
+  return p;
 }
 
 /** Something to block with: at least one forearm left. */
@@ -144,6 +157,10 @@ const canGuard = (f: Fighter) => !(f.isSevered('foreArmL') && f.isSevered('foreA
 /** How far ahead of a strike landing (in multiples of the defence's startup) people react. */
 const REACT_LEAD = 2.5;
 const _strike = new Vector3();
+const _up = new Vector3(0, 1, 0);
+const _probe = new Vector3();
+const _v = new Vector3();
+const _e = new Vector3();
 const _c = new Vector3();
 
 /**
@@ -160,6 +177,9 @@ export class CombatSim {
   readonly drops: Drop[] = [];
   private dropSerial = 0;
   private readonly prevBlade = new Map<Fighter, Vector3[]>();
+  /** Weapons in the air. */
+  readonly projectiles: Projectile[] = [];
+  private projSerial = 0;
   frame = 0;
   /** Where fighters can stand (the arena floor minus its props). */
   walkable: Walkable = new RectWalkable(-7.5, 7.5, -4.5, 4.5);
@@ -214,6 +234,7 @@ export class CombatSim {
       f.updatePose(s.speed, s.lx, s.lz, s.turn);
     }
     this.resolveHits();
+    this.stepProjectiles();
     return this.events;
   }
 
@@ -273,7 +294,13 @@ export class CombatSim {
       case 'attack': {
         const m = f.move!;
         if (f.stateFrame === m.startup) this.events.push({ type: 'swing', f, move: m });
-        if (m.lunge && !f.attackEnd && f.stateFrame >= m.lunge.from && f.stateFrame < m.lunge.to) {
+        if (m.air) this.advanceAir(f, m);
+        if (m.spin && !f.attackEnd && f.stateFrame >= m.spin.from && f.stateFrame < m.spin.to) {
+          // Wound up from the feet, carried by its own momentum, braked by the feet again.
+          f.yaw += Math.PI * 2 * m.spin.turns * (spinProgress(m.spin, f.stateFrame + 1) - spinProgress(m.spin, f.stateFrame));
+        }
+        if (m.throw && f.stateFrame === m.throw.release) this.release(f, m);
+        if (m.lunge && !m.air && !f.attackEnd && f.stateFrame >= m.lunge.from && f.stateFrame < m.lunge.to) {
           let step = (m.lunge.distance * f.scale) / (m.lunge.to - m.lunge.from);
           if (f.target && f.target.alive) step = Math.min(step, Math.max(0, f.distanceTo(f.target) - (LUNGE_STOP * (f.scale + f.target.scale)) / 2));
           f.pos.addScaledVector(f.forward, step);
@@ -333,12 +360,17 @@ export class CombatSim {
   private threatReachedUs(f: Fighter): boolean {
     const serial = f.defense!.threatSerial;
     const o = this.opponents(f).find((x) => x.id * 100000 + x.attackSerial === serial);
-    if (!o || o.state !== 'attack' || !o.move || o.attackEnd) return false;
+    if (!o || o.state !== 'attack' || !o.move || o.attackEnd || o.move.noHit) return false;
     return f.distanceTo(o) <= (o.move.reach + o.stats.reach) * o.scale + 0.3;
   }
 
   private threatOver(f: Fighter): boolean {
     const serial = f.defense!.threatSerial;
+    if (serial < 0) {
+      // A weapon in flight: over once it's down, spent, or gone past.
+      const p = this.projectiles.find((x) => x.serial === serial);
+      return !p || !p.live || p.vel.x * (f.pos.x - p.pos.x) + p.vel.z * (f.pos.z - p.pos.z) < 0;
+    }
     for (const o of this.opponents(f)) {
       if (o.id * 100000 + o.attackSerial !== serial) continue;
       if (o.state !== 'attack' || !o.move) return true;
@@ -356,7 +388,7 @@ export class CombatSim {
     if (!canReact) return;
 
     for (const o of this.opponents(f)) {
-      if (o.state !== 'attack' || !o.move || o.hitThisAttack) continue;
+      if (o.state !== 'attack' || !o.move || o.hitThisAttack || o.move.noHit) continue;
       const serial = o.id * 100000 + o.attackSerial;
       if (serial === f.lastDefendedSerial) continue;
       const fta = o.framesToActive;
@@ -384,6 +416,44 @@ export class CombatSim {
         this.events.push({ type: 'defend', f, kind });
         return;
       }
+    }
+    this.defendProjectiles(f);
+  }
+
+  /**
+   * Something thrown at you: seen coming (a big axe more readily than a little knife),
+   * you duck or slip what's coming at your head, block what's coming at the body, and
+   * get your legs out of the way of anything low.
+   */
+  private defendProjectiles(f: Fighter) {
+    for (const p of this.projectiles) {
+      if (!p.live || p.owner.team === f.team) continue;
+      if (p.serial === f.lastDefendedSerial || p.serial === f.misreadSerial) continue;
+      _c.set(f.pos.x, f.rig.chest.pos.y, f.pos.z);
+      const rel = _v.subVectors(_c, p.pos);
+      const v2 = p.vel.lengthSq();
+      if (v2 < 1) continue;
+      const tc = rel.dot(p.vel) / v2;
+      if (tc <= 0 || tc > 0.7) continue;
+      const y = p.pos.y + p.vel.y * tc - 4.9 * tc * tc;
+      const miss = Math.hypot(p.pos.x + p.vel.x * tc - _c.x, p.pos.z + p.vel.z * tc - _c.z);
+      if (miss > 0.5 * f.scale || y < 0 || y > f.rig.head.pos.y + 0.3 * f.scale) continue;
+      const fta = Math.round(tc * 60);
+      const height: Height = y > f.rig.head.pos.y - 0.14 * f.scale ? 'high' : y > f.rig.abdomen.pos.y - 0.12 * f.scale ? 'mid' : 'low';
+      const kind = chooseDefense(f, { blockable: true, kind: 'straight', height } as MoveDef, fta, height);
+      if (!kind) continue;
+      const def = DEFENSES[kind];
+      if (fta > Math.round(def.startup * REACT_LEAD) + 1) continue;
+      const chance = readiness(f) * (p.weapon.mass > 1.5 ? 0.95 : 0.6);
+      if (!this.rng.chance(chance)) {
+        f.misreadSerial = p.serial;
+        continue;
+      }
+      const side = (p.vel.x * Math.cos(f.yaw) - p.vel.z * Math.sin(f.yaw)) > 0 ? 1 : -1;
+      f.startDefense(kind, p.serial, side, Math.max(def.startup, fta));
+      f.framesSinceDefend = 0;
+      this.events.push({ type: 'defend', f, kind });
+      return;
     }
   }
 
@@ -491,6 +561,9 @@ export class CombatSim {
    * a little aim assist early in their wind-up — so angles and positioning matter.
    */
   private updateFacing(f: Fighter) {
+    // Spinning or in the air, nothing turns you but the momentum you already have.
+    const m = f.state === 'attack' ? f.move : null;
+    if (m && ((m.spin && f.stateFrame >= m.spin.from) || (m.air && f.stateFrame >= m.air.from))) return;
     const t = f.target && f.target.alive ? f.target : null;
     const mi = f.moveInput;
     const moving = Math.hypot(mi.x, mi.z) > 0.1;
@@ -570,7 +643,7 @@ export class CombatSim {
   private resolveJams(landed: Set<Fighter>) {
     for (const a of this.fighters) {
       // (A strike that was slipped or ducked carries on — and slides off the shoulder.)
-      if (a.state !== 'attack' || !a.move || a.attackEnd || landed.has(a)) continue;
+      if (a.state !== 'attack' || !a.move || a.attackEnd || a.move.noHit || landed.has(a)) continue;
       const m = a.move;
       const dodged = a.hitThisAttack;
       const kick = m.limb === 'footL' || m.limb === 'footR';
@@ -652,7 +725,7 @@ export class CombatSim {
    */
   private landsEarly(a: Fighter): boolean {
     const m = a.move;
-    if (a.state !== 'attack' || !m || m.weapon || a.attackEnd || a.stateFrame >= m.startup || a.stateFrame < m.startup * 0.7) return false;
+    if (a.state !== 'attack' || !m || m.weapon || m.noHit || a.attackEnd || a.stateFrame >= m.startup || a.stateFrame < m.startup * 0.7) return false;
     const tip = m.limb === 'handL' ? 'fistL' : m.limb === 'handR' ? 'fistR' : m.limb === 'footL' ? 'shinL' : 'shinR';
     const mine = bodyCapsules(a).limbs.filter((c) => c.bone === tip);
     for (const d of this.opponents(a)) {
@@ -807,11 +880,11 @@ export class CombatSim {
     this.events.push({ type: 'dodge', attacker, defender: d, move: attacker.move, kind: def.def.kind, point: p.clone() });
   }
 
-  private block(a: Fighter, d: Fighter, m: MoveDef, point: Vector3, dir: Vector3) {
+  private block(a: Fighter, d: Fighter, m: MoveDef, point: Vector3, dir: Vector3, thrown: WeaponDef | null = null) {
     d.guard -= m.guardDamage;
     d.framesSinceBlock = 0;
     // Taking a heavy weapon (or a giant's fist) on the guard drives you back.
-    const kb = m.knockback * a.stats.knockbackMul * pushScale(a, d, m.weapon ? a.weapon : null);
+    const kb = thrown ? m.knockback : m.knockback * a.stats.knockbackMul * pushScale(a, d, m.weapon ? a.weapon : null);
     let guardBreak = false;
     if (d.guard <= 0) {
       guardBreak = true;
@@ -825,7 +898,7 @@ export class CombatSim {
     }
     // Blocking an edge with your arms still costs you: a cut on the forearm.
     let wound: Wound | null = null;
-    const w = m.weapon ? a.weapon : null;
+    const w = m.weapon ? (thrown ?? a.weapon) : null;
     if (w && w.cut > 0) {
       const side = d.rig.foreArmL.pos.distanceToSquared(point) < d.rig.foreArmR.pos.distanceToSquared(point) ? 'foreArmL' : 'foreArmR';
       if (!d.isSevered(side)) {
@@ -835,15 +908,18 @@ export class CombatSim {
     }
     this.events.push({ type: 'block', attacker: a, defender: d, move: m, point: point.clone(), dir: dir.clone(), guardBreak, wound });
     // Stopped by the guard: a blade bites into the forearm, anything else bounces off.
+    if (thrown) return;
     if (wound) a.impact('stick', 6, 11);
     else a.impact('rebound', 2, m.weapon ? 11 : 8);
   }
 
-  private hit(a: Fighter, d: Fighter, m: MoveDef, point: Vector3, dir: Vector3, zone: HurtZone, bone: BoneName, power = 1, haft = false) {
+  private hit(a: Fighter, d: Fighter, m: MoveDef, point: Vector3, dir: Vector3, zone: HurtZone, bone: BoneName, power = 1, haft = false, thrown: WeaponDef | null = null) {
+    // (A thrown weapon is no longer in the thrower's hand.)
+    const held = thrown ?? a.weapon;
     // Caught on the haft: a blunt knock, not a cut.
-    const w = m.weapon && !haft ? a.weapon : null;
+    const w = m.weapon && !haft ? held : null;
     const caughtInStartup = d.state === 'attack' && !!d.move && d.stateFrame < d.move.startup;
-    const counter = caughtInStartup || a.isCounterAttack;
+    const counter = caughtInStartup || (!thrown && a.isCounterAttack);
     const armor = d.state === 'attack' && d.move?.armor;
     const armored = !!armor && d.stateFrame >= armor[0] && d.stateFrame < armor[1] && m.weight === 'light';
 
@@ -863,8 +939,9 @@ export class CombatSim {
     d.counter = null;
 
     // The haft carries the weapon's mass too, just less of the swing's speed.
-    const push = pushScale(a, d, m.weapon ? a.weapon : null, power * (haft ? 0.6 : 1));
-    const kb = m.knockback * a.stats.knockbackMul * push;
+    const push = thrown ? m.knockback : pushScale(a, d, m.weapon ? held : null, power * (haft ? 0.6 : 1));
+    // (A thrown weapon's push is its own momentum against the body's mass.)
+    const kb = thrown ? push : m.knockback * a.stats.knockbackMul * push;
     let ko = false;
     let knockdown = false;
     if (d.hp <= 0) {
@@ -874,14 +951,15 @@ export class CombatSim {
       d.vel.addScaledVector(dir, kb + 1.5);
     } else if (armored) {
       d.vel.addScaledVector(dir, 0.3);
-    } else if ((m.knockdown && !haft && power > 0.8) || d.poise <= 0) {
+    } else if ((m.knockdown && !haft && power > 0.8) || d.poise <= 0 || d.isAirborne()) {
+      // (Hit in mid-air there's no ground to take it on: down you go.)
       knockdown = true;
       d.enterKnockdown();
       d.vel.addScaledVector(dir, kb);
     } else {
       // How far it rocks them: the force of the blow, and who is hitting whom.
       const rock = (0.25 + dmg / 12) * Math.max(0.5, Math.min(1.5, a.scale / d.scale)) * (counter ? 1.15 : 1);
-      d.enterHitstun(Math.round(m.hitstun * (counter ? 1.2 : 1)), reactionFor(m, zone, a.aim?.id), rock);
+      d.enterHitstun(Math.round(m.hitstun * (counter ? 1.2 : 1)), reactionFor(m, zone, thrown ? undefined : a.aim?.id), rock);
       d.vel.addScaledVector(dir, kb);
     }
     // Edges cut (and keep bleeding); heavy edges can take a limb off.
@@ -911,7 +989,7 @@ export class CombatSim {
     // The strike stops at the body — unless it cleaved clean through, or the blow
     // carried them off their feet. Edges bite in and have to be wrenched free; fists,
     // feet and blunt weapons rebound.
-    if (!sever) {
+    if (!sever && !thrown) {
       if (w && w.cut > 0) {
         const hold = Math.round(w.bite * (m.kind === 'hook' ? 0.6 : 1) * (ko ? 0.6 : 1));
         a.impact('stick', Math.max(4, hold), m.weight === 'heavy' ? 16 : 12);
@@ -938,6 +1016,7 @@ export class CombatSim {
       bone,
       weapon: w,
       push,
+      thrown: !!thrown,
       wound,
       sever,
     });
@@ -1015,6 +1094,195 @@ export class CombatSim {
     f.weapon = null;
     // It falls from the hand: a little forward of where it was let go.
     this.addDrop(w, at.x + f.forward.x * 0.15, at.z + f.forward.z * 0.15, f.yaw + 1.2, at);
+  }
+
+  /**
+   * Leaving the ground: the horizontal speed is set now and can't change until landing
+   * (aimed to come down just short of the target, never past it). Already moving
+   * through the air: carry on along it.
+   */
+  private advanceAir(f: Fighter, m: MoveDef) {
+    const a = m.air!;
+    if (f.stateFrame === a.from) {
+      let d = (m.lunge?.distance ?? 0) * f.scale;
+      const t = f.target && f.target.alive ? f.target : null;
+      if (t && d > 0) d = Math.min(d, Math.max(0, f.distanceTo(t) - (LUNGE_STOP * (f.scale + t.scale)) / 2));
+      f.airStep.copy(f.forward).multiplyScalar(d / (a.to - a.from));
+    }
+    if (f.stateFrame >= a.from && f.stateFrame < a.to) f.pos.add(f.airStep);
+  }
+
+  /**
+   * Letting the weapon go. A practised thrower aims for the chest on the flatter arc
+   * (leading a moving target a little), and judges the spin so the edge comes round to
+   * the front at the distance thrown — if the target is still there when it arrives.
+   * Tired arms throw wilder.
+   */
+  private release(f: Fighter, m: MoveDef) {
+    const spec = m.throw!;
+    let w: WeaponDef | null;
+    if (spec.ammo) {
+      if (!f.ammo || f.ammo.count <= 0) return;
+      w = f.ammo.weapon;
+      f.ammo.count--;
+    } else {
+      w = f.weapon;
+      if (!w || f.isSevered('foreArmR')) return;
+      f.weapon = null;
+    }
+    const hand = fistPoint(f.rig, m.limb === 'handL' ? 'L' : 'R', new Vector3());
+    const t = f.target && f.target.alive ? f.target : null;
+    const aim = t ? t.rig.chest.pos.clone() : hand.clone().addScaledVector(f.forward, 6);
+    const flat0 = new Vector3(aim.x - hand.x, 0, aim.z - hand.z);
+    if (flat0.lengthSq() < 1e-6) flat0.copy(f.forward);
+    flat0.normalize();
+    // A spinning throw leaves the hand with the haft upright (its mass up above the
+    // grip); a knife leaves pointing where it's going.
+    const spins = spec.spin > 0;
+    const dir0 = spins ? _up.clone() : flat0.clone();
+    const com = centreOfMass(w);
+    const pos = hand.clone().addScaledVector(dir0, com * f.scale);
+    // Longer arms whip faster.
+    const speed = spec.speed * Math.sqrt(f.scale);
+    let shot = aimBallistic(pos, aim, speed);
+    if (t && shot) {
+      aim.addScaledVector(t.vel, shot.time * 0.5);
+      shot = aimBallistic(pos, aim, speed) ?? shot;
+    }
+    const vel = shot?.vel ?? flat0.clone().multiplyScalar(speed * 0.9).setY(speed * 0.3);
+    const wild = 0.02 + 0.04 * (1 - f.stamina);
+    vel.applyAxisAngle(_up, this.rng.range(-wild, wild));
+    vel.y += this.rng.range(-wild, wild) * speed;
+    const flat = new Vector3(vel.x, 0, vel.z).normalize();
+    // End over end, the head coming over the top.
+    const axis = new Vector3().crossVectors(_up, flat).normalize();
+    let omega = 0;
+    if (spins) {
+      // Whole turns plus a little more, so it arrives with the head just past the top,
+      // leading — edge first, the handle trailing.
+      const time = shot?.time ?? 0.5;
+      const turns = Math.max(1, Math.round(spec.spin * time));
+      omega = (Math.PI * 2 * turns + 0.45) / Math.max(0.15, time);
+    }
+    if (!spins) dir0.copy(vel).normalize();
+    const p: Projectile = { id: ++this.projSerial, serial: -1000 - this.projSerial, weapon: w, owner: f, scale: f.scale, pos, vel, axis, omega, angle: 0, dir0, com, live: true, age: 0 };
+    this.projectiles.push(p);
+    this.events.push({ type: 'throw', f, projectile: p });
+  }
+
+  /**
+   * Weapons in flight: gravity and spin, in sub-steps so nothing fast skips through a
+   * body. What it meets first stops it — a person (cut by the edge or the point only if
+   * that's what's leading at the moment it arrives; otherwise a knock from the haft or
+   * the back of the head), a guard, a wall, the floor. Once it's down it's a weapon on
+   * the floor like any other, for whoever gets to it.
+   */
+  private stepProjectiles() {
+    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+      const p = this.projectiles[i];
+      p.age++;
+      const n = substeps(p);
+      let landed = false;
+      for (let k = 0; k < n && !landed; k++) {
+        integrate(p, DT / n);
+        const { points, at } = projectilePoints(p);
+        if (p.live) {
+          for (const d of this.opponents(p.owner)) {
+            if (!d.alive || d.state === 'knockdown' || d.state === 'ko' || d.state === 'getup') continue;
+            const c = overlapBody(points, p.weapon.radius * p.scale, d, at);
+            if (c) {
+              this.projectileStrike(p, d, c, at[c.index], points[c.index]);
+              break;
+            }
+          }
+        }
+        // Walls and props.
+        const w = this.walkable;
+        _probe.copy(p.pos);
+        if (!w.isWalkable(p.pos.x, p.pos.z) || w.solidAt?.(_probe, 0.05)) {
+          const speed = p.vel.length();
+          if (p.live || speed > 2) this.events.push({ type: 'thud', projectile: p, point: p.pos.clone(), speed, wall: true });
+          p.live = false;
+          // It rebounds off, losing most of its speed.
+          p.vel.set(-p.vel.x * 0.2, Math.min(p.vel.y, 0), -p.vel.z * 0.2);
+          p.pos.addScaledVector(p.vel, DT / n);
+          w.resolve(p.pos, 0.1);
+          p.omega *= 0.4;
+        }
+        // The floor.
+        let low = Infinity;
+        for (const q of points) low = Math.min(low, q.y);
+        if (low <= 0.01 && p.vel.y < 0) {
+          const speed = p.vel.length();
+          if (speed > 3 && p.age < 600) {
+            this.events.push({ type: 'thud', projectile: p, point: p.pos.clone(), speed, wall: false });
+            p.live = false;
+            p.pos.y += -low + 0.01;
+            p.vel.set(p.vel.x * 0.45, -p.vel.y * 0.25, p.vel.z * 0.45);
+            p.omega *= 0.4;
+          } else {
+            landed = true;
+          }
+        }
+      }
+      if (landed || p.age > 900) {
+        this.projectiles.splice(i, 1);
+        const dir = projectileDir(p);
+        if (p.vel.length() > 0.5 && p.age <= 900) this.events.push({ type: 'thud', projectile: p, point: p.pos.clone(), speed: p.vel.length(), wall: false });
+        this.addDrop(p.weapon, p.pos.x, p.pos.z, Math.atan2(dir.x, dir.z));
+      }
+    }
+  }
+
+  /** A weapon in flight arriving at a person. */
+  private projectileStrike(p: Projectile, d: Fighter, c: { point: Vector3; zone: HurtZone; bone: BoneName }, along: number, part: Vector3) {
+    const w = p.weapon;
+    // How fast the part of the weapon that arrived was moving (flight plus spin).
+    const vp = pointVelocity(p, part, new Vector3());
+    const speed = vp.length();
+    const dir = new Vector3(vp.x, 0, vp.z);
+    if (dir.lengthSq() < 1e-6) dir.set(p.vel.x, 0, p.vel.z);
+    dir.normalize();
+    const head = along >= w.strikeFrom - 0.02;
+    // What's leading: for a spinning weapon, the edge (on the side the head turns
+    // toward); for one flying straight, the point.
+    let leading: boolean;
+    if (p.omega === 0) leading = along > w.length * 0.6 && projectileDir(p).dot(_v.copy(vp).normalize()) > 0.7;
+    else {
+      const edge = _e.crossVectors(p.axis, projectileDir(p)).normalize();
+      leading = edge.dot(_v.copy(vp).normalize()) > 0.35;
+    }
+    const cuts = w.edge === 'blade' ? head && leading : head;
+    const mass = w.mass * p.scale ** 3;
+    // Kinetic energy does the damage; momentum against the body's mass does the pushing.
+    const energy = 0.5 * mass * speed * speed;
+    const dmg = energy / 18;
+    const height: Height = c.zone === 'head' ? 'high' : c.zone === 'legs' ? 'low' : 'mid';
+    const m: MoveDef = {
+      id: 'thrown', name: 'Thrown ' + w.name, startup: 1, active: 1, recovery: 1,
+      limb: 'handR', height, kind: 'straight', weight: dmg > 12 ? 'heavy' : dmg > 5 ? 'medium' : 'light',
+      damage: dmg, guardDamage: dmg * 1.6, poiseDamage: dmg * 3.2, hitstun: Math.round(12 + dmg * 0.9), blockstun: Math.round(8 + dmg * 0.5),
+      knockback: (mass * speed) / (75 * d.scale ** 3) * 1.6, impulse: mass * speed * 0.8, lift: 0.05,
+      hitstop: Math.round(4 + Math.min(8, dmg / 3)), shake: Math.min(0.5, 0.08 + dmg / 50), radius: 0, reach: 0,
+      blockable: true, weapon: true, keys: [],
+    };
+    p.live = false;
+    // Bounces back off whatever it hit, tumbling.
+    p.vel.multiplyScalar(-0.18);
+    p.omega *= 0.3;
+    if (d.state === 'defend' && d.defense) {
+      const def = d.defense.def;
+      const facing = d.forward.dot(dir) < -0.3;
+      if (def.blocks.includes(height) && facing && canGuard(d)) {
+        this.block(p.owner, d, m, c.point, dir, w);
+        return;
+      }
+    }
+    if (d.state === 'blockstun' && height !== 'low' && canGuard(d) && d.forward.dot(dir) < -0.3) {
+      this.block(p.owner, d, m, c.point, dir, w);
+      return;
+    }
+    this.hit(p.owner, d, m, c.point, dir, c.zone, c.bone, 1, !cuts, w);
   }
 
   /** Grab (or swap for) the nearest weapon in reach; with none in reach, drop yours. */

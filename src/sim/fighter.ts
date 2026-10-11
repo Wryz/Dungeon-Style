@@ -1,4 +1,4 @@
-import { Vector3 } from 'three';
+import { Quaternion, Vector3 } from 'three';
 import { Animator, type TrackKey } from '../body/animator';
 import { Footwork, type FootworkStyle } from '../body/footwork';
 import { IdleBehavior, type IdleStyle } from '../body/idle';
@@ -184,6 +184,10 @@ export class Fighter {
   stamina = 1;
   /** Frames left on a request to pick up / drop a weapon. */
   pickupRequest = 0;
+  /** Throwing weapons carried on the belt (kunai), apart from whatever's in hand. */
+  ammo: { weapon: WeaponDef; count: number } | null = null;
+  /** In the air: the horizontal step per frame, fixed at take-off. */
+  readonly airStep = new Vector3();
   /** Weapon in hand (null = fists). */
   weapon: WeaponDef | null = null;
   /** Lasting cuts (each keeps bleeding a little). */
@@ -254,8 +258,23 @@ export class Fighter {
     return this.move ? this.move.startup - this.stateFrame : Infinity;
   }
 
+  /** Off the ground in a jump or a flip. */
+  isAirborne(): boolean {
+    const a = this.state === 'attack' ? this.move?.air : undefined;
+    return !!a && this.stateFrame >= a.from && this.stateFrame < a.to;
+  }
+
+  /** How high the jump has carried the body (m): a ballistic arc set by the flight time. */
+  airHeight(): number {
+    if (!this.isAirborne()) return 0;
+    const a = this.move!.air!;
+    const t = (a.to - a.from) / 60;
+    const u = (this.stateFrame - a.from) / (a.to - a.from);
+    return ((GRAVITY * t * t) / 2) * u * (1 - u);
+  }
+
   inActiveFrames(): boolean {
-    if (this.state !== 'attack' || !this.move || this.attackEnd) return false;
+    if (this.state !== 'attack' || !this.move || this.attackEnd || this.move.noHit) return false;
     const f = this.stateFrame;
     return f >= this.move.startup && f < this.move.startup + this.move.active;
   }
@@ -266,7 +285,7 @@ export class Fighter {
    */
   inWeaponContact(): boolean {
     const m = this.move;
-    if (this.state !== 'attack' || !m?.weapon || !this.weapon || this.attackEnd) return false;
+    if (this.state !== 'attack' || !m?.weapon || !this.weapon || this.attackEnd || m.noHit) return false;
     const f = this.stateFrame;
     return f >= Math.floor(m.startup * 0.5) && f <= m.startup + m.active + Math.floor(m.recovery * 0.25);
   }
@@ -406,10 +425,12 @@ export class Fighter {
     // Natural scatter: no two strikes land on exactly the same spot.
     const jitter: [number, number, number] = aimId ? [0, 0, 0] : [this.rng.range(-0.04, 0.04), this.rng.range(-0.035, 0.035), 0];
     // Fit the strike to the opponent in front of us: up for a giant, down for a small one.
-    const dy = Math.max(-0.75, Math.min(0.45, this.heightGap(move, this.aim)));
+    // (Not a spin, a flip or a throw: there the body's turn or the flight does the aiming.)
+    const free = !!move.spin || !!move.air?.flip || !!move.throw;
+    const dy = free ? 0 : Math.max(-0.75, Math.min(0.45, this.heightGap(move, this.aim)));
     this.swingJitter = jitter;
     this.swingDy = dy;
-    const keys = moveKeys(move, this.aim, jitter, dy, this.reachFit(move), this.weaponFit(move, this.aim));
+    const keys = moveKeys(move, this.aim, jitter, dy, free ? Infinity : this.reachFit(move), free ? null : this.weaponFit(move, this.aim));
     // Re-aiming later keeps the same shape of swing (same keys), only pointed anew.
     this.swingViaMid = keys.length > move.keys.length;
     this.anim.play(keys);
@@ -426,7 +447,7 @@ export class Fighter {
    */
   refitSwing() {
     const m = this.move;
-    if (this.state !== 'attack' || !m?.weapon || this.attackEnd || this.stateFrame >= m.startup) return;
+    if (this.state !== 'attack' || !m?.weapon || this.attackEnd || this.stateFrame >= m.startup || m.spin || m.air?.flip || m.throw) return;
     const l = m.lunge;
     const left = l ? Math.max(0, Math.min(1, (l.to - this.stateFrame) / Math.max(1, l.to - l.from))) : 0;
     const fit = this.weaponFit(m, this.aim, left);
@@ -489,10 +510,6 @@ export class Fighter {
   }
 
   /**
-   * How much higher (+) or lower (-) the target's part is than this strike was authored
-   * to hit, in our own (unscaled) metres. Small differences are left to the pose.
-   */
-  /**
    * Whether an unarmed strike can get to what it goes for on the current target: a small
    * creature's jab can't get up to a giant's head (nor its body shot to his belly), but a
    * kick can always find a shin.
@@ -507,6 +524,10 @@ export class Fighter {
     });
   }
 
+  /**
+   * How much higher (+) or lower (-) the target's part is than this strike was authored
+   * to hit, in our own (unscaled) metres. Small differences are left to the pose.
+   */
   private heightGap(move: MoveDef, aim: Aim | null): number {
     const t = this.target;
     if (!t || !t.alive) return 0;
@@ -667,6 +688,7 @@ export class Fighter {
       if (legsUnder) copyPose(L, this.pose);
       else blendPose(this.anim.out, L, this.moveBlend, this.pose);
     }
+    this.applyAir();
     if (this.weapon && !this.isSevered('foreArmR')) {
       forwardKinematics(this.pose, this.rig, this.pos, this.yaw, this.scale);
       this.keepWeaponClear();
@@ -675,6 +697,26 @@ export class Fighter {
     forwardKinematics(this.pose, this.rig, this.pos, this.yaw, this.scale);
     // Authored-leg animations (kicks, defense, reactions): feet are wherever the pose put them.
     if (!driven) this.footwork.syncToRig(this.rig);
+  }
+
+  /**
+   * In the air the whole body is lifted on its ballistic arc and turns about its centre
+   * of mass at a steady rate (the spin it left the ground with): the pose only tucks
+   * and extends the limbs.
+   */
+  private applyAir() {
+    if (!this.isAirborne()) return;
+    const a = this.move!.air!;
+    const P = this.pose;
+    P.root.y += this.airHeight() / this.scale;
+    if (!a.flip) return;
+    const u = (this.stateFrame - a.from) / (a.to - a.from);
+    _flipQ.setFromAxisAngle(_xAxis, a.flip * u);
+    // The centre of mass: a hand's width above the hip joints.
+    _com.set(0, 0.12, 0).applyQuaternion(P.rot.pelvis).add(P.root);
+    P.root.sub(_com).applyQuaternion(_flipQ).add(_com);
+    P.rot.pelvis.premultiply(_flipQ);
+    P.blade.applyQuaternion(_flipQ);
   }
 
   /** Chest rising and falling: slow and shallow when fresh, fast and heaving when gassed. */
@@ -923,6 +965,9 @@ export function timed(m: MoveDef, tempo: number): MoveDef {
       active: Math.max(2, f(m.active)),
       recovery: Math.max(4, f(m.recovery)),
       lunge: m.lunge && { ...m.lunge, from: f(m.lunge.from), to: Math.max(f(m.lunge.from) + 1, f(m.lunge.to)) },
+      air: m.air && { ...m.air, from: f(m.air.from), to: Math.max(f(m.air.from) + 2, f(m.air.to)) },
+      spin: m.spin && { ...m.spin, from: f(m.spin.from), to: Math.max(f(m.spin.from) + 2, f(m.spin.to)), hold: m.spin.hold && [f(m.spin.hold[0]), f(m.spin.hold[1])] },
+      throw: m.throw && { ...m.throw, release: f(m.throw.release) },
       armor: m.armor && [f(m.armor[0]), f(m.armor[1])],
       evades: m.evades && { ...m.evades, from: f(m.evades.from), to: f(m.evades.to) },
       cancel: m.cancel && { ...m.cancel, from: f(m.cancel.from), to: f(m.cancel.to) },
@@ -933,6 +978,11 @@ export function timed(m: MoveDef, tempo: number): MoveDef {
 }
 
 const _localRig = makeRig();
+const _flipQ = new Quaternion();
+const _xAxis = new Vector3(1, 0, 0);
+const _com = new Vector3();
+/** m/s². */
+export const GRAVITY = 9.81;
 const _grip = new Vector3();
 const _dir = new Vector3();
 const _push = new Vector3();

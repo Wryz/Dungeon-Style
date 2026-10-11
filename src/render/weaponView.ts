@@ -121,6 +121,20 @@ export function buildWeapon(def: WeaponDef): Group {
       part(new CylinderGeometry(0.035, 0.035, 0.16, 8), 'glass', 0, 0.17, 0);
       part(new CylinderGeometry(0.036, 0.036, 0.06, 8), 'white', 0, 0.17, 0);
       break;
+    case 'ninjato':
+      // Straight blade, square guard, cord-wrapped grip.
+      part(box(0.034, 0.22, 0.032), 'wrap', 0, -0.05, 0);
+      part(box(0.07, 0.012, 0.07), 'darkSteel', 0, 0.065, 0);
+      part(box(0.008, L - 0.12, 0.036), 'steel', 0, 0.08 + (L - 0.12) / 2, 0.004);
+      part(box(0.008, 0.05, 0.026), 'steel', 0, L - 0.02, 0.01, 0.6, 0, 0);
+      break;
+    case 'kunai':
+      // Ring pommel, wrapped grip, leaf blade.
+      part(new CylinderGeometry(0.022, 0.022, 0.008, 10), 'darkSteel', 0, -0.06, 0, Math.PI / 2, 0, 0);
+      part(box(0.018, 0.1, 0.018), 'wrap', 0, 0.0, 0);
+      part(box(0.006, 0.13, 0.04), 'darkSteel', 0, 0.12, 0);
+      part(box(0.006, 0.04, 0.022), 'darkSteel', 0, 0.2, 0, 0.6, 0, 0);
+      break;
     case 'katana':
       part(box(0.035, 0.26, 0.032), 'wrap', 0, -0.06, 0);
       part(new CylinderGeometry(0.05, 0.05, 0.012, 10), 'brass', 0, 0.075, 0);

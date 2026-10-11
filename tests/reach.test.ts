@@ -31,7 +31,8 @@ function measureReach(side: 'player' | 'enemy', id: string): number {
 // AI spacing and auto-defense threat checks rely on `reach`; keep it honest with the animation.
 describe('declared reach matches animated geometry', () => {
   for (const [side, table] of [['player', PLAYER_MOVES], ['enemy', ENEMY_MOVES]] as const) {
-    for (const m of Object.values(table)) {
+    // (A throw's reach is the throw; an evasive flip doesn't strike at all.)
+    for (const m of Object.values(table).filter((x) => !x.noHit)) {
       it(`${side} ${m.id}`, () => {
         const measured = measureReach(side, m.id);
         expect(Math.abs(measured - m.reach), `${m.id}: measured ${measured.toFixed(2)} m, declared ${m.reach} m`).toBeLessThanOrEqual(0.12);
