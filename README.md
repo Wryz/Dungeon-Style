@@ -70,8 +70,9 @@ demons and giant bosses.
 - **Sound:** footsteps that match the floor (canvas, asphalt, tile, sand; giants thud),
   fighters exhale on every strike and grunt when a big one lands, punches slap the face
   and thud into the body, a bat knocks, a pan rings, a chair clatters, an axe chops.
-  Each arena has its own ambience — a murmuring crowd that roars at knockdowns and
-  severed limbs, traffic on the street, fridges humming in the store. All procedural.
+  The crowd gasps and roars at knockdowns and severed limbs; the bar's jukebox, the
+  store's fridges and the warehouse's lights hum. No continuous background hiss. All
+  procedural.
 - **Presentation:** no game-style sparks on flesh — sweat flies off a face that gets
   hit. Hit flashes, telegraph rings, glowing limbs and popups are optional
   (Settings → Combat cues, off by default).
