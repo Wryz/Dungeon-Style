@@ -4,6 +4,7 @@ import { type BoneName, BONES, SKELETON } from '../body/skeleton';
 import type { Fighter } from '../sim/fighter';
 import type { WeaponDef, Wound } from '../sim/weapons';
 import { buildWeapon } from './weaponView';
+import { WeaponEdge } from '../body/weaponEdge';
 import { FIST_OFFSET } from '../body/skeleton';
 
 export interface Palette {
@@ -342,13 +343,11 @@ export class FighterView {
     this.root.add(holder);
     this.weaponMesh = holder;
     this.weaponBlood = 0;
-    this.edge.set(0, 0, 0);
-    this.prevBlade.set(0, 0, 0);
+    this.edgeModel.reset();
   }
 
-  /** Edge direction in the fighter's own frame (stable whatever the body does). */
-  private readonly edge = new Vector3();
-  private readonly prevBlade = new Vector3();
+  /** Which way the edge faces (fighter frame): rigid in the hands, heavy heads upright. */
+  private readonly edgeModel = new WeaponEdge();
 
   /**
    * Places the weapon in the (rendered) rear fist, pointing where the pose says. The
@@ -366,46 +365,24 @@ export class FighterView {
     w.position.copy(_grip);
     w.scale.setScalar(f.scale);
 
-    const b = _lb.copy(f.pose.blade);
-    const fresh = this.prevBlade.lengthSq() === 0;
-    // The edge only re-decides when the sim moved: on a high-refresh screen the frames in
-    // between see no change and would otherwise flip it to "at rest" every other frame.
-    if (simDt <= 0 && !fresh && this.edge.lengthSq() > 0) {
-      this.orientWeapon(f, b, w);
-      return;
-    }
-    const turn = _mv.subVectors(b, this.prevBlade);
-    this.prevBlade.copy(b);
-    turn.addScaledVector(b, -turn.dot(b));
-    const steps = Math.max(1, simDt * 60);
-    const swinging = !fresh && turn.length() / steps > 0.03;
-    let want: Vector3;
-    if (swinging) want = turn.normalize();
-    else {
-      // Edge toward the opponent (or down, when the weapon itself points at them).
-      want = _fw.set(0, 0, 1).addScaledVector(b, -b.z);
-      if (want.lengthSq() < 0.05) want.set(0, -1, 0).addScaledVector(b, b.y);
-      want.normalize();
-    }
-    if (this.edge.lengthSq() === 0 || fresh) this.edge.copy(want);
-    else this.edge.lerp(want, 1 - Math.pow(1 - (swinging ? 0.35 : 0.12), steps));
-    this.edge.addScaledVector(b, -this.edge.dot(b));
-    if (this.edge.lengthSq() < 1e-6) this.edge.copy(want);
-    this.edge.normalize();
+    const b = _lb.copy(f.pose.blade).normalize();
+    // The edge only moves when the sim does (render-only frames just re-place it).
+    const edge = simDt > 0 ? this.edgeModel.update(f, Math.max(1, Math.round(simDt * 60))) : this.edgeModel.edge;
+    if (edge.lengthSq() === 0) this.edgeModel.update(f, 1);
     this.orientWeapon(f, b, w);
   }
 
   private orientWeapon(f: Fighter, b: Vector3, w: Group) {
-    this.edge.addScaledVector(b, -this.edge.dot(b));
-    if (this.edge.lengthSq() < 1e-6) return;
-    this.edge.normalize();
+    const e = _ec.copy(this.edgeModel.edge).addScaledVector(b, -this.edgeModel.edge.dot(b));
+    if (e.lengthSq() < 1e-6) return;
+    e.normalize();
 
     // Fighter frame -> world (yaw about Y).
     const c = Math.cos(f.yaw);
     const sn = Math.sin(f.yaw);
     const toW = (v: Vector3, out: Vector3) => out.set(v.x * c + v.z * sn, v.y, -v.x * sn + v.z * c);
     toW(b, _dir);
-    toW(this.edge, _ew);
+    toW(e, _ew);
     _x.crossVectors(_dir, _ew).normalize();
     _mat.makeBasis(_x, _dir, _ew);
     w.quaternion.setFromRotationMatrix(_mat);
@@ -607,7 +584,6 @@ const _grip = new Vector3();
 const _dir = new Vector3();
 const _lb = new Vector3();
 const _ew = new Vector3();
-const _mv = new Vector3();
-const _fw = new Vector3();
+const _ec = new Vector3();
 const _x = new Vector3();
 const _mat = new Matrix4();
