@@ -31,7 +31,7 @@ export interface WeaponDef {
   damageMul: number;
   /** How deep / bloody its cuts are (0 = none). */
   cut: number;
-  /** Power to sever limbs (0 = never). */
+  /** How much each blow does toward taking a limb off (whether it can at all: see GORE). */
   cleave: number;
   /** Frames an edge stays bitten into the body before it's wrenched free. */
   bite: number;
@@ -75,6 +75,56 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   // A throwing knife: a stab in the hand, but made to fly point first.
   kunai: { id: 'kunai', name: 'Kunai', style: 'oneHand', edge: 'blade', length: 0.26, strikeFrom: 0.08, radius: 0.03, damageMul: 1.3, cut: 0.7, cleave: 0, bite: 4, tempo: 0.8, mass: 0.2, choke: 0, light: 'hack', heavy: 'hack', chain: { hack: 'hack' } },
   fireaxe: { id: 'fireaxe', name: 'Fire Axe', style: 'twoHand', edge: 'blade', length: 0.9, strikeFrom: 0.68, radius: 0.09, damageMul: 1.5, cut: 1, cleave: 0.95, bite: 16, tempo: 1.1, mass: 2.8, choke: 0.42, ...TWO_HAND },
+};
+
+/**
+ * What a weapon can actually do to a body beyond hurting it, weapon by weapon — not
+ * derived from its numbers, because "heavy" and "sharp" aren't enough on their own: a
+ * lead pipe is heavy and won't split a skull; a kitchen knife is sharp and won't take
+ * an arm off.
+ */
+export interface Gore {
+  /**
+   * Brought straight down onto the crown at full power: 'split' cleaves the head in two
+   * (a long, heavy edge), 'cleft' buries the blade in the skull (a shorter one), 'crush'
+   * caves it in (only real mass will). Each kills; null: it hurts, and that's all.
+   */
+  crown: 'split' | 'cleft' | 'crush' | null;
+  /** Which limbs it can take off: all of them, only forearms, or none. */
+  sever: 'all' | 'forearms' | 'none';
+  /** Can take the head off (a level cut through the neck). */
+  decap: boolean;
+  /** Can slice pieces away: an ear, scalp, a chunk of flesh. */
+  tear: boolean;
+}
+
+const NO_GORE: Gore = { crown: null, sever: 'none', decap: false, tear: false };
+
+export const GORE: Record<WeaponId, Gore> = {
+  // Big edges with the weight behind them: everything.
+  axe: { crown: 'split', sever: 'all', decap: true, tear: true },
+  fireaxe: { crown: 'split', sever: 'all', decap: true, tear: true },
+  katana: { crown: 'split', sever: 'all', decap: true, tear: true },
+  // Short or light blades: deep, killing cuts into the skull, a hand or forearm off,
+  // slices away flesh — but not a neck, a thigh or a whole skull in one blow.
+  machete: { crown: 'cleft', sever: 'forearms', decap: false, tear: true },
+  cleaver: { crown: 'cleft', sever: 'forearms', decap: false, tear: true },
+  gladius: { crown: 'cleft', sever: 'forearms', decap: false, tear: true },
+  ninjato: { crown: 'cleft', sever: 'forearms', decap: false, tear: true },
+  // A knife cuts and slices; it doesn't chop.
+  kunai: { crown: null, sever: 'none', decap: false, tear: true },
+  // Only real mass coming down caves a skull in.
+  sledgehammer: { crown: 'crush', sever: 'none', decap: false, tear: false },
+  club: { crown: 'crush', sever: 'none', decap: false, tear: false },
+  // Blunt and too light (or too awkward) for any of it: they bruise, cut skin, knock down.
+  pipe: NO_GORE,
+  crowbar: NO_GORE,
+  bat: NO_GORE,
+  chair: NO_GORE,
+  pan: NO_GORE,
+  cue: NO_GORE,
+  bottle: NO_GORE,
+  bokken: NO_GORE,
 };
 
 

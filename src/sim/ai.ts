@@ -107,6 +107,19 @@ function incoming(t: Fighter): boolean {
   return t.state === 'attack' && !!t.move && !t.move.noHit && t.stateFrame <= t.move.startup + t.move.active;
 }
 
+/**
+ * A big committed swing coming that walks through anything light: armoured when a strike
+ * thrown now would land, or a heavy weapon wound up for a heavy blow. You don't jab into
+ * an axe on its way down.
+ */
+function wadingIn(t: Fighter, landsIn: number): boolean {
+  if (!incoming(t)) return false;
+  const m = t.move!;
+  const at = t.stateFrame + landsIn;
+  if (m.armor && at >= m.armor[0] && at < m.armor[1]) return true;
+  return !!m.weapon && m.weight === 'heavy' && !!t.weapon && t.weapon.mass >= 1.5;
+}
+
 /** The heaviest a weapon can be (for its body) and still be worth fighting with. */
 export const MAX_HEFT = 4.6;
 
@@ -353,7 +366,7 @@ export class BrawlerAI {
       // ...unless there's a gap: a quick shot that lands before theirs does.
       const q = this.quickest(self, plan);
       const startup = q ? q.startup * Math.sqrt(self.scale) : Infinity;
-      if (q && startup < target.framesToActive - 1 && dist < plan.attackRange && this.rng.chance(0.6 * this.cfg.aggression)) {
+      if (q && startup < target.framesToActive - 1 && !wadingIn(target, Math.ceil(startup)) && dist < plan.attackRange && this.rng.chance(0.6 * this.cfg.aggression)) {
         self.startMove(q);
         this.director?.claim();
         this.cooldown = this.rng.range(30, 60);
@@ -419,6 +432,8 @@ export class BrawlerAI {
       // Evasions and counters go when they're needed; anything else waits its turn.
       // (Throwing from range isn't crowding in on anyone's turn.)
       if (!(sp.when === 'targetAttacking' || sp.when === 'afterHit') && incoming(target) && !m.armor) continue;
+      // (Nor does a counter go into an armoured or heavy-weapon swing: it gets walked through.)
+      if (wadingIn(target, m.startup) && m.weight !== 'heavy' && !m.air && !m.throw) continue;
       const urgent = sp.when === 'targetAttacking' || sp.when === 'afterHit' || sp.when === 'targetWhiffed' || sp.when === 'targetEntered' || !!m.throw;
       if (!urgent && this.director && !this.director.canAttack()) continue;
       if (!this.rng.chance(sp.rate * this.cfg.aggression)) continue;

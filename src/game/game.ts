@@ -1296,12 +1296,14 @@ export class Game {
   }
 
   /**
-   * Straight down onto the skull: split open by an edge, or caved in by something heavy.
+   * Straight down onto the skull: split open by a big edge, cleft by a shorter one, or
+   * caved in by something heavy.
    * Nobody gets up — the kill is held on, close, the way a decapitation is.
    */
   private skullBlow(f: Fighter, kind: Fatal, dir: Vector3, point: Vector3) {
     const view = this.views.get(f);
     if (kind === 'split') view?.splitHead();
+    else if (kind === 'cleft') view?.cleftHead();
     else view?.crushHead();
     this.sfx.sever();
     this.camRig.addTrauma(0.5);
@@ -1312,7 +1314,7 @@ export class Game {
     const by = this.lastHitBy.get(f) ?? this.player;
     const at = point.clone();
     this.cut({ focus: () => at, side: this.across(by.pos, f.pos, 0.45), distance: 1.9 * Math.max(1, f.scale * 0.8), height: 0.25, orbit: 0.4, dolly: -0.2, fov: 36, duration: 2.1, slow: 0.1, priority: 4.5 });
-    if (this.cues) this.hud.popup(kind === 'split' ? 'SKULL SPLIT' : 'SKULL CRUSHED', point, this.viewCamera, 'armor');
+    if (this.cues) this.hud.popup(kind === 'split' ? 'SKULL SPLIT' : kind === 'cleft' ? 'SKULL CLEFT' : 'SKULL CRUSHED', point, this.viewCamera, 'armor');
   }
 
   /** A piece torn off: gone from the body, flying, and landing somewhere on the floor. */

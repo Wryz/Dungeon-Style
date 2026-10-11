@@ -59,14 +59,28 @@ demons and giant bosses.
   leave lasting cuts that keep bleeding (and slowly drain health — enough of them and
   your opponent bleeds out); heavy edges take arms and legs off, and the limb flies
   free as a physics body while the stump pumps blood. **Where and how a blade meets the
-  head matters:** chopped straight down onto the crown it splits the skull open (the
-  halves fall apart from the jaw) and a heavy enough blunt weapon caves it in — either
-  kills anyone outright, you included; only a level cut across the neck takes the head
-  off; a blow coming down off to one side shears off the ear. Glancing edges tear
+  head matters:** chopped straight down onto the crown, a big edge (battle axe, fire axe,
+  katana) splits the skull open — the halves fall apart from the jaw; a shorter blade
+  (machete, cleaver, gladius, ninjato) buries itself in it; real mass (sledgehammer,
+  spiked club) caves it in. Each kills anyone outright, you included. Only a level cut
+  across the neck takes the head off, and only the big edges can; a blow coming down
+  off to one side shears off the ear. **What each weapon can do is set weapon by
+  weapon** (`GORE` in `src/sim/weapons.ts`): the big edges take any limb or the head;
+  the short blades a hand/forearm at most; a knife only slices; and the blunt weapons —
+  pipe, crowbar, bat, chair, pan, cue, bottle, bokken — never cut anything off or split
+  anything, however hard they land. Glancing edges tear
   pieces away — ears, scalp, a cheek, chunks of muscle — which fly off, tumble and lie
   where they land, leaving a raw gouge. Your own limbs only come off with the blow that
   finishes you. Enemies pick weapons up too; the Minotaur
   carries an axe and the Cyclops a spiked club. Blocking a blade costs a forearm cut.
+- **Heavy weapons hit like nothing else:** a committed swing (E) with a battle axe or a
+  sledgehammer does well over 40 at full speed — three or four clean ones put most
+  opponents away — and armour stops less of it; even blocked, it smashes through far
+  more of the guard and some of it gets through the arms. Timing is everything: caught
+  early in the swing it's a shove (damage falls off steeply with how much of the swing is
+  behind it). When someone crowds inside the weapon's length you give ground while
+  winding up, so it's the head that lands, not the haft — unless your back is to a wall.
+  Opponents know it: they won't throw a jab into an axe on its way down.
 - **Size-aware fighting:** every strike is fitted to the opponent actually in front of
   you — aimed at where their head, body and legs really are, shortened to the
   distance between you, with the body rising and looking up at a giant or sinking,

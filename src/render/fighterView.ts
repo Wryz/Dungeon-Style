@@ -472,7 +472,10 @@ export class FighterView {
       for (const m of this.split.hidden) m.visible = true;
       this.split = null;
     }
-    for (const m of this.crushed) m.scale.set(1, 1, 1);
+    for (const m of this.crushed) {
+      m.scale.set(1, 1, 1);
+      m.position.y = m.userData.y0 ?? m.position.y;
+    }
     this.crushed = [];
   }
 
@@ -592,11 +595,36 @@ export class FighterView {
     const head = this.bones.head;
     for (const child of head.children) {
       if (!(child instanceof Mesh) || child.position.y < 0.12) continue;
+      child.userData.y0 = child.position.y;
       child.scale.set(1.08, 0.72, 1.05);
       child.position.y -= 0.025;
       this.crushed.push(child);
     }
     this.tear('scalp', 'head', [0, 0.3, 0], 0.11);
+  }
+
+  /**
+   * A shorter blade buried in the skull: a deep cleft down the top of the head, front
+   * to back, open and red, bone either side — the head stays in one piece.
+   */
+  cleftHead() {
+    const g = new Group();
+    const slot = new Mesh(new BoxGeometry(0.04, 0.09, 0.22), SPLIT_MAT);
+    slot.position.set(0, 0.265, 0.01);
+    const deep = new Mesh(new BoxGeometry(0.022, 0.1, 0.2), WOUND_MAT);
+    deep.position.set(0, 0.262, 0.01);
+    g.add(slot, deep);
+    for (const s of [1, -1]) {
+      const bone = new Mesh(new BoxGeometry(0.008, 0.02, 0.2), BONE_MAT);
+      bone.position.set(s * 0.024, 0.3, 0.01);
+      g.add(bone);
+    }
+    // Running down the forehead.
+    const run = new Mesh(new BoxGeometry(0.03, 0.14, 0.012), WET_MAT);
+    run.position.set(0.01, 0.22, 0.133);
+    g.add(run);
+    this.bones.head.add(g);
+    this.gouges.push(g);
   }
 
   private updateSplit(dt: number) {

@@ -9,7 +9,7 @@ import { angleDelta, approachAngle, DT, Rng } from './math';
 import { aimBallistic, centreOfMass, integrate, type Projectile, projectileDir, projectilePoints, pointVelocity, substeps } from './projectiles';
 import { DEFENSES, type DefenseKind, type Height, type MoveDef, moveLength, spinProgress } from './moves';
 import { chooseDefense, moveContext, selectPlayerMove } from './select';
-import { bladePoints, heft, LIMB_TOUGHNESS, limbBones, sampleOffsets, SEVER_AT, selectWeaponMove, WEAPON_MOVES, type WeaponDef, type Wound } from './weapons';
+import { bladePoints, GORE, heft, LIMB_TOUGHNESS, limbBones, sampleOffsets, SEVER_AT, selectWeaponMove, WEAPON_MOVES, type WeaponDef, type Wound } from './weapons';
 
 /** A weapon lying on the arena floor. */
 export interface Drop {
@@ -72,7 +72,7 @@ export type CombatEvent =
   /** A weapon in flight hit something that isn't a person: the floor, a wall, a prop. */
   | { type: 'thud'; projectile: Projectile; point: Vector3; speed: number; wall: boolean };
 
-export type Fatal = 'split' | 'crush';
+export type Fatal = 'split' | 'cleft' | 'crush';
 export type TearPiece = 'earL' | 'earR' | 'scalp' | 'cheek' | 'flesh';
 export interface Tear {
   piece: TearPiece;
@@ -368,7 +368,25 @@ export class CombatSim {
         if (m.throw && f.stateFrame === m.throw.release) this.release(f, m);
         if (m.lunge && !m.air && !f.attackEnd && f.stateFrame >= m.lunge.from && f.stateFrame < m.lunge.to) {
           let step = (m.lunge.distance * f.scale) / (m.lunge.to - m.lunge.from);
-          if (f.target && f.target.alive) step = Math.min(step, Math.max(0, f.distanceTo(f.target) - (LUNGE_STOP * (f.scale + f.target.scale)) / 2));
+          const t = f.target && f.target.alive ? f.target : null;
+          if (t) step = Math.min(step, Math.max(0, f.distanceTo(t) - (LUNGE_STOP * (f.scale + t.scale)) / 2));
+          // A long weapon needs room: step in only as far as puts its head on them — and
+          // if they've come inside it, give ground while winding up, so it's still the
+          // head that lands and not the haft. (Your footwork; opponents keep their own
+          // spacing, see the AI's plan.)
+          if (t && f.team === 'player' && f.weapon && m.weapon && f.weapon.strikeFrom >= 0.45) {
+            const want = (0.85 + f.weapon.strikeFrom) * f.scale + 0.15 * (t.scale - 1);
+            const left = Math.max(1, m.lunge.to - f.stateFrame);
+            const back = (0.45 * f.scale) / (m.lunge.to - m.lunge.from);
+            step = Math.max(-back, Math.min(step, (f.distanceTo(t) - want) / left));
+            // (Not back toward a wall or a prop: with no room, it's the haft.)
+            if (step < 0) {
+              const r = 1.1 * f.scale;
+              const bx = f.pos.x - f.forward.x * r;
+              const bz = f.pos.z - f.forward.z * r;
+              if (!this.walkable.isWalkable(bx, bz) || this.walkable.solidAt?.(_probe.set(bx, 1, bz), 0.35)) step = 0;
+            }
+          }
           f.pos.addScaledVector(f.forward, step);
         }
         f.refitSwing();
@@ -948,7 +966,11 @@ export class CombatSim {
 
   private block(a: Fighter, d: Fighter, m: MoveDef, point: Vector3, dir: Vector3, thrown: WeaponDef | null = null) {
     if (!thrown) a.wasBlocked = true;
-    d.guard -= m.guardDamage;
+    // A heavy weapon smashes through a guard: it costs far more of it, and some of the
+    // blow gets through the arms anyway.
+    const weight = heavyBlow(m, thrown ?? a.weapon, false);
+    d.guard -= m.guardDamage * (1 + 0.6 * weight);
+    if (weight > 0) d.hp = Math.max(d.minHp, Math.max(1, d.hp - m.damage * (thrown ?? a.weapon)!.damageMul * 0.18 * weight * (1 - d.stats.defense)));
     d.framesSinceBlock = 0;
     // Taking a heavy weapon (or a giant's fist) on the guard drives you back.
     const kb = thrown ? m.knockback : m.knockback * a.stats.knockbackMul * pushScale(a, d, m.weapon ? a.weapon : null);
@@ -1007,10 +1029,17 @@ export class CombatSim {
 
     // A tired arm hits softer (nothing behind it).
     const behind = thrown ? 1 : 0.5 + 0.5 * a.swingStamina;
-    let dmg = m.damage * a.stats.damageMul * (counter ? 1.25 : 1) * (1 - d.stats.defense) * behind;
+    // A heavy weapon's whole weight behind a committed swing hits like nothing else, and
+    // armour stops less of it — the reward for getting a slow swing to land.
+    const weight = heavyBlow(m, held, haft);
+    const defense = d.stats.defense * (1 - 0.5 * weight);
+    let dmg = m.damage * a.stats.damageMul * (counter ? 1.25 : 1) * (1 - defense) * behind;
     if (armored) dmg *= 0.5;
     if (w) dmg *= w.damageMul;
-    if (m.weapon) dmg *= Math.min(1, power) * (haft ? 0.45 : 1);
+    if (weight > 0) dmg *= 1 + 0.7 * weight;
+    // (How much of the swing is behind it matters more the heavier it is: caught early
+    // it's a shove, caught at full speed it's devastating.)
+    if (m.weapon) dmg *= Math.min(1, power) ** (1 + weight) * (haft ? 0.45 : 1);
     d.hp = Math.max(d.minHp, d.hp - dmg);
     // Body shots empty the tank.
     d.stamina = Math.max(0, d.stamina - (zone === 'abdomen' ? 0.09 : zone === 'chest' ? 0.04 : 0.02) * Math.min(2, dmg / 8));
@@ -1067,7 +1096,7 @@ export class CombatSim {
     const wound = w && w.cut > 0 && !d.isSevered(bone) ? this.addWound(d, bone, point, dmg, w.cut) : null;
     let sever: BoneName | null = null;
     const at = SEVER_AT[bone];
-    if (w && w.cleave > 0 && at && d.minHp <= 0 && !d.isSevered(at) && !fatal && (at !== 'head' || head?.neck)) {
+    if (w && at && canSever(w, at) && d.minHp <= 0 && !d.isSevered(at) && !fatal && (at !== 'head' || head?.neck)) {
       const dealt = (d.limbDamage[at] ?? 0) + dmg * w.cleave * (m.weight === 'heavy' ? 1.3 : 1);
       d.limbDamage[at] = dealt;
       // Your own limbs only come off with the blow that finishes you.
@@ -1088,7 +1117,7 @@ export class CombatSim {
     }
     // A glancing edge takes a piece with it: an ear, a flap of scalp, a chunk of flesh.
     let tear: Tear | null = null;
-    if (w && w.cut > 0 && !sever && !fatal && !d.isSevered(bone)) {
+    if (w && GORE[w.id].tear && !sever && !fatal && !d.isSevered(bone)) {
       const bite = dmg * w.cut * (0.6 + 0.4 * w.cleave);
       const piece = bone === 'head' ? (head?.piece ?? null) : 'flesh';
       const odds = head?.glancing ? 0.85 : Math.min(0.5, (bite - 8) / 24);
@@ -1153,19 +1182,18 @@ export class CombatSim {
     if (v.lengthSq() < 1e-8) v.set(0, -1, 0);
     v.normalize().applyQuaternion(inv);
     const down = -v.y;
-    // Landing on the crown, anywhere across the top of the skull: split. Off the edge of
-    // it, the blade shears down the side of the head and takes the ear.
+    // Landing on the crown, anywhere across the top of the skull: whatever this weapon can
+    // do to a skull (see GORE). Off the edge of it, a blade shears down the side of the
+    // head and takes the ear.
     const middle = Math.abs(o.x) < 0.11;
     const full = power >= 0.75;
     let fatal: Fatal | null = null;
     // (Coming in at the jaw or below, it's into the neck, not the crown; caught right on
     // top of the skull, it needn't be coming straight down to go in.)
     const onCrown = (down > 0.6 && o.y > -0.03) || (down > 0.3 && o.y > 0.1);
-    if (onCrown && middle && full) {
-      if (w.cleave >= 0.4) fatal = 'split';
-      else if (w.edge === 'blunt' && w.mass >= 1.4 && w.damageMul >= 1.3) fatal = 'crush';
-    }
-    const glancing = !fatal && w.cut > 0 && down > 0.4 && !middle;
+    const gore = GORE[w.id];
+    if (onCrown && middle && full) fatal = gore.crown;
+    const glancing = !fatal && gore.tear && down > 0.4 && !middle;
     const side = o.x > 0 ? 'earL' : 'earR';
     const piece: TearPiece = (glancing || Math.abs(o.x) > 0.09) && !d.torn.has(side) ? side : o.y > 0.08 ? 'scalp' : 'cheek';
     // Across the neck (at the jaw or below), level enough to go through it rather than
@@ -1669,6 +1697,24 @@ function overlap(strike: Vector3, radius: number, d: Fighter, height: Height): {
     }
   }
   return null;
+}
+
+/**
+ * How much of a heavy weapon's weight is behind this blow (0..1): a committed (heavy)
+ * swing with a battle axe or a sledgehammer is all of it; with a bat, a little; a quick
+ * strike, or one caught on the haft, none.
+ */
+function heavyBlow(m: MoveDef, w: WeaponDef | null, haft: boolean): number {
+  if (!m.weapon || !w || haft || m.weight !== 'heavy') return 0;
+  return Math.min(1, w.mass / 2.6);
+}
+
+/** Whether this weapon can take off the limb (or head) that comes off at `at`. */
+function canSever(w: WeaponDef, at: BoneName): boolean {
+  const g = GORE[w.id];
+  if (at === 'head') return g.decap;
+  if (at === 'foreArmL' || at === 'foreArmR') return g.sever !== 'none';
+  return g.sever === 'all';
 }
 
 /** The point on the cutting part of a held weapon nearest to `p`. */
