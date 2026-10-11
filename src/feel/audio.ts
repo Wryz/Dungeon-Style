@@ -394,10 +394,36 @@ export class Sfx {
     this.noiseBurst('bandpass', pickup ? 3200 : 2000, 4, 0.25, 0.001, 0.12);
   }
 
+  /**
+   * Something hitting the floor: heavier is lower and longer, metal rings, wood knocks.
+   * @param mass kg  @param metal metal (vs wood)  @param hard 0..1 how hard it landed
+   */
+  landing(mass: number, metal: boolean, hard = 1) {
+    if (!this.ctx) return;
+    const h = Math.max(0.15, Math.min(1, hard));
+    const low = 1 / Math.sqrt(Math.max(0.3, mass));
+    this.thump(150 * low, 55 * low, Math.min(0.9, 0.18 * Math.sqrt(mass)) * h, 0.08 + 0.05 * mass);
+    if (metal) {
+      this.noiseBurst('bandpass', 2600 * low + 900, 6, 0.22 * h, 0.001, 0.12 + 0.03 * mass);
+      this.thump(900 * low + 300, 880 * low + 280, 0.05 * h, 0.25, 'triangle');
+    } else {
+      this.noiseBurst('bandpass', 900 * low + 300, 2, 0.16 * h, 0.001, 0.07);
+    }
+  }
+
   chime() {
     if (!this.ctx) return;
     this.thump(660, 660, 0.08, 0.5, 'sine');
     this.thump(990, 990, 0.06, 0.7, 'sine');
+  }
+
+  /** A body hitting the floor: deeper and longer the heavier it is. */
+  bodyFall(mass: number, hard = 1) {
+    if (!this.ctx) return;
+    const h = Math.max(0.2, Math.min(1, hard));
+    const low = 1 / Math.cbrt(Math.max(0.3, mass));
+    this.thump(95 * low, 32 * low, Math.min(1, 0.6 + 0.12 * mass) * h, 0.3 + 0.08 * Math.min(4, mass));
+    this.noiseBurst('lowpass', 520 * low, 0.7, 0.45 * h, 0.004, 0.25 + 0.05 * Math.min(4, mass));
   }
 
   knockdown() {

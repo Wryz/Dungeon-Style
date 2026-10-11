@@ -16,6 +16,8 @@ export interface Drop {
   weapon: WeaponDef;
   pos: Vector3;
   yaw: number;
+  /** Where it left a hand (world, with height), if it was let go of rather than placed. */
+  from?: Vector3;
 }
 
 export type HurtZone = 'head' | 'chest' | 'abdomen' | 'legs';
@@ -104,6 +106,19 @@ const MIN_SEPARATION = 0.66;
 /** Collision radius of a standing fighter against walls. */
 export const BODY_RADIUS = 0.3;
 const LUNGE_STOP = 0.74;
+/**
+ * How hard a blow shoves the one it lands on, relative to a like-for-like exchange:
+ * momentum in (the attacker's strength — body size squared — and, for a weapon, its
+ * mass and how fast it was moving) over the mass it has to move (size cubed). A hook
+ * barely rocks a giant back; a giant's hook sends you flying; a sledgehammer moves
+ * people a machete doesn't.
+ */
+export function pushScale(a: Fighter, d: Fighter, weapon: WeaponDef | null, power = 1): number {
+  const bodies = Math.pow((a.scale * a.scale) / (d.scale * d.scale * d.scale), 0.7);
+  const tool = weapon ? 0.75 + 0.18 * weapon.mass * Math.max(0.3, Math.min(1, power)) : 1;
+  return Math.max(0.15, Math.min(3, bodies * tool));
+}
+
 /** Something to block with: at least one forearm left. */
 const canGuard = (f: Fighter) => !(f.isSevered('foreArmL') && f.isSevered('foreArmR'));
 /** How far ahead of a strike landing (in multiples of the defence's startup) people react. */
@@ -408,8 +423,11 @@ export class CombatSim {
           (1 - Math.min(0.25, 0.035 * heft(f.weapon, f.scale)));
         _want.set(mi.x / raw, 0, mi.z / raw).multiplyScalar(sp);
       }
-      // Accelerate rather than snap, so starts/stops have weight.
-      f.walkVel.lerp(_want, _want.lengthSq() > f.walkVel.lengthSq() ? 0.22 : 0.3);
+      // Accelerate rather than snap, so starts/stops have weight — more of it the more
+      // there is to move: a giant takes a while to get going and to pull up; a small
+      // creature darts; a heavy weapon in your hands adds to it.
+      const inertia = Math.pow(f.scale * f.scale * f.scale, 0.35) * (1 + 0.03 * heft(f.weapon, f.scale));
+      f.walkVel.lerp(_want, (_want.lengthSq() > f.walkVel.lengthSq() ? 0.22 : 0.3) / inertia);
       if (f.free) f.state = f.walkVel.lengthSq() > 0.04 || len > 0.1 ? 'walk' : 'idle';
     } else if (f.state === 'attack' || f.state === 'defend') {
       f.walkVel.multiplyScalar(0.88);
@@ -764,7 +782,8 @@ export class CombatSim {
   private block(a: Fighter, d: Fighter, m: MoveDef, point: Vector3, dir: Vector3) {
     d.guard -= m.guardDamage;
     d.framesSinceBlock = 0;
-    const kb = m.knockback * a.stats.knockbackMul;
+    // Taking a heavy weapon (or a giant's fist) on the guard drives you back.
+    const kb = m.knockback * a.stats.knockbackMul * pushScale(a, d, m.weapon ? a.weapon : null);
     let guardBreak = false;
     if (d.guard <= 0) {
       guardBreak = true;
@@ -815,7 +834,7 @@ export class CombatSim {
     d.buffer = null;
     d.counter = null;
 
-    const kb = m.knockback * a.stats.knockbackMul;
+    const kb = m.knockback * a.stats.knockbackMul * pushScale(a, d, w ?? null, power);
     let ko = false;
     let knockdown = false;
     if (d.hp <= 0) {
@@ -948,10 +967,10 @@ export class CombatSim {
   }
 
   /** Puts a weapon on the floor. */
-  addDrop(weapon: WeaponDef, x: number, z: number, yaw = 0): Drop {
+  addDrop(weapon: WeaponDef, x: number, z: number, yaw = 0, from?: Vector3): Drop {
     const p = new Vector3(x, 0, z);
     this.walkable.resolve(p, 0.25);
-    const drop: Drop = { id: ++this.dropSerial, weapon, pos: p, yaw };
+    const drop: Drop = { id: ++this.dropSerial, weapon, pos: p, yaw, from: from?.clone() };
     this.drops.push(drop);
     this.events.push({ type: 'drop', drop });
     return drop;
@@ -963,7 +982,8 @@ export class CombatSim {
     const at = fistPoint(f.rig, 'R', new Vector3());
     const w = f.weapon;
     f.weapon = null;
-    this.addDrop(w, at.x, at.z, f.yaw + 1.2);
+    // It falls from the hand: a little forward of where it was let go.
+    this.addDrop(w, at.x + f.forward.x * 0.15, at.z + f.forward.z * 0.15, f.yaw + 1.2, at);
   }
 
   /** Grab (or swap for) the nearest weapon in reach; with none in reach, drop yours. */
@@ -1015,7 +1035,7 @@ export class CombatSim {
           const old = f.weapon;
           f.weapon = drop.weapon;
           this.events.push({ type: 'pickup', f, drop });
-          if (old) this.addDrop(old, drop.pos.x, drop.pos.z, drop.yaw + 0.8);
+          if (old) this.addDrop(old, drop.pos.x, drop.pos.z, drop.yaw + 0.8, fistPoint(f.rig, 'R', new Vector3()));
         }
       }
     }

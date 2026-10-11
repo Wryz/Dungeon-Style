@@ -820,8 +820,15 @@ export class Fighter {
     const twoHand = this.weapon?.style === 'twoHand' ? 0.25 : 1;
     const pump = Math.max(-1, Math.min(1, (footR[2] - footL[2]) / 0.55)) * twoHand;
     const G = this.weapon ? POSE_SPECS[this.weapon.style === 'oneHand' ? 'wGuard1' : 'wGuard2'] : GUARD;
-    const guardL = guardHand(G.handL!, M.guardY + back * 0.02 * m, M.guardZ);
-    const guardR = guardHand(G.handR!, M.guardY + back * 0.02 * m, M.guardZ * 0.6);
+    // Holding a heavy weapon up is work: it sags a little even fresh, and a lot as the
+    // arms tire — hands lower, the head of it drooping toward hanging.
+    const load = Math.min(1, heft(this.weapon, this.scale) / 4);
+    const droop = load * (0.25 + 0.75 * (1 - this.stamina));
+    const guardL = guardHand(G.handL!, M.guardY + back * 0.02 * m - 0.12 * droop, M.guardZ - 0.04 * droop);
+    const guardR = guardHand(G.handR!, M.guardY + back * 0.02 * m - 0.12 * droop, M.guardZ * 0.6 - 0.04 * droop);
+    const gb = G.blade ?? DEFAULT_BLADE;
+    const sag = droop * 0.55;
+    const guardBlade: V3 = [gb[0] * (1 - sag) + 0.15 * sag, gb[1] * (1 - sag) - 0.35 * sag, gb[2] * (1 - sag) + 0.9 * sag];
     const lerp3 = (a: V3, b: V3, k: number): V3 => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
     const runHand = (side: 1 | -1): V3 => {
       const th = 0.32 + 0.68 * pump * side;
@@ -859,7 +866,8 @@ export class Fighter {
       // Bladed stance → square hips when walking; the chest counter-rotates with the arm swing.
       pelvis: [0, pelvisYaw, 0],
       // Running leans the whole body into the stride.
-      abdomen: [(0.1 + M.lean) * f + 0.04 * g + 0.13 * run + fwd * 0.05 * m + back * 0.03 * m, 0, -dx * 0.05 * m * f + this.bank],
+      // (Carrying something heavy in front, the body leans back against it.)
+      abdomen: [(0.1 + M.lean) * f + 0.04 * g + 0.13 * run + fwd * 0.05 * m + back * 0.03 * m - (this.weapon?.style === 'twoHand' ? 0.06 * load * g + 0.03 * load * f : 0), 0, -dx * 0.05 * m * f + this.bank],
       chest: [0.08 * f + 0.02 * g + 0.04 * run + this.lookPitch * 0.25 + this.breathing(), chestYaw, 0],
       head: [-0.04 * f - 0.15 * run + this.lookPitch, -(pelvisYaw + chestYaw) + this.headTrack, 0],
       handL: { at: mix(guardL.at, relaxedL), hint: mix(guardL.hint ?? [0.35, -1, 0], hintL) },
@@ -868,7 +876,7 @@ export class Fighter {
       footR: { at: footR, hint: kneeR },
       // Weapon: on guard in a fight; walking or running, a one-hander hangs point-down
       // and forward at the side, a two-hander is carried across the body.
-      blade: this.weapon ? mix(G.blade ?? DEFAULT_BLADE, this.weapon.style === 'oneHand' ? [0.05, -0.55, 0.83] : (G.blade ?? DEFAULT_BLADE)) : undefined,
+      blade: this.weapon ? mix(guardBlade, this.weapon.style === 'oneHand' ? [0.05, -0.55, 0.83] : (G.blade ?? DEFAULT_BLADE)) : undefined,
       // A heavy two-hander is carried with the lead hand right up by the head.
       slide: (G.slide ?? 0) * f + 1 * g,
     };

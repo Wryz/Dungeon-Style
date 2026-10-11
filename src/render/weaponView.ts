@@ -1,4 +1,6 @@
 import {
+  Quaternion,
+  Vector3,
   BoxGeometry,
   type BufferGeometry,
   Color,
@@ -153,15 +155,23 @@ export class DropView {
   readonly root = new Group();
   private readonly ring: Mesh;
   private readonly ringMat: MeshStandardMaterial;
+  private readonly holder = new Group();
+  private readonly rest = new Quaternion();
+  private readonly mass: number;
+  /** A weapon let go of mid-air: falling, then a bounce, then still. */
+  private fallState: { from: Vector3; t: number; tf: number; axis: Vector3; spin: number; bounce: number; landed: boolean; onLand?: (hard: number) => void } | null = null;
+  private last = -1;
 
   constructor(def: WeaponDef, x: number, z: number, yaw: number) {
     const w = buildWeapon(def);
+    this.mass = def.mass;
     // Lie it on its flat, along `yaw`, centred on the drop point.
     w.rotation.set(Math.PI / 2, 0, 0);
     w.position.set(0, def.id === 'chair' ? 0.03 : 0.035, -def.length / 2);
-    const holder = new Group();
+    const holder = this.holder;
     holder.add(w);
     holder.rotation.y = yaw;
+    this.rest.copy(holder.quaternion);
     this.root.add(holder);
     this.ringMat = new MeshStandardMaterial({ color: '#ffe08a', emissive: new Color('#ffcf4a'), emissiveIntensity: 0.8, transparent: true, opacity: 0.5, depthWrite: false });
     this.ring = new Mesh(new RingGeometry(0.42, 0.5, 28), this.ringMat);
@@ -171,7 +181,64 @@ export class DropView {
     this.root.position.set(x, 0, z);
   }
 
+  /**
+   * Fall from where a hand let go of it (world point, with height): straight down under
+   * gravity, drifting to where it lands, tumbling a little (less the heavier it is —
+   * the head drops first), a small bounce, then still. `onLand` fires on impact with
+   * how hard it hit (0..1).
+   */
+  fall(fromWorld: Vector3, onLand?: (hard: number) => void) {
+    const from = fromWorld.clone().sub(this.root.position);
+    const h = Math.max(0.05, from.y);
+    const seed = Math.sin(from.x * 12.9898 + from.z * 78.233) * 43758.5453;
+    const r = seed - Math.floor(seed);
+    this.fallState = {
+      from,
+      t: 0,
+      tf: Math.sqrt((2 * h) / G),
+      axis: new Vector3(Math.cos(r * 6.28), 0, Math.sin(r * 6.28)),
+      spin: (1.1 + r) / Math.sqrt(Math.max(0.4, this.mass)),
+      bounce: Math.min(0.08, 0.06 / Math.sqrt(Math.max(0.4, this.mass))) * Math.min(1, h),
+      landed: false,
+      onLand,
+    };
+    this.ring.visible = false;
+    this.place(0);
+  }
+
+  private place(dt: number) {
+    const f = this.fallState;
+    if (!f) return;
+    f.t += dt;
+    const u = Math.min(1, f.t / f.tf);
+    if (u < 1) {
+      // Ballistic: dropped (not thrown), so it simply accelerates down.
+      const y = Math.max(0, f.from.y - 0.5 * G * f.t * f.t);
+      this.holder.position.set(f.from.x * (1 - u), y, f.from.z * (1 - u));
+      _q.setFromAxisAngle(f.axis, f.spin * (1 - u) * (1 - u));
+      this.holder.quaternion.copy(this.rest).premultiply(_q);
+      return;
+    }
+    if (!f.landed) {
+      f.landed = true;
+      f.onLand?.(Math.min(1, Math.sqrt(2 * G * Math.max(0.05, f.from.y)) / 4.5));
+    }
+    // One small hop off the floor, then it settles.
+    const tb = f.t - f.tf;
+    const hop = Math.sqrt((2 * f.bounce) / G) * 2;
+    const y = tb < hop ? Math.max(0, f.bounce - 0.5 * G * (tb - hop / 2) ** 2) : 0;
+    this.holder.position.set(0, y, 0);
+    this.holder.quaternion.copy(this.rest);
+    if (tb >= hop) {
+      this.fallState = null;
+      this.ring.visible = true;
+    }
+  }
+
   update(time: number, near: boolean) {
+    const dt = this.last < 0 ? 0 : Math.min(0.1, Math.max(0, time - this.last));
+    this.last = time;
+    if (this.fallState) this.place(dt);
     const p = 0.5 + 0.5 * Math.sin(time * 3);
     this.ringMat.opacity = near ? 0.85 : 0.25 + 0.2 * p;
     this.ring.scale.setScalar(near ? 1.05 : 0.95 + 0.05 * p);
@@ -187,3 +254,6 @@ export class DropView {
     });
   }
 }
+
+const G = 9.81;
+const _q = new Quaternion();

@@ -233,6 +233,25 @@ each other or the scenery.
   slower stamina recovery while you hold it, and slower walking. A heavy swing that
   meets nothing drags you on a step and takes longer to recover from.
 
+**Mass and gravity.**
+- **Knockback is momentum:** a blow's push is the attacker's strength (body size squared)
+  against the defender's mass (size cubed), times the weapon's mass and swing speed.
+  The same cross moves an imp ~31 cm, a man ~16 cm and the Minotaur ~5 cm. A giant's
+  punch sends you flying, and blocking a sledgehammer drives you back further than the
+  same swing with a bat.
+- **Bodies have inertia:** giants take a while to get going and to pull up, small
+  creatures dart, and carrying something heavy adds to it.
+- **Things fall:** a weapon let go of (dropped, or the arm cut off) falls from the hand
+  under gravity, tumbling less the heavier it is. It bounces, settles, and clatters by
+  mass and material: metal rings, wood knocks.
+- **Landings:** a knocked-down body thuds when it actually hits the floor, deeper the
+  heavier it is. It raises dust, and a giant landing jolts the camera. A body that
+  falls against someone still standing slides off them to the floor.
+- **Feel:** a giant's footsteps jolt the camera when it's close. A heavy weapon held
+  in guard sags, more as the arms tire. Carrying a heavy two-hander, the body leans
+  back against it. Heavy weapons land with a longer impact pause and a bigger jolt.
+  `tests/gravity.test.ts` covers the sim side.
+
 **Fighting logic.**
 - **Steering:** enemies walk round props instead of pressing into them.
 - **Blocking:** enemies only block what a guard can stop, and need an arm to do it. An

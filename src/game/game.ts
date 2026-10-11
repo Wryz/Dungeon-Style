@@ -25,7 +25,7 @@ import { Effects } from '../render/particles';
 import { FighterView, type GearLook, PLAYER_PALETTE, type Palette } from '../render/fighterView';
 import { lookFor } from '../render/looks';
 import { DEFAULT_AI, type AIConfig } from '../sim/ai';
-import { type CombatEvent, CombatSim, type HurtZone, hurtSpheres, strikePoint } from '../sim/combat';
+import { type CombatEvent, CombatSim, type HurtZone, hurtSpheres, pushScale, strikePoint } from '../sim/combat';
 import type { MoveDef } from '../sim/moves';
 import { ARCHETYPES, coinDrop, createEnemy, type EnemyKind, type EnemyMods } from '../sim/enemies';
 import { DEFAULT_STATS, type Fighter, type FighterStats } from '../sim/fighter';
@@ -62,6 +62,8 @@ const PLAYER_BASE: FighterStats = { ...DEFAULT_STATS, maxHp: 100, walkSpeed: 2.6
 /** Enemies stand still for this long while the round is announced (real seconds). */
 const INTRO_HOLD = 1.6;
 const _los = new Vector3();
+/** Weapons that knock (wood) rather than ring (metal, glass) when they hit the floor. */
+const WOODEN = new Set(['bat', 'club', 'bokken', 'cue']);
 
 type Mode = 'gauntlet' | 'training';
 type Phase = 'play' | 'clear' | 'shop' | 'down';
@@ -381,6 +383,16 @@ export class Game {
       const v = new DropView(d.weapon, d.pos.x, d.pos.z, d.yaw);
       this.scene.add(v.root);
       this.dropViews.set(d.id, v);
+      // Let go of mid-air: it falls, and you hear it hit the floor.
+      if (d.from) {
+        const w = d.weapon;
+        const at = d.pos.clone();
+        v.fall(d.from, (hard) => {
+          this.sfx.landing(w.mass, !WOODEN.has(w.id), hard);
+          this.effects.dust(at, Math.round(2 + 3 * hard * Math.min(2, w.mass / 2)), 0.08 + 0.04 * w.mass);
+        });
+        d.from = undefined;
+      }
     }
   }
 
@@ -892,12 +904,14 @@ export class Game {
     for (const [f, rd] of this.ragdolls) if (isDown(f)) downSlots |= rd.slot;
     for (const [f, rd] of this.ragdolls) {
       rd.setContacts(isDown(f), downSlots);
+      this.slideOff(f, rd);
       rd.drive(f);
       rd.capturePrev();
     }
     this.world.step();
     for (const [f, rd] of this.ragdolls) {
       rd.captureCur();
+      this.bodyLanding(f, rd);
       if (f.state === 'knockdown' || f.state === 'ko') {
         const p = rd.pelvisPos();
         f.pos.set(p.x, 0, p.z);
@@ -916,14 +930,16 @@ export class Game {
         const heavy = m.weight === 'heavy';
         const byPlayer = e.attacker.team === 'player';
         const big = e.attacker.scale > 1.3;
+        // A heavy weapon lands like one: a longer catch on impact, a bigger jolt.
+        const weight = e.weapon ? Math.min(1.4, 0.8 + 0.1 * e.weapon.mass) : 1;
         this.hitstop = Math.max(
           this.hitstop,
-          Math.round(m.hitstop * GAME_TUNING.hitstopMul * (e.counter ? 1.35 : 1) * (e.ko ? 1.8 : 1) * (e.armored ? 0.5 : 1) * (big ? 1.25 : 1)),
+          Math.round(m.hitstop * GAME_TUNING.hitstopMul * (e.counter ? 1.35 : 1) * (e.ko ? 1.8 : 1) * (e.armored ? 0.5 : 1) * (big ? 1.25 : 1) * weight),
         );
         // Real blows don't freeze time: only a short catch (unless cues are on).
-        if (!this.cues) this.hitstop = Math.min(this.hitstop, Math.max(2, Math.round(m.hitstop * 0.45)));
+        if (!this.cues) this.hitstop = Math.min(this.hitstop, Math.max(2, Math.round(m.hitstop * 0.45 * weight)));
         this.hitstopVictim = e.defender;
-        this.camRig.addTrauma(m.shake * (e.counter ? 1.3 : 1) * (e.ko ? 1.6 : 1) * (big ? 1.6 : 1) * (this.cues ? 1 : 0.6));
+        this.camRig.addTrauma(m.shake * (e.counter ? 1.3 : 1) * (e.ko ? 1.6 : 1) * (big ? 1.6 : 1) * weight * (this.cues ? 1 : 0.6));
         // Blood picked up by whatever did the hitting.
         const av = this.views.get(e.attacker);
         const bleeding = e.defender.wounds.length > 0 || (this.trauma.get(e.defender)?.cut ?? false);
@@ -953,9 +969,10 @@ export class Game {
         const rd = this.ragdolls.get(e.defender);
         rd?.applyHit(e.zone, e.point, e.dir, m, (e.armored ? 0.4 : 1) * Math.min(1.8, e.attacker.scale / e.defender.scale));
         if (e.knockdown || e.ko) {
-          const k = Math.min(1.6, e.attacker.scale / e.defender.scale);
+          // Momentum: who hit whom, and with what.
+          const k = Math.min(2.2, pushScale(e.attacker, e.defender, e.weapon));
           rd?.launch(e.dir.clone().multiplyScalar((m.knockback * 0.9 + (e.ko ? 1 : 0)) * k).add(new Vector3(0, 1.2 + (m.lift ?? 0) * 3, 0)));
-          this.sfx.knockdown();
+          // (The thud comes when the body actually hits the floor: see bodyLanding.)
         }
         if (this.cues) this.views.get(e.defender)?.hitFlash();
         this.bleed(e.defender, e.zone, m, e.damage, e.counter, e.dir);
@@ -1019,7 +1036,8 @@ export class Game {
         this.syncDropViews();
         break;
       case 'drop':
-        this.sfx.clank(false);
+        // (Something let go of mid-air sounds when it lands.)
+        if (!e.drop.from) this.sfx.clank(false);
         this.syncDropViews();
         break;
       case 'bump':
@@ -1075,11 +1093,72 @@ export class Game {
       const speed = Math.hypot(f.walkVel.x, f.walkVel.z) / f.scale;
       for (let i = 0; i < landed.length; i++) {
         this.sfx.footstep(surface, Math.min(1, speed / 3.8), f.scale);
+        // A giant's footfalls are felt as much as heard, the closer the more.
+        if (f.scale > 1.3 && f !== this.player) {
+          const near = Math.max(0, 1 - this.player.distanceTo(f) / 6);
+          if (near > 0) this.camRig.addTrauma(0.05 * (f.scale - 1) * near * Math.min(1, 0.5 + speed / 4));
+        }
         // Sand kicks up under a moving foot.
         if (surface === 'sand' && speed > 1) this.effects.dust(f.footwork.foot(landed[i]).pos, 2 + Math.round(speed), 0.08 * f.scale);
       }
       landed.length = 0;
     }
+  }
+
+  private readonly falls = new Map<Fighter, { vy: number; quiet: number }>();
+
+  /**
+   * A body hitting the floor: heard (and, for something big, felt) at the moment it
+   * lands, not when the blow was struck — a heavy thud, dust, the camera jolting when a
+   * giant goes down.
+   */
+  /**
+   * A body going down can fall against someone still standing — but it can't rest on
+   * them: whoever's upright isn't a post, so it slides off them to the floor.
+   */
+  private slideOff(f: Fighter, rd: Ragdoll) {
+    if (f.state !== 'knockdown' && f.state !== 'ko') return;
+    for (const s of this.sim.fighters) {
+      if (s === f || !s.alive || s.state === 'knockdown' || s.state === 'ko') continue;
+      for (const b of ['chest', 'abdomen', 'head'] as const) {
+        const body = rd.bodies[b];
+        const t = body.translation();
+        if (t.y < 0.35 * f.scale) continue;
+        const dx = t.x - s.pos.x;
+        const dz = t.z - s.pos.z;
+        const d = Math.hypot(dx, dz);
+        const reach = 0.42 * s.scale + 0.2 * f.scale;
+        if (d > reach) continue;
+        const v = body.linvel();
+        const k = (reach - d) * 6;
+        const nx = d > 1e-3 ? dx / d : 1;
+        const nz = d > 1e-3 ? dz / d : 0;
+        body.setLinvel({ x: v.x + nx * k * DT * 30, y: Math.min(v.y, 0), z: v.z + nz * k * DT * 30 }, true);
+      }
+    }
+  }
+
+  private bodyLanding(f: Fighter, rd: Ragdoll) {
+    let s = this.falls.get(f);
+    if (!s) this.falls.set(f, (s = { vy: 0, quiet: 0 }));
+    s.quiet = Math.max(0, s.quiet - 1);
+    const down = f.state === 'knockdown' || f.state === 'ko';
+    const v = rd.bodies.pelvis.linvel();
+    const c = rd.bodies.chest.linvel();
+    const vy = Math.min(v.y, c.y);
+    if (down && s.quiet === 0 && s.vy < -1.4 && vy > s.vy * 0.35) {
+      const p = rd.pelvisPos();
+      if (p.y < 0.45 * f.scale) {
+        const mass = f.scale * f.scale * f.scale;
+        const hard = Math.min(1, -s.vy / 5);
+        this.sfx.bodyFall(mass, hard);
+        this.effects.dust(new Vector3(p.x, 0, p.z), Math.round(6 + 10 * hard * Math.min(3, mass)), 0.25 * f.scale);
+        // Big things shake the floor you're standing on.
+        if (mass > 1.5) this.camRig.addTrauma(Math.min(0.6, 0.08 * mass * hard));
+        s.quiet = 20;
+      }
+    }
+    s.vy = vy;
   }
 
   /** A limb comes off: the ragdoll lets it go, blood everywhere. */
