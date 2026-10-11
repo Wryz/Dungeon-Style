@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buy, canBuy, CATALOG, loadSave, NEW_SAVE, nextItem, statsWithGear, writeSave } from '../src/game/economy';
+import { buy, buyWeapon, canBuy, CATALOG, deathReward, loadSave, NEW_SAVE, nextItem, nextWeapon, SLOTS, statsWithGear, WEAPON_SHOP, writeSave } from '../src/game/economy';
 import { DEFAULT_STATS } from '../src/sim/fighter';
 
 describe('economy', () => {
@@ -35,5 +35,41 @@ describe('economy', () => {
     expect(loadSave(store)).toEqual(s);
     mem.set('brawler.save.v2', '{broken');
     expect(loadSave(store)).toEqual(NEW_SAVE);
+  });
+});
+
+describe('progression', () => {
+  it('six tiers in every slot, each better than the last, and a weapon to carry in', () => {
+    for (const slot of SLOTS) {
+      const tiers = CATALOG.filter((g) => g.slot === slot).sort((a, b) => a.tier - b.tier);
+      expect(tiers.map((g) => g.tier)).toEqual([1, 2, 3, 4, 5, 6]);
+      for (let i = 1; i < tiers.length; i++) {
+        expect(tiers[i].price).toBeGreaterThan(tiers[i - 1].price);
+        const sum = (g: (typeof tiers)[number]) => Object.values(g.mods).reduce((a, v) => a + Math.abs(v as number), 0);
+        expect(sum(tiers[i])).toBeGreaterThan(sum(tiers[i - 1]));
+      }
+    }
+    const s = structuredClone(NEW_SAVE);
+    s.coins = 10000;
+    expect(nextWeapon(s)?.weapon).toBe('bat');
+    expect(buyWeapon(s, WEAPON_SHOP[2])).toBe(false); // in order
+    for (const w of WEAPON_SHOP) expect(buyWeapon(s, w)).toBe(true);
+    expect(s.weapon).toBe(6);
+    expect(nextWeapon(s)).toBeNull();
+  });
+
+  it('fully geared, you are much harder to hurt — but never untouchable', () => {
+    const s = structuredClone(NEW_SAVE);
+    for (const slot of SLOTS) s.gear[slot] = 6;
+    const st = statsWithGear(s);
+    expect(st.defense).toBeLessThanOrEqual(0.7);
+    expect(st.staggerResist).toBeLessThanOrEqual(0.8);
+    expect(st.maxHp).toBeGreaterThan(statsWithGear(NEW_SAVE).maxHp + 100);
+  });
+
+  it('a run that ends in death still pays — more the further it got, a bonus for a new best', () => {
+    expect(deathReward(1, 0)).toBeGreaterThan(0);
+    expect(deathReward(6, 10)).toBeGreaterThan(deathReward(3, 10));
+    expect(deathReward(8, 4)).toBeGreaterThan(deathReward(8, 10));
   });
 });

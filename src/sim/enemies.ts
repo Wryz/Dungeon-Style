@@ -90,7 +90,7 @@ const SAMURAI_STYLE: FighterStyle = {
 export const ARCHETYPES = {
   rookie: {
     kind: 'rookie',
-    read: 0.3,
+    read: 0.4,
     name: 'Rookie',
     stats: { maxHp: 45, walkSpeed: 2.1 },
     style: LIGHT_STYLE,
@@ -115,7 +115,7 @@ export const ARCHETYPES = {
   },
   brawler: {
     kind: 'brawler',
-    read: 0.45,
+    read: 0.55,
     name: 'Brawler',
     stats: { maxHp: 70, walkSpeed: 1.9, staggerResist: 0.1 },
     style: BRAWLER_STYLE,
@@ -134,7 +134,7 @@ export const ARCHETYPES = {
   },
   kicker: {
     kind: 'kicker',
-    read: 0.55,
+    read: 0.65,
     name: 'Kicker',
     stats: { maxHp: 60, walkSpeed: 2.0 },
     style: KICKER_STYLE,
@@ -163,7 +163,7 @@ export const ARCHETYPES = {
   },
   bruiser: {
     kind: 'bruiser',
-    read: 0.4,
+    read: 0.5,
     name: 'Bruiser',
     stats: { maxHp: 120, walkSpeed: 1.5, staggerResist: 0.4, defense: 0.15 },
     style: HEAVY_STYLE,
@@ -189,7 +189,7 @@ export const ARCHETYPES = {
   },
   samurai: {
     kind: 'samurai',
-    read: 0.85,
+    read: 0.95,
     name: 'Samurai',
     weapon: 'katana',
     stats: { maxHp: 90, walkSpeed: 1.9, staggerResist: 0.45 },
@@ -219,7 +219,7 @@ export const ARCHETYPES = {
   },
   ninja: {
     kind: 'ninja',
-    read: 0.7,
+    read: 0.85,
     name: 'Ninja',
     weapon: 'ninjato',
     ammo: { weapon: 'kunai', count: 5 },
@@ -267,7 +267,7 @@ const BOSS_STYLE: FighterStyle = {
 Object.assign(ARCHETYPES, {
   imp: {
     kind: 'imp',
-    read: 0.5,
+    read: 0.6,
     name: 'Imp',
     stats: { maxHp: 34, walkSpeed: 2.7 },
     style: LIGHT_STYLE,
@@ -291,7 +291,7 @@ Object.assign(ARCHETYPES, {
   },
   demon: {
     kind: 'demon',
-    read: 0.55,
+    read: 0.7,
     name: 'Demon',
     stats: { maxHp: 95, walkSpeed: 2.2, staggerResist: 0.25 },
     style: KICKER_STYLE,
@@ -315,7 +315,7 @@ Object.assign(ARCHETYPES, {
   },
   champion: {
     kind: 'champion',
-    read: 0.75,
+    read: 0.9,
     name: 'The Champion',
     stats: { maxHp: 260, walkSpeed: 1.7, staggerResist: 0.6, defense: 0.15 },
     style: BRAWLER_STYLE,
@@ -337,7 +337,7 @@ Object.assign(ARCHETYPES, {
   },
   minotaur: {
     kind: 'minotaur',
-    read: 0.45,
+    read: 0.55,
     name: 'The Minotaur',
     weapon: 'axe',
     stats: { maxHp: 320, walkSpeed: 1.6, staggerResist: 0.7, defense: 0.2 },
@@ -365,7 +365,7 @@ Object.assign(ARCHETYPES, {
   },
   cyclops: {
     kind: 'cyclops',
-    read: 0.35,
+    read: 0.45,
     name: 'The Cyclops',
     weapon: 'club',
     stats: { maxHp: 380, walkSpeed: 1.35, staggerResist: 0.75, defense: 0.25 },

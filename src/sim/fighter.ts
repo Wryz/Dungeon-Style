@@ -143,6 +143,7 @@ export class Fighter {
   /** The weapon is stuck in the opponent until this state frame. */
   stuckUntil = 0;
   private readonly impactPose = makePose();
+  private readonly retractPose = makePose();
   private readonly reactPose = makePose();
   /** Head / chest pitch toward the opponent's face (smoothed; + = looking down). */
   private lookPitch = 0;
@@ -194,6 +195,8 @@ export class Fighter {
   readonly wounds: Wound[] = [];
   /** Bones cut off (with everything below them). */
   readonly severed = new Set<BoneName>();
+  /** Pieces torn away (an ear, scalp...): each only comes off once. */
+  readonly torn = new Set<string>();
   /** Cleaving damage taken per limb (enough of it and the limb comes off). */
   readonly limbDamage: Partial<Record<BoneName, number>> = {};
   hitReaction: PoseName = 'hitHigh';
@@ -324,11 +327,19 @@ export class Fighter {
     this.stuckUntil = mode === 'stick' ? sf + hold : 0;
     this.attackEnd = sf + hold + retract;
     const back = getPose(this.weapon ? (this.weapon.style === 'oneHand' ? 'wGuard1' : 'wGuard2') : 'guard');
-    this.anim.play([
+    const keys: Parameters<typeof this.anim.play>[0] = [
       { f: sf, pose: this.impactPose },
       { f: sf + hold, pose: this.impactPose },
-      { f: this.attackEnd, pose: back, ease: mode === 'stick' ? 'in' : 'out' },
-    ]);
+    ];
+    if (this.weapon) {
+      // A weapon is brought back up and over, not dragged back through the body.
+      blendPose(this.impactPose, back, 0.5, this.retractPose);
+      this.retractPose.blade.y += 0.25;
+      this.retractPose.blade.normalize();
+      keys.push({ f: sf + hold + Math.round(retract / 2), pose: this.retractPose, ease: 'inOut' });
+    }
+    keys.push({ f: this.attackEnd, pose: back, ease: mode === 'stick' ? 'in' : 'out' });
+    this.anim.play(keys);
   }
 
   inCancelWindow(): boolean {
@@ -512,7 +523,7 @@ export class Fighter {
     const ox = t.pos.x - this.pos.x;
     const oz = t.pos.z - this.pos.z;
     const side = (ox * fz - oz * fx) / Math.max(0.01, Math.hypot(ox, oz));
-    const h = targetHeight(t, aim?.height ?? move.height);
+    const h = targetHeight(t, aim?.height ?? move.height) + (aim?.edgeDy ?? 0) * t.scale;
     return {
       target: [side * ahead * 0.5 / this.scale, h / this.scale, ahead / this.scale],
       strikeAt: Math.max(w.strikeFrom + 0.06, w.length - (w.edge === 'blade' && w.style === 'twoHand' ? 0.14 : 0.08)),
@@ -913,7 +924,14 @@ export class Fighter {
     const guardR = guardHand(G.handR!, M.guardY + back * 0.02 * m - 0.12 * droop, M.guardZ * 0.6 - 0.04 * droop);
     const gb = G.blade ?? DEFAULT_BLADE;
     const sag = droop * 0.55;
-    const guardBlade: V3 = [gb[0] * (1 - sag) + 0.15 * sag, gb[1] * (1 - sag) - 0.35 * sag, gb[2] * (1 - sag) + 0.9 * sag];
+    let guardBlade: V3 = [gb[0] * (1 - sag) + 0.15 * sag, gb[1] * (1 - sag) - 0.35 * sag, gb[2] * (1 - sag) + 0.9 * sag];
+    // Someone inside the length of a long weapon: it's held up out of their way, not
+    // levelled into their chest.
+    if (this.weapon && this.target?.alive) {
+      const room = this.distanceTo(this.target) - 0.3 * this.target.scale;
+      const close = Math.max(0, Math.min(1, (this.weapon.length * this.scale + 0.35 - room) / 0.35));
+      if (close > 0) guardBlade = [guardBlade[0] * (1 - close), guardBlade[1] * (1 - close) + 0.95 * close, guardBlade[2] * (1 - close) + 0.3 * close];
+    }
     const lerp3 = (a: V3, b: V3, k: number): V3 => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
     const runHand = (side: 1 | -1): V3 => {
       const th = 0.32 + 0.68 * pump * side;

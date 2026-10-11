@@ -79,6 +79,8 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
 
 
 const HEAD: Aim = { id: 'head', weight: 3 };
+/** A level cut at the head goes for the neck, under the jaw (dropping a little at the knees to get under it). */
+const NECK: Aim = { id: 'head', weight: 3, edgeDy: -0.05, add: { root: [0, -0.05, 0] } };
 const BODY: Aim = { id: 'body', weight: 2, offset: [0.02, -0.32, -0.04], height: 'mid', add: { root: [0, -0.06, 0], abdomen: [0.12, 0, 0] } };
 const LEGS: Aim = { id: 'legs', weight: 1, offset: [0.04, -0.62, -0.08], height: 'low', add: { root: [0, -0.12, 0], abdomen: [0.3, 0, 0] } };
 
@@ -111,7 +113,7 @@ export const WEAPON_MOVES: Record<string, MoveDef> = {
     knockback: 1.4, impulse: 16, hitstop: 7, shake: 0.24, radius: 0, reach: 1.6,
     lunge: { from: 2, to: 10, distance: 0.2 },
     cancel: { into: ['backslash', 'chop', 'slash', 'frontKick', 'lowKick'], from: 13, to: 30 },
-    aims: [HEAD, BODY],
+    aims: [NECK, BODY],
     keys: keys('wSlashWind', 'wSlashExt', 'wSlashFollow', 'wGuard1'),
   }),
   backslash: weaponMove({
@@ -123,7 +125,7 @@ export const WEAPON_MOVES: Record<string, MoveDef> = {
     knockback: 1.4, impulse: 15, hitstop: 7, shake: 0.22, radius: 0, reach: 1.55,
     lunge: { from: 1, to: 8, distance: 0.16 },
     cancel: { into: ['chop', 'slash', 'frontKick', 'lowKick'], from: 11, to: 28 },
-    aims: [HEAD, BODY],
+    aims: [NECK, BODY],
     keys: keys('wBackWind', 'wBackExt', 'wBackFollow', 'wGuard1', 0.4),
   }),
   // Point-first stab: the sword arm drives straight from the hip with a lunge, and the
@@ -171,7 +173,7 @@ export const WEAPON_MOVES: Record<string, MoveDef> = {
     knockback: 2.6, impulse: 30, lift: 0.08, hitstop: 10, shake: 0.42, radius: 0, reach: 2.05,
     lunge: { from: 3, to: 14, distance: 0.25 },
     cancel: { into: ['sweepBack', 'overhead', 'frontKick'], from: 18, to: 34 },
-    aims: [HEAD, BODY, LEGS],
+    aims: [NECK, BODY, LEGS],
     keys: keys('wSweepWind', 'wSweepExt', 'wSweepFollow', 'wGuard2', 0.6),
   }),
   sweepBack: weaponMove({
@@ -181,7 +183,7 @@ export const WEAPON_MOVES: Record<string, MoveDef> = {
     damage: 9, guardDamage: 20, poiseDamage: 36, hitstun: 26, blockstun: 16,
     knockback: 2.4, impulse: 26, lift: 0.06, hitstop: 9, shake: 0.38, radius: 0, reach: 1.9,
     lunge: { from: 2, to: 12, distance: 0.2 },
-    aims: [HEAD, BODY],
+    aims: [NECK, BODY],
     keys: keys('wSweepBackWind', 'wSweepBackExt', 'wSweepBackFollow', 'wGuard2', 0.4),
   }),
   overhead: weaponMove({

@@ -17,7 +17,9 @@ demons and giant bosses.
   through seven arenas: the boxing ring, the street, a grocery store, an underground
   warehouse fight club, a biker bar, a dojo and a city rooftop at night — each with its
   own props, floor sound and ambience.
-  Falling sends you back to round 1 — coins and gear stay. Your best round is saved.
+  Falling sends you back to round 1 — but the run pays out (more the further you got,
+  plus a bonus for a new best), coins and gear stay, and the shop opens so you can gear
+  up before going again. Your best round is saved.
 - **Opponents, each with a fighting style of its own** (see *Fighting styles* below):
   Rookie, Brawler, Kicker, Bruiser, **Samurai** (katana) and **Ninja** (ninjato and
   throwing knives), and from round 6 mythical creatures: **Imps** (small acrobats) and
@@ -26,9 +28,18 @@ demons and giant bosses.
   colosseum; the samurai wears hakama and a topknot, the ninja black with a mask.
 - **Bosses (giants):** The Champion (1.6×), The Minotaur (1.75×, horns and snout) and
   The Cyclops (1.85×). Size scales reach, step length, mass and hit weight.
-- **Economy:** KOs burst into coins and each cleared round pays a bonus; between rounds
-  a shop sells helmet, chestplate, leggings, boots and fist cuffs (3 tiers each) that
-  change your stats and show on your character. Progress is saved in the browser.
+- **Economy and progression:** KOs burst into coins and each cleared round pays a
+  bonus; between rounds (and after a death) a shop sells helmet, chestplate, leggings,
+  boots and fist cuffs — **6 tiers each**, from leather and iron up to blacksteel and
+  mythril — that change your stats and show on your character (cheek guards, crests,
+  faulds, knee cops, vambraces at the higher tiers), plus a **weapon** you carry into
+  every round (bat → machete → gladius → katana → fire axe → battle axe). Progress is
+  saved in the browser.
+- **Opponents gear up too:** from round 4 on they wear the same armour you can buy — more
+  pieces and better tiers the further you get (tier 6 plate by the late rounds) — and
+  more and more of them walk in armed. The round banner tells you what they've got.
+  They read your strikes better every round, and a big weapon wound up overhead is the
+  thing they watch for most.
 - **Weapons:** every arena has weapons lying around — a folding chair in the ring, a
   bat and a machete on the street, a cleaver and a frying pan in the grocery store, a
   crowbar and a sledgehammer in the warehouse, a pool cue and a beer bottle in the bar,
@@ -46,9 +57,15 @@ demons and giant bosses.
   feet and blunt weapons rebound. Only a miss, a blow that cleaves clean through, or one
   that drives the target off their feet carries through. Edged weapons
   leave lasting cuts that keep bleeding (and slowly drain health — enough of them and
-  your opponent bleeds out); heavy edges take arms, legs and heads off, and the limb
-  flies free as a physics body while the stump pumps blood. Your own limbs only come
-  off with the blow that finishes you. Enemies pick weapons up too; the Minotaur
+  your opponent bleeds out); heavy edges take arms and legs off, and the limb flies
+  free as a physics body while the stump pumps blood. **Where and how a blade meets the
+  head matters:** chopped straight down onto the crown it splits the skull open (the
+  halves fall apart from the jaw) and a heavy enough blunt weapon caves it in — either
+  kills anyone outright, you included; only a level cut across the neck takes the head
+  off; a blow coming down off to one side shears off the ear. Glancing edges tear
+  pieces away — ears, scalp, a cheek, chunks of muscle — which fly off, tumble and lie
+  where they land, leaving a raw gouge. Your own limbs only come off with the blow that
+  finishes you. Enemies pick weapons up too; the Minotaur
   carries an axe and the Cyclops a spiked club. Blocking a blade costs a forearm cut.
 - **Size-aware fighting:** every strike is fitted to the opponent actually in front of
   you — aimed at where their head, body and legs really are, shortened to the

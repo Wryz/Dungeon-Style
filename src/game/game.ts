@@ -19,13 +19,14 @@ import { type Material, Sfx, type Surface } from '../feel/audio';
 import { Input } from '../input/input';
 import { CAMERA_TUNING, CameraRig } from '../render/cameraRig';
 import { Blood } from '../render/blood';
+import { Gibs } from '../render/gibs';
 import { Coins } from '../render/coins';
 import { cutoutUniforms, updateCutout } from '../render/cutout';
 import { Effects } from '../render/particles';
 import { FighterView, type GearLook, PLAYER_PALETTE, type Palette } from '../render/fighterView';
 import { lookFor } from '../render/looks';
 import { DEFAULT_AI, type AIConfig } from '../sim/ai';
-import { buttonMove, type CombatEvent, CombatSim, type HurtZone, hurtSpheres, strikePoint } from '../sim/combat';
+import { buttonMove, type CombatEvent, CombatSim, type Fatal, type HurtZone, hurtSpheres, strikePoint, type Tear } from '../sim/combat';
 import { type MoveDef, moveLength } from '../sim/moves';
 import { ARCHETYPES, coinDrop, createEnemy, type EnemyKind, type EnemyMods } from '../sim/enemies';
 import { DEFAULT_STATS, type Fighter, type FighterStats } from '../sim/fighter';
@@ -41,8 +42,8 @@ import { limbBones, WEAPONS, type Wound } from '../sim/weapons';
 import { DropView, ProjectileView } from '../render/weaponView';
 import { projectileDir, projectileGrip } from '../sim/projectiles';
 import { Cinematics, type Shot } from '../render/cinematics';
-import { item, loadSave, type SaveData, SLOTS, statsWithGear, writeSave } from './economy';
-import { type RoundSpec, roundSpec } from './gauntlet';
+import { deathReward, item, loadSave, opponentGear, type SaveData, SLOTS, statsWithGear, weaponItem, writeSave } from './economy';
+import { type RoundSpec, roundSpec, type Spawn } from './gauntlet';
 import { Trauma } from './trauma';
 
 export const GAME_TUNING = {
@@ -82,6 +83,7 @@ export class Game {
   readonly effects: Effects;
   readonly coins: Coins;
   readonly blood: Blood;
+  readonly gibs: Gibs;
   readonly trauma = new Map<Fighter, Trauma>();
   readonly sfx = new Sfx();
   readonly input: Input;
@@ -137,6 +139,8 @@ export class Game {
   private stepOnce = false;
   private slowmo = 0;
   private downIn = -1;
+  /** What the last run paid out when it ended. */
+  private lastPay = 0;
   private shopIn = -1;
   private bannerIn = -1;
   private attacksThrown = 0;
@@ -179,6 +183,7 @@ export class Game {
     this.effects = new Effects(this.scene);
     this.coins = new Coins(this.scene);
     this.blood = new Blood(this.scene);
+    this.gibs = new Gibs(this.scene);
     this.scene.add(this.debugGroup);
     const params = new URLSearchParams(location.search);
     this.mode = params.get('mode') === 'training' || params.get('mode') === 'arena' ? 'training' : 'gauntlet';
@@ -208,7 +213,10 @@ export class Game {
     this.blood.enabled = this.settings.prefs.blood;
     this.settings.onPrefs = (p) => {
       this.blood.enabled = p.blood;
-      if (!p.blood) this.blood.clear();
+      if (!p.blood) {
+        this.blood.clear();
+        this.gibs.clear();
+      }
     };
     this.settings.onOpenChange = (open) => this.setMenuPause(open);
     this.hud.gearButton.addEventListener('click', () => this.settings.toggle());
@@ -222,7 +230,8 @@ export class Game {
     this.shop.onDone = () => {
       this.shop.close();
       this.setMenuPause(false);
-      this.startRound(this.round + 1);
+      // (After a death the run starts over.)
+      this.startRound(this.shop.fallen ? 1 : this.round + 1);
     };
 
     this.applyGear();
@@ -305,16 +314,27 @@ export class Game {
     this.airborne.delete(f);
   }
 
-  private spawn(kind: EnemyKind, x: number, z: number, mods: EnemyMods = {}, fx = true): Fighter {
+  private spawn(kind: EnemyKind, x: number, z: number, mods: EnemyMods & Partial<Spawn> = {}, fx = true): Fighter {
     const training = this.mode === 'training';
     const { fighter, ai } = createEnemy(kind, this.sim.rng, mods, training ? this.aiCfg : {});
     if (training) ai.cfg = this.aiCfg;
+    // Geared up for the round: the same armour you can buy, and maybe a weapon.
+    if (mods.gear) {
+      fighter.stats = opponentGear(fighter.stats, mods.gear);
+      fighter.hp = fighter.stats.maxHp;
+    }
+    if (mods.weapon && !fighter.weapon) fighter.weapon = WEAPONS[mods.weapon];
     fighter.pos.set(x, 0, z);
     fighter.yaw = Math.atan2(this.player.pos.x - x, this.player.pos.z - z);
     fighter.updatePose(0, 0, 0);
     this.sim.add(fighter, ai);
     const look = lookFor(kind, this.theme.id);
-    this.attach(fighter, look.palette, look.gear);
+    const worn: GearLook = { ...look.gear };
+    for (const slot of SLOTS) {
+      const g = item(slot, mods.gear?.[slot] ?? 0);
+      if (g) worn[slot] = { material: g.material, tier: g.tier };
+    }
+    this.attach(fighter, look.palette, worn);
     this.ragdolls.get(fighter)?.snapTo(fighter);
     this.enemies.push(fighter);
     this.enemyKind.set(fighter, kind);
@@ -343,6 +363,7 @@ export class Game {
     // Patched up between rounds: wounds healed, everything reattached, empty-handed.
     p.wounds.length = 0;
     p.severed.clear();
+    p.torn.clear();
     for (const k of Object.keys(p.limbDamage)) delete p.limbDamage[k as keyof typeof p.limbDamage];
     p.weapon = null;
     p.pickupRequest = 0;
@@ -505,6 +526,7 @@ export class Game {
     this.clearDrops();
     this.coins.clear();
     this.blood.clear();
+    this.gibs.clear();
     this.trauma.clear();
     this.views.get(this.player)?.setTrauma(0, false);
     this.player.minHp = 0;
@@ -520,7 +542,18 @@ export class Game {
     this.applyGear();
     // Face the middle of the arena.
     this.resetPlayer(x, z, Math.atan2(-x, -z * 0.3));
+    // Walk in with the best weapon you've bought.
+    const w = weaponItem(this.save.weapon);
+    if (w) this.giveWeapon(w.weapon);
     this.camRig.snap(this.player);
+  }
+
+  /** How the opponent comes kitted out: " · tier 3 armour · machete". */
+  private kitNote(s: Spawn): string {
+    const tiers = Object.values(s.gear).filter((t): t is number => !!t);
+    const armour = tiers.length ? ` · tier ${Math.max(...tiers)} armour` : '';
+    const w = s.weapon ? ` · ${WEAPONS[s.weapon].name.toLowerCase()}` : '';
+    return armour + w;
   }
 
   private banner(text: string, sub: string, cls = '', secs = 2.2) {
@@ -567,11 +600,11 @@ export class Game {
         slow: 1,
         priority: 2,
       });
-      this.banner(`BOSS · ${ARCHETYPES[spec.boss].name.toUpperCase()}`, `round ${n} · ${this.theme.name}`, 'down', 2.6);
+      this.banner(`BOSS · ${ARCHETYPES[spec.boss].name.toUpperCase()}`, `round ${n} · ${this.theme.name}${this.kitNote(spec.spawns[0])}`, 'down', 2.6);
       this.camRig.addTrauma(0.35);
       this.sfx.knockdown();
     } else {
-      this.banner(`ROUND ${n}`, `${this.theme.name} · ${ARCHETYPES[spec.spawns[0].kind].name}`, 'intro');
+      this.banner(`ROUND ${n}`, `${this.theme.name} · ${ARCHETYPES[spec.spawns[0].kind].name}${this.kitNote(spec.spawns[0])}`, 'intro');
     }
     this.setMenuPause(false);
   }
@@ -812,7 +845,7 @@ export class Game {
     if (due(this.shopIn)) {
       this.phase = 'shop';
       this.setMenuPause(true);
-      this.shop.open(this.round);
+      this.shop.open(this.round, null);
     }
     if (due(this.nextRoundIn)) this.startRound(this.round + 1);
     if (due(this.respawnIn)) {
@@ -821,8 +854,13 @@ export class Game {
       this.hud.hideBanner();
     }
     if (due(this.downIn)) {
-      if (this.mode === 'gauntlet') this.startRound(1);
-      else {
+      if (this.mode === 'gauntlet') {
+        // Spend what the run earned before going again.
+        this.hud.hideBanner();
+        this.phase = 'shop';
+        this.setMenuPause(true);
+        this.shop.open(this.round, this.lastPay);
+      } else {
         this.revivePlayer();
         this.phase = 'play';
         this.hud.hideBanner();
@@ -969,7 +1007,9 @@ export class Game {
           this.blood.spray(e.point, e.dir.clone().setY(0.25), 0.5 + (e.wound?.bleed ?? 0.3) * 1.2, 3);
         }
         this.lastHitBy.set(e.defender, e.attacker);
+        if (e.tear) this.tearOff(e.defender, e.tear);
         if (e.sever) this.dismember(e.defender, e.sever, e.dir, e.point);
+        else if (e.fatal) this.skullBlow(e.defender, e.fatal, e.dir, e.point);
         else if (!e.ko && (e.damage >= 16 || (e.counter && heavy) || (e.knockdown && heavy))) {
           // A huge blow: a quick punch-in, slowed down.
           const at = e.point.clone();
@@ -1255,6 +1295,38 @@ export class Game {
     if (this.cues) this.hud.popup(label, point, this.viewCamera, 'armor');
   }
 
+  /**
+   * Straight down onto the skull: split open by an edge, or caved in by something heavy.
+   * Nobody gets up — the kill is held on, close, the way a decapitation is.
+   */
+  private skullBlow(f: Fighter, kind: Fatal, dir: Vector3, point: Vector3) {
+    const view = this.views.get(f);
+    if (kind === 'split') view?.splitHead();
+    else view?.crushHead();
+    this.sfx.sever();
+    this.camRig.addTrauma(0.5);
+    this.camRig.zoomPunch(1.2);
+    this.slowmo = Math.max(this.slowmo, 0.6);
+    const top = view ? view.facePoint('brow') : point.clone();
+    for (let i = 0; i < 5; i++) this.blood.spray(top, dir.clone().setY(1 + i * 0.25), 1, kind === 'split' ? 2.6 : 3.2);
+    const by = this.lastHitBy.get(f) ?? this.player;
+    const at = point.clone();
+    this.cut({ focus: () => at, side: this.across(by.pos, f.pos, 0.45), distance: 1.9 * Math.max(1, f.scale * 0.8), height: 0.25, orbit: 0.4, dolly: -0.2, fov: 36, duration: 2.1, slow: 0.1, priority: 4.5 });
+    if (this.cues) this.hud.popup(kind === 'split' ? 'SKULL SPLIT' : 'SKULL CRUSHED', point, this.viewCamera, 'armor');
+  }
+
+  /** A piece torn off: gone from the body, flying, and landing somewhere on the floor. */
+  private tearOff(f: Fighter, t: Tear) {
+    const view = this.views.get(f);
+    view?.tear(t.piece, t.bone, t.local, t.size / f.scale);
+    if (this.blood.enabled) {
+      this.gibs.spawn(t.point, t.vel, t.size, view?.palette.skin ?? '#d9a07a', t.piece);
+      this.blood.spray(t.point, t.vel.clone(), 0.8, 2.2);
+    }
+    const label = t.piece === 'earL' || t.piece === 'earR' ? 'EAR OFF' : t.piece === 'scalp' ? 'SCALPED' : null;
+    if (label) this.marker(label, t.point, f === this.player ? 'hurt' : 'big');
+  }
+
   /** Accumulate trauma and spill blood where it makes sense (mouth, nose, brow). */
   private bleed(f: Fighter, zone: HurtZone, m: MoveDef, damage: number, counter: boolean, dir: Vector3) {
     let t = this.trauma.get(f);
@@ -1282,10 +1354,15 @@ export class Game {
       this.cut({ focus: this.pelvisOf(f), side: this.across(by.pos, f.pos, -0.2), distance: 3.0, height: 1.7, orbit: 0.16, dolly: -0.2, fov: 40, duration: 3.2, slow: 0.22, priority: 5 });
       this.clearIn = this.holdIn = -1;
       if (this.mode === 'gauntlet') {
+        // The run is over — but what it earned is yours to spend on the next one.
+        const pay = deathReward(this.round, this.save.bestRound);
         const best = Math.max(this.save.bestRound, this.round - 1);
         this.save.bestRound = best;
+        this.save.coins += pay;
+        this.lastPay = pay;
         writeSave(this.save);
-        this.banner('DEFEATED', `fell in round ${this.round} · best ${best} · back to round 1`, 'down', 3.4);
+        this.hud.setCoins(this.save.coins);
+        this.banner('DEFEATED', `fell in round ${this.round} · best ${best} · +${pay} coins · back to round 1`, 'down', 3.4);
       } else {
         this.banner('DOWN', 'get up', 'down', 3.2);
       }
@@ -1334,6 +1411,7 @@ export class Game {
 
     this.effects.update(simDt, realDt);
     this.blood.update(simDt);
+    this.gibs.update(simDt, (at, speed) => this.blood.spray(at, new Vector3(0, 1, 0), Math.min(0.4, speed * 0.08), 0.6));
     if (simDt > 0) {
       for (const [f, t] of this.trauma) {
         if (!t.drip(simDt, this.fxRng)) continue;

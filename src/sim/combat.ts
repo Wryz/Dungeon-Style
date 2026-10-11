@@ -52,6 +52,10 @@ export type CombatEvent =
       wound: Wound | null;
       /** A limb (or the head) cut off. */
       sever: BoneName | null;
+      /** A blow nobody survives: the skull split by an edge, or caved in. */
+      fatal: Fatal | null;
+      /** A piece torn away (an ear, scalp, a chunk of flesh). */
+      tear: Tear | null;
     }
   | { type: 'block'; attacker: Fighter; defender: Fighter; move: MoveDef; point: Vector3; dir: Vector3; guardBreak: boolean; wound: Wound | null; parry: boolean }
   | { type: 'pickup'; f: Fighter; drop: Drop }
@@ -68,6 +72,24 @@ export type CombatEvent =
   /** A weapon in flight hit something that isn't a person: the floor, a wall, a prop. */
   | { type: 'thud'; projectile: Projectile; point: Vector3; speed: number; wall: boolean };
 
+export type Fatal = 'split' | 'crush';
+export type TearPiece = 'earL' | 'earR' | 'scalp' | 'cheek' | 'flesh';
+export interface Tear {
+  piece: TearPiece;
+  bone: BoneName;
+  /** Where it came from, in the bone's frame (authored scale). */
+  local: [number, number, number];
+  point: Vector3;
+  /** How it flies off. */
+  vel: Vector3;
+  size: number;
+}
+/** Strikes that come straight down when the swing itself wasn't tracked. */
+const DOWNWARD = new Set(['chop', 'overhead', 'menCut', 'flipSlash']);
+/** Centre of the head's hit sphere along the bone. */
+const HEAD_CENTRE = 0.13;
+const _hc = new Vector3();
+
 interface Contact {
   attacker: Fighter;
   defender: Fighter;
@@ -81,6 +103,8 @@ interface Contact {
   power?: number;
   /** Caught with the handle / haft rather than the striking part. */
   haft?: boolean;
+  /** Which way the striking part was travelling (world, unit), when known. */
+  swing?: Vector3;
 }
 
 /** Below this much swing power a weapon just thuds against the body. */
@@ -141,6 +165,9 @@ export function readChance(f: Fighter, o: Fighter, opponents: Fighter[]): number
   // Throwing the same strike again and again: they see it coming.
   p *= 1 + 0.15 * Math.min(4, o.repeatCount);
   p *= Math.max(0.8, Math.min(1.1, 0.75 + m.startup * 0.02));
+  // A big weapon wound up overhead is the most obvious thing in the world — and the
+  // one blow nobody can afford to take.
+  if (m.weapon && m.weight === 'heavy') p *= DOWNWARD.has(m.id) ? 1.4 : 1.2;
   for (const x of opponents) if (x !== o && x.state === 'attack' && !x.hitThisAttack) p *= 0.55;
   return Math.max(0.12, Math.min(0.95, p));
 }
@@ -818,7 +845,13 @@ export class CombatSim {
           if (!d.alive || d.state === 'knockdown' || d.state === 'getup') continue;
           const c = overlapBody(samples, r, d, at);
           if (c) {
-            contacts.push({ attacker: a, defender: d, move: m, height: a.strikeHeight, point: c.point, zone: c.zone, bone: c.bone, power: a.swingPower(), haft: at[c.index] < w.strikeFrom - 0.02 });
+            const i = c.index % pts.length;
+            const swing = prev && prev.length === pts.length ? pts[i].clone().sub(prev[i]) : null;
+            contacts.push({
+              attacker: a, defender: d, move: m, height: a.strikeHeight, point: c.point, zone: c.zone, bone: c.bone,
+              power: a.swingPower(), haft: at[c.index] < w.strikeFrom - 0.02,
+              swing: swing && swing.lengthSq() > 1e-8 ? swing.normalize() : undefined,
+            });
             break;
           }
         }
@@ -861,7 +894,7 @@ export class CombatSim {
     for (const c of contacts) this.applyStrike(c);
   }
 
-  private applyStrike({ attacker: a, defender: d, move: m, height, point, zone, bone, power = 1, haft = false }: Contact) {
+  private applyStrike({ attacker: a, defender: d, move: m, height, point, zone, bone, power = 1, haft = false, swing }: Contact) {
     // Two contacts in one frame: the first may already have dropped them, or cut off the
     // arm the second was coming from.
     if (!d.alive || d.state === 'knockdown' || d.state === 'ko' || !a.canUse(m)) return;
@@ -900,7 +933,7 @@ export class CombatSim {
       this.events.push({ type: 'bump', attacker: a, defender: d, point: point.clone() });
       return;
     }
-    this.hit(a, d, m, point, dir, zone, bone, power, haft);
+    this.hit(a, d, m, point, dir, zone, bone, power, haft, null, swing);
   }
 
   private markDodge(d: Fighter, a: Fighter | null, point?: Vector3) {
@@ -960,7 +993,7 @@ export class CombatSim {
     else a.impact('rebound', 2, m.weapon ? 11 : 8);
   }
 
-  private hit(a: Fighter, d: Fighter, m: MoveDef, point: Vector3, dir: Vector3, zone: HurtZone, bone: BoneName, power = 1, haft = false, thrown: WeaponDef | null = null) {
+  private hit(a: Fighter, d: Fighter, m: MoveDef, point: Vector3, dir: Vector3, zone: HurtZone, bone: BoneName, power = 1, haft = false, thrown: WeaponDef | null = null, swing?: Vector3) {
     // (A thrown weapon is no longer in the thrower's hand.)
     const held = thrown ?? a.weapon;
     // Caught on the haft: a blunt knock, not a cut.
@@ -1013,11 +1046,28 @@ export class CombatSim {
       d.enterHitstun(Math.round(m.hitstun * (counter ? 1.2 : 1)), reactionFor(m, zone, thrown ? undefined : a.aim?.id), rock);
       d.vel.addScaledVector(dir, kb);
     }
+    // Where on the skull, and which way the weapon was travelling: chopped straight down
+    // onto the crown it splits the head (or caves it in) — nobody gets up from that.
+    // Only a cut across the neck takes the head off.
+    const head = bone === 'head' && w && !haft ? this.headStrike(a, d, m, w, point, swing, power, !!thrown) : null;
+    let fatal: Fatal | null = null;
+    if (head?.fatal && d.minHp <= 0) {
+      fatal = head.fatal;
+      d.hp = 0;
+      // Wells up out of the top of the head.
+      d.wounds.push({ bone: 'head', local: [0, 0.29, 0.01], angle: 0, length: 0.12, bleed: 1, floor: 0.4 });
+      if (!ko) {
+        ko = true;
+        knockdown = false;
+        d.enterKO();
+        d.vel.addScaledVector(dir, 0.6);
+      }
+    }
     // Edges cut (and keep bleeding); heavy edges can take a limb off.
     const wound = w && w.cut > 0 && !d.isSevered(bone) ? this.addWound(d, bone, point, dmg, w.cut) : null;
     let sever: BoneName | null = null;
     const at = SEVER_AT[bone];
-    if (w && w.cleave > 0 && at && d.minHp <= 0 && !d.isSevered(at)) {
+    if (w && w.cleave > 0 && at && d.minHp <= 0 && !d.isSevered(at) && !fatal && (at !== 'head' || head?.neck)) {
       const dealt = (d.limbDamage[at] ?? 0) + dmg * w.cleave * (m.weight === 'heavy' ? 1.3 : 1);
       d.limbDamage[at] = dealt;
       // Your own limbs only come off with the blow that finishes you.
@@ -1034,6 +1084,16 @@ export class CombatSim {
         knockdown = false;
         d.enterKO();
         d.vel.addScaledVector(dir, 1);
+      }
+    }
+    // A glancing edge takes a piece with it: an ear, a flap of scalp, a chunk of flesh.
+    let tear: Tear | null = null;
+    if (w && w.cut > 0 && !sever && !fatal && !d.isSevered(bone)) {
+      const bite = dmg * w.cut * (0.6 + 0.4 * w.cleave);
+      const piece = bone === 'head' ? (head?.piece ?? null) : 'flesh';
+      const odds = head?.glancing ? 0.85 : Math.min(0.5, (bite - 8) / 24);
+      if (piece && !d.torn.has(piece === 'flesh' ? '' : piece) && odds > 0 && this.rng.chance(odds)) {
+        tear = this.tearOff(d, bone, piece, point, dir, bite);
       }
     }
     if (ko) this.dropWeapon(d);
@@ -1070,7 +1130,58 @@ export class CombatSim {
       thrown: !!thrown,
       wound,
       sever,
+      fatal,
+      tear,
     });
+  }
+
+  /**
+   * Reads a weapon arriving at the head: from above or across, down the middle or off
+   * to one side, and what that does. `n` is where on the skull it met (unit, head frame,
+   * from the centre), `v` the way it was travelling.
+   */
+  private headStrike(a: Fighter, d: Fighter, m: MoveDef, w: WeaponDef, point: Vector3, swing: Vector3 | undefined, power: number, thrown: boolean) {
+    const inv = d.rig.head.rot.clone().invert();
+    const centre = bonePoint(d.rig, 'head', HEAD_CENTRE, _hc);
+    // Where the edge passes the skull: the nearest point on the cutting part of the
+    // weapon to the middle of the head (a fast swing is already deep in by the time it's
+    // caught, so where it first touched says less than the line it's cutting along).
+    const near = thrown ? point.clone() : nearestOnEdge(a, w, centre);
+    const o = near.sub(centre).applyQuaternion(inv).divideScalar(d.scale);
+    // (Not tracked this frame: go by the strike itself.)
+    const v = swing ? swing.clone() : DOWNWARD.has(m.id) ? new Vector3(0, -1, 0) : new Vector3(d.pos.x - point.x, 0, d.pos.z - point.z);
+    if (v.lengthSq() < 1e-8) v.set(0, -1, 0);
+    v.normalize().applyQuaternion(inv);
+    const down = -v.y;
+    // Landing on the crown, anywhere across the top of the skull: split. Off the edge of
+    // it, the blade shears down the side of the head and takes the ear.
+    const middle = Math.abs(o.x) < 0.11;
+    const full = power >= 0.75;
+    let fatal: Fatal | null = null;
+    // (Coming in at the jaw or below, it's into the neck, not the crown; caught right on
+    // top of the skull, it needn't be coming straight down to go in.)
+    const onCrown = (down > 0.6 && o.y > -0.03) || (down > 0.3 && o.y > 0.1);
+    if (onCrown && middle && full) {
+      if (w.cleave >= 0.4) fatal = 'split';
+      else if (w.edge === 'blunt' && w.mass >= 1.4 && w.damageMul >= 1.3) fatal = 'crush';
+    }
+    const glancing = !fatal && w.cut > 0 && down > 0.4 && !middle;
+    const side = o.x > 0 ? 'earL' : 'earR';
+    const piece: TearPiece = (glancing || Math.abs(o.x) > 0.09) && !d.torn.has(side) ? side : o.y > 0.08 ? 'scalp' : 'cheek';
+    // Across the neck (at the jaw or below), level enough to go through it rather than
+    // into the skull.
+    const neck = Math.abs(down) < 0.65 && o.y < -0.02;
+    return { fatal, glancing, piece, neck };
+  }
+
+  /** A piece comes away (an ear, scalp, a chunk of muscle): it flies off, a raw gouge is left. */
+  private tearOff(d: Fighter, bone: BoneName, piece: TearPiece, point: Vector3, dir: Vector3, bite: number): Tear {
+    if (piece !== 'flesh') d.torn.add(piece);
+    const x = d.rig[bone];
+    const local = point.clone().sub(x.pos).applyQuaternion(x.rot.clone().invert()).divideScalar(d.scale);
+    const size = (piece === 'scalp' ? 0.09 : piece === 'cheek' ? 0.06 : piece === 'flesh' ? Math.min(0.1, 0.04 + bite * 0.002) : 0.05) * d.scale;
+    const fly = dir.clone().multiplyScalar(this.rng.range(1.5, 3)).add(new Vector3(this.rng.range(-0.6, 0.6), this.rng.range(1.2, 2.4), this.rng.range(-0.6, 0.6)));
+    return { piece, bone, local: [local.x, local.y, local.z], point: point.clone(), vel: fly, size };
   }
 
   // ---------------------------------------------------------------------------
@@ -1355,7 +1466,7 @@ export class CombatSim {
       this.block(p.owner, d, m, c.point, dir, w);
       return;
     }
-    this.hit(p.owner, d, m, c.point, dir, c.zone, c.bone, 1, !cuts, w);
+    this.hit(p.owner, d, m, c.point, dir, c.zone, c.bone, 1, !cuts, w, p.vel.clone().normalize());
   }
 
   /** Grab (or swap for) the nearest weapon in reach; with none in reach, drop yours. */
@@ -1559,3 +1670,31 @@ function overlap(strike: Vector3, radius: number, d: Fighter, height: Height): {
   }
   return null;
 }
+
+/** The point on the cutting part of a held weapon nearest to `p`. */
+function nearestOnEdge(a: Fighter, w: WeaponDef, p: Vector3): Vector3 {
+  const pts = bladePoints(a, w);
+  const offs = sampleOffsets(w);
+  const best = new Vector3();
+  let bestD = Infinity;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    if (offs[i + 1] < w.strikeFrom) continue;
+    const q = closestOnSegment(pts[i], pts[i + 1], p, _seg);
+    const dd = q.distanceToSquared(p);
+    if (dd < bestD) {
+      bestD = dd;
+      best.copy(q);
+    }
+  }
+  return bestD < Infinity ? best : pts[pts.length - 1].clone();
+}
+
+function closestOnSegment(a: Vector3, b: Vector3, p: Vector3, out: Vector3): Vector3 {
+  const ab = _ab.subVectors(b, a);
+  const l2 = ab.lengthSq();
+  const t = l2 > 1e-10 ? Math.max(0, Math.min(1, _ap.subVectors(p, a).dot(ab) / l2)) : 0;
+  return out.copy(a).addScaledVector(ab, t);
+}
+const _seg = new Vector3();
+const _ab = new Vector3();
+const _ap = new Vector3();

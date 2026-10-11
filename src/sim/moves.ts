@@ -37,6 +37,8 @@ export interface Aim {
   /** Added to the striking fist/foot IK target in the active key poses (fighter-local). */
   offset?: [number, number, number];
   height?: Height;
+  /** Weapons: aim the striking part this far above (+) or below (-) the part's middle (m). */
+  edgeDy?: number;
   /** Added to body angles / root in the active key poses (level change, hip turnover...). */
   add?: Partial<Record<'root' | 'pelvis' | 'abdomen' | 'chest' | 'head', [number, number, number]>>;
 }
