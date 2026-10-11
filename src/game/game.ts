@@ -1,3 +1,4 @@
+import { DEV } from '../dev';
 import RAPIER from '@dimforge/rapier3d-compat';
 import {
   ACESFilmicToneMapping,
@@ -26,8 +27,8 @@ import { Effects } from '../render/particles';
 import { FighterView, type GearLook, PLAYER_PALETTE, type Palette } from '../render/fighterView';
 import { lookFor } from '../render/looks';
 import { DEFAULT_AI, type AIConfig } from '../sim/ai';
-import { buttonMove, type CombatEvent, CombatSim, type Fatal, PERFECT_DODGE, type HurtZone, hurtSpheres, strikePoint, type Tear } from '../sim/combat';
-import { type MoveDef, moveLength } from '../sim/moves';
+import { buttonMove, type CombatEvent, CombatSim, type Fatal, PARRY_WINDOW, PERFECT_DODGE, type HurtZone, hurtSpheres, strikePoint, type Tear } from '../sim/combat';
+import { DEFENSES, type MoveDef, moveLength } from '../sim/moves';
 import { ARCHETYPES, coinDrop, createEnemy, type EnemyKind, type EnemyMods } from '../sim/enemies';
 import { type Button, DEFAULT_STATS, type Fighter, type FighterStats } from '../sim/fighter';
 import { DT, Rng } from '../sim/math';
@@ -170,7 +171,7 @@ export class Game {
   /** Game time: runs with the slow-motion, stops for pauses and hitstop. */
   private simClock = 0;
   private pausedBySettings = false;
-  /** Exposed for the debug panel and automated capture scripts. */
+  /** Exposed for the developer panel and automated capture scripts (developer mode). */
   readonly tuning = GAME_TUNING;
   readonly cameraTuning = CAMERA_TUNING;
   readonly cutout = cutoutUniforms;
@@ -208,7 +209,7 @@ export class Game {
     this.gibs = new Gibs(this.scene);
     this.scene.add(this.debugGroup);
     const params = new URLSearchParams(location.search);
-    this.mode = params.get('mode') === 'training' || params.get('mode') === 'arena' ? 'training' : 'gauntlet';
+    this.mode = DEV && (params.get('mode') === 'training' || params.get('mode') === 'arena') ? 'training' : 'gauntlet';
     this.save = loadSave();
 
     this.world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
@@ -842,7 +843,6 @@ export class Game {
       if (++this.attacksThrown === 8) this.hud.fadeHint();
     }
     if (inp.pickup && this.player.alive && !blocked && this.player.state !== 'pickup') this.player.pickupRequest = 12;
-    if (inp.dodge && this.player.alive && !blocked) this.player.requestDodge();
 
     // Timers in real time (stopped while paused).
     if (!GAME_TUNING.paused) this.tickTimers(realDt);
@@ -913,7 +913,14 @@ export class Game {
     switch (code) {
       case 'Escape':
         if (this.phase !== 'shop') this.settings.toggle();
-        break;
+        return;
+      case 'KeyM':
+        this.sfx.setVolume(this.sfx.volume > 0 ? 0 : GAME_TUNING.volume);
+        return;
+    }
+    // Developer keys.
+    if (!DEV) return;
+    switch (code) {
       case 'KeyL':
         this.onTogglePanel?.();
         break;
@@ -934,9 +941,6 @@ export class Game {
         break;
       case 'Backspace':
         if (this.phase === 'play') this.restart();
-        break;
-      case 'KeyM':
-        this.sfx.setVolume(this.sfx.volume > 0 ? 0 : GAME_TUNING.volume);
         break;
     }
   }
@@ -1079,7 +1083,15 @@ export class Game {
         } else this.effects.sparks(e.point, e.dir, e.guardBreak ? 8 : 4, '#dbe6ee', 1.5, 0.014);
         this.ragdolls.get(e.defender)?.applyBlock(e.dir, e.move);
         if (e.guardBreak) this.marker('GUARD BREAK', e.point, 'armor');
-        else if (e.parry) this.marker(e.defender === this.player ? 'PARRY!' : 'PARRIED', e.point, e.defender === this.player ? 'parry' : 'hurt');
+        else if (e.parry && e.perfect) {
+          // Timed to the last instant: a beat of slow motion, and you're straight in.
+          this.marker('PERFECT PARRY', e.point, 'parry big');
+          this.slowmo = Math.max(this.slowmo, 0.35);
+          this.camRig.zoomPunch(0.6);
+          this.effects.ring(this.player.pos, 1.1, '#ffd36b', 0.5, () => this.player.pos);
+          this.sfx.counterReady();
+          this.run.perfect++;
+        } else if (e.parry) this.marker(e.defender === this.player ? 'PARRY!' : 'PARRIED', e.point, e.defender === this.player ? 'parry' : 'hurt');
         else if (e.defender === this.player) this.marker('BLOCK', e.point, 'block');
         else this.marker('BLOCKED', e.point, 'block');
         break;
@@ -1195,6 +1207,7 @@ export class Game {
     const total = p.state === 'attack' && p.move ? p.attackEnd || moveLength(p.move) : 1;
     const busyLeft = p.state === 'attack' ? 1 - p.stateFrame / Math.max(1, total) : p.free ? 0 : 1;
     const cue = this.tactics(dt);
+    const incoming = p.alive ? this.sim.threatFor(p) : null;
     const BTN = ['lpunch', 'rpunch', 'lkick', 'rkick'] as const;
     const ALT: Partial<Record<(typeof BTN)[number], string>> = { lpunch: 'LMB', rpunch: 'RMB' };
     const slots: Parameters<Hud['moves']>[0] = BTN.map((btn) => {
@@ -1209,19 +1222,21 @@ export class Game {
               ? 'chain'
               : 'ready'
           : 'busy';
-      return { key: keyLabel(b[btn]), name: pick.move?.name ?? '—', state, left: state === 'busy' ? busyLeft : 0, alt: ALT[btn], hint: cue?.hint === btn };
+      // With a strike about to land, Q and E meet it instead: a parry (or a slide back
+      // out of a big swing).
+      const meets = (btn === 'lpunch' || btn === 'rpunch') && !!incoming && !p.counter && state !== 'locked';
+      const name = meets ? (CombatSim.parryable(p, incoming!) ? 'Parry' : 'Slide out') : pick.move?.name ?? '—';
+      return { key: keyLabel(b[btn]), name, state: meets ? 'counter' : state, left: state === 'busy' && !meets ? busyLeft : 0, alt: ALT[btn], hint: cue?.hint === btn || (cue?.hint === 'parry' && (btn === 'lpunch' || btn === 'rpunch')) };
     });
-    // The dodge: when it's back, and when to throw it.
-    const dodgeLeft = p.dodgeCooldown / 32;
-    slots.push({ key: keyLabel(b.dodge), name: 'Dodge', state: !p.alive ? 'locked' : p.dodgeCooldown > 0 ? 'busy' : 'ready', left: dodgeLeft, alt: 'MMB', hint: cue?.hint === 'dodge', wide: true });
     this.hud.moves(slots);
-    this.hud.cue(cue && this.settings.prefs.tips && !this.cine.active ? { text: cue.text, kind: cue.kind, key: cue.hint ? keyLabel(b[cue.hint]) : '' } : null);
+    const cueKey = cue?.hint === 'parry' ? `${keyLabel(b.lpunch)}/${keyLabel(b.rpunch)}` : cue?.hint ? keyLabel(b[cue.hint]) : '';
+    this.hud.cue(cue && this.settings.prefs.tips && !this.cine.active ? { text: cue.text, kind: cue.kind, key: cueKey } : null);
     // Something on its way in at you.
     const threat = this.enemies.find((e) => e.alive && e.state === 'attack' && e.move && !e.move.noHit && e.target === p && e.stateFrame < e.move.startup);
     this.hud.incoming(threat ? new Vector3(threat.pos.x, threat.rig.head.pos.y + 0.45 * threat.scale, threat.pos.z) : null, this.cine.active ? null : this.viewCamera, !!threat?.move?.armor);
   }
 
-  private lastCue: { text: string; kind: 'danger' | 'open' | 'counter' | 'info'; hint: Button | 'dodge' | null; rank: number } | null = null;
+  private lastCue: { text: string; kind: 'danger' | 'open' | 'counter' | 'info'; hint: Button | 'parry' | null; rank: number } | null = null;
   private cueHold = 0;
 
   /**
@@ -1239,12 +1254,15 @@ export class Game {
       const pick = (btn: Button) => buttonMove(p, btn);
       const reach = (m: MoveDef | null | undefined) => (m ? (m.reach + p.stats.reach) * p.scale + 0.35 : 0);
       const tm = t.move;
-      const big = !!tm && (tm.weight === 'heavy' || !!tm.armor || !!tm.weapon || !!tm.air || t.scale > 1.3);
-      if (t.state === 'attack' && tm && !tm.noHit && !t.hitThisAttack && t.framesToActive >= 2 && t.framesToActive <= 26 && big && d < (tm.reach + t.stats.reach) * t.scale + 0.8 && p.dodgeCooldown <= 0) {
-        // Wait for it… then now: dodged in the last instant, it's a perfect dodge.
-        next = t.framesToActive <= PERFECT_DODGE
-          ? { text: 'Dodge now!', kind: 'danger', hint: 'dodge', rank: 5 }
-          : { text: `${tm.name} coming — wait for it`, kind: 'danger', hint: 'dodge', rank: 5 };
+      // (Anything but a flicked jab is worth calling.)
+      const worth = !!tm && (tm.weight !== 'light' || !!tm.armor || !!tm.weapon || !!tm.air || t.scale > 1.3);
+      if (t.state === 'attack' && tm && !tm.noHit && !t.hitThisAttack && !p.counter && t.framesToActive >= 1 && t.framesToActive <= 26 && worth && d < (tm.reach + t.stats.reach) * t.scale + 0.8) {
+        // Wait for it… then now: met in the last instant, it's a perfect parry (or dodge).
+        const parry = CombatSim.parryable(p, t);
+        const window = parry ? DEFENSES.block.startup + PARRY_WINDOW : PERFECT_DODGE;
+        next = t.framesToActive <= window
+          ? { text: parry ? 'Parry now!' : 'Slide out now!', kind: 'danger', hint: 'parry', rank: 5 }
+          : { text: `${tm.name} coming — wait for it`, kind: 'danger', hint: 'parry', rank: 5 };
       } else if (p.counter) {
         const btn = (['rpunch', 'lpunch', 'rkick', 'lkick'] as const).find((x) => pick(x).counter && pick(x).ready) ?? null;
         if (btn) next = { text: p.perfectCounter ? 'Perfect! Counter now' : 'Counter now', kind: 'counter', hint: btn, rank: 4 };
@@ -1558,7 +1576,7 @@ export class Game {
     this.updateWeaponsAndWounds(simDt);
     if (simDt > 0) this.panting(realDt);
 
-    // Camera: behind the player, looking past them at the nearest fight.
+    // Camera: framing you and whoever you're fighting.
     const p = this.player;
     const t = p.target && p.target.alive && p.distanceTo(p.target) < 9 ? p.target : null;
     const spread = t ? p.distanceTo(t) + (t.scale - 1) * 2.2 : 0;

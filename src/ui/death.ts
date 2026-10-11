@@ -58,7 +58,7 @@ export class DeathScreen {
       stat('✊', String(r.kos), 'knockouts', 1),
       stat('✸', String(Math.round(r.damage)), 'damage dealt', 2),
       stat('⚡', `${r.bestCombo}×`, 'best combo', 3),
-      stat('◎', String(r.perfect), 'perfect dodges', 4),
+      stat('◎', String(r.perfect), 'perfect parries', 4),
       stat('☠', String(r.brutal), 'brutal kills', 5),
       stat('⏱', `${mins}:${String(secs).padStart(2, '0')}`, 'survived', 6),
       stat('✦', String(r.hits), 'hits landed', 7),

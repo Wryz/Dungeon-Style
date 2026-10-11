@@ -1,3 +1,4 @@
+import { DEV } from '../dev';
 import { type Button, BUTTONS } from '../sim/fighter';
 import { type Action, type Bindings, loadBindings, saveBindings } from './bindings';
 
@@ -8,13 +9,12 @@ export interface InputFrame {
   presses: Button[];
   /** Pick up / drop weapon pressed this frame. */
   pickup: boolean;
-  /** Dodge pressed this frame. */
-  dodge: boolean;
+
   /** Menu / debug keys pressed this frame (KeyboardEvent.code). */
   keys: string[];
 }
 
-const META_KEYS = new Set(['Escape', 'KeyL', 'KeyP', 'Period', 'KeyT', 'KeyH', 'Backspace', 'KeyM', 'Enter', 'NumpadEnter']);
+const META_KEYS = new Set(['Escape', 'KeyM', 'Enter', 'NumpadEnter', ...(DEV ? ['KeyL', 'KeyP', 'Period', 'KeyT', 'KeyH', 'Backspace'] : [])]);
 const ARROWS: Partial<Record<string, Action>> = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
 
 /** Keyboard (rebindable) + mouse + gamepad + touch, collapsed into one frame of intent. */
@@ -22,7 +22,7 @@ export class Input {
   private readonly held = new Set<Action>();
   private presses: Button[] = [];
   private pickup = false;
-  private dodge = false;
+
   private keys: string[] = [];
   private gpPrev: boolean[] = [];
   private touchMove = { x: 0, y: 0 };
@@ -50,7 +50,6 @@ export class Input {
         this.held.add(action);
         if ((BUTTONS as string[]).includes(action)) this.presses.push(action as Button);
         if (action === 'pickup') this.pickup = true;
-        if (action === 'dodge') this.dodge = true;
         e.preventDefault();
       } else if (META_KEYS.has(e.code)) {
         this.keys.push(e.code);
@@ -66,10 +65,7 @@ export class Input {
       this.onAnyInput?.();
       if (e.button === 0) this.presses.push('lpunch');
       else if (e.button === 2) this.presses.push('rpunch');
-      else if (e.button === 1) {
-        this.dodge = true;
-        e.preventDefault();
-      }
+
     });
     target.addEventListener('contextmenu', (e) => e.preventDefault());
     if ('ontouchstart' in window || navigator.maxTouchPoints > 0) this.buildTouch();
@@ -95,7 +91,6 @@ export class Input {
       <div class="tbtns">
         <button data-b="lpunch">L PUNCH</button><button data-b="rpunch">R PUNCH</button>
         <button data-b="lkick">L KICK</button><button data-b="rkick">R KICK</button>
-        <button data-b="dodge" class="dodge">DODGE</button>
       </div>`;
     document.body.appendChild(wrap);
     document.body.classList.add('has-touch');
@@ -139,8 +134,7 @@ export class Input {
     for (const b of Array.from(wrap.querySelectorAll<HTMLButtonElement>('button'))) {
       b.addEventListener('touchstart', (e) => {
         this.onAnyInput?.();
-        if (b.dataset.b === 'dodge') this.dodge = true;
-        else this.presses.push(b.dataset.b as Button);
+        this.presses.push(b.dataset.b as Button);
         b.classList.add('down');
         e.preventDefault();
       });
@@ -168,9 +162,9 @@ export class Input {
         x += ax;
         y -= ay;
       }
-      // X left punch, Y/RB right punch, A/LT left kick, B/RT right kick, LB dodge.
+      // X/LB left punch, Y/RB right punch, A/LT left kick, B/RT right kick.
       const map: [number, Button][] = [
-        [2, 'lpunch'],
+        [2, 'lpunch'], [4, 'lpunch'],
         [3, 'rpunch'], [5, 'rpunch'],
         [0, 'lkick'], [6, 'lkick'],
         [1, 'rkick'], [7, 'rkick'],
@@ -183,8 +177,6 @@ export class Input {
         }
         this.gpPrev[i] = down;
       }
-      if (gp.buttons[4]?.pressed && !this.gpPrev[4]) this.dodge = true;
-      this.gpPrev[4] = !!gp.buttons[4]?.pressed;
       if (gp.buttons[9]?.pressed && !this.gpPrev[9]) this.keys.push('Escape');
       // Right stick click / select: pick up or drop a weapon.
       if ((gp.buttons[11]?.pressed && !this.gpPrev[11]) || (gp.buttons[8]?.pressed && !this.gpPrev[8])) this.pickup = true;
@@ -198,10 +190,9 @@ export class Input {
       x /= l;
       y /= l;
     }
-    const frame = { moveX: x, moveY: y, presses: this.presses, keys: this.keys, pickup: this.pickup, dodge: this.dodge };
+    const frame = { moveX: x, moveY: y, presses: this.presses, keys: this.keys, pickup: this.pickup };
     this.presses = [];
     this.pickup = false;
-    this.dodge = false;
     this.keys = [];
     return frame;
   }

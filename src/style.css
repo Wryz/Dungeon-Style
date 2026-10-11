@@ -79,7 +79,6 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #b9d3e4; col
 .settings-card .actions button.primary { background: var(--gold); border-color: var(--gold); color: #1d222c; font-weight: 700; }
 .touch .tbtns { display: grid; grid-template-columns: repeat(2, 76px); gap: 12px; }
 .touch .tbtns button { width: 76px; height: 76px; margin: 0; font-size: 11px; }
-.touch .tbtns button.dodge { grid-column: span 2; width: auto; height: 48px; border-color: rgba(255, 211, 107, 0.6); color: var(--gold); }
 
 .coins { position: absolute; top: 80px; left: 22px; display: flex; align-items: center; gap: 6px; padding: 3px 10px 3px 6px; background: rgba(20, 24, 32, 0.55); border-radius: 3px; font-size: 15px; }
 .coins.bump { animation: bump 0.25s ease-out; }

@@ -139,33 +139,46 @@ npm run build      # typecheck + production build into dist/
 | Action | Keyboard (default) | Mouse | Gamepad | Touch |
 |---|---|---|---|---|
 | Move | WASD (+ arrows) | | left stick | stick |
-| Left punch | **Q** | left click | X | L PUNCH |
-| Right punch | **E** | right click | Y / RB | R PUNCH |
+| Left punch / parry | **Q** | left click | X / LB | L PUNCH |
+| Right punch / parry | **E** | right click | Y / RB | R PUNCH |
 | Left kick | **R** | | A / LT | L KICK |
 | Right kick | **F** | | B / RT | R KICK |
-| Dodge | **Left Shift** | middle click | LB | DODGE |
 | Grab / drop weapon | **G** | | R3 / Back | |
 
-Blocking (and slipping a punch you've read) is automatic; **dodging is yours**: a step
-back out of everything, or — moving sideways — a slip under anything high. Thrown in the
-last instant before a strike lands it's a **perfect dodge**: a beat of slow motion, a
-longer counter window and a counter that hits much harder. Thrown early you just step
-away; thrown at nothing you wait out its cooldown.
+Blocking (and slipping a punch you've read) is automatic, but **Q and E double as
+parries**: press one just as a strike is about to land and it meets the strike instead
+of throwing a punch. Timed to the last instant it's a **perfect parry** — the attacker is
+knocked off balance, a beat of slow motion, a longer counter window and a counter that
+hits much harder. A big swing (or one at your legs) can't be parried, so the press slides
+you back out of it instead (perfect timing: a perfect dodge). Pressed early you only
+block, so mashing keeps you covered but only timing pays; with nothing coming, Q and E
+just attack.
 
 **Fight tips** read the fight for you, centre screen, with the key to press: a big swing
-coming (*"Haymaker coming — wait for it"* → *"Dodge now!"*), a counter window open, an
+coming (*"Haymaker coming — wait for it"* → *"Parry now!"*), a counter window open, an
 opponent who missed or is rocked (*punish*, *keep going*), one covering up (*go low*),
 or you gassed or getting predictable. The matching button glows in the move panel
-(bottom left), which also shows the dodge and its cooldown. Tips can be turned off in
+(bottom left) — Q and E show *Parry* while a strike is coming. Tips can be turned off in
 Settings.
 
+**The camera** frames the fight in three-quarter view: behind you and off to one side of
+the line between you and your opponent, high enough to look down over your shoulder, so
+both of you are always in shot and they're never hidden behind you. It pulls back as you
+separate (and for a giant), swings round on a spring as you circle, switches sides
+rather than backing into a wall, and goes up and wider when a wall squeezes it in.
+
 When you fall, the **defeat screen** sums up the run — a rank (D to S) for how far you
-got, knockouts, damage, best combo, perfect dodges, brutal kills, time — and counts the
+got, knockouts, damage, best combo, perfect parries, brutal kills, time — and counts the
 run's payout into your wallet; then gear up in the shop or go straight back in.
 
 **Esc** (or the ⚙ button) opens **Settings**, where every key can be rebound; bindings
-are saved in the browser. Debug: **L** tuning panel · **H** hitboxes · **T** cycle
-slow-mo · **P** pause · **.** step one frame · **Backspace** restart · **M** mute.
+are saved in the browser. **M** mutes.
+
+**Developer mode** (local `npm run dev`, or `?dev` on the deployed URL; never shown to
+players otherwise): **L** tuning panel · **H** hitboxes · **T** cycle slow-mo · **P**
+pause · **.** step one frame · **Backspace** restart · `?mode=training` training ring ·
+`window.game` for scripting. The tuning panel is loaded on demand, so it isn't in the
+player's bundle.
 
 ## How the combat works
 

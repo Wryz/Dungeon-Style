@@ -199,40 +199,50 @@ describe('full fight smoke test', () => {
   });
 });
 
-describe('dodging yourself', () => {
-  const swingAt = (dodgeWhen: number | null) => {
+describe('Q / E as a strike lands: parry', () => {
+  const meet = (move: string, pressAt: number | null, button: 'lpunch' | 'rkick' = 'lpunch') => {
     const { sim, player: p, enemy: e } = setup(1.0);
     p.autoDefense = false;
     p.minHp = 1;
-    e.startMove(ENEMY_MOVES.haymaker);
+    e.startMove(ENEMY_MOVES[move]);
     let ev: CombatEvent[] = [];
+    let pressed = false;
     for (let i = 0; i < 60; i++) {
-      if (dodgeWhen !== null && e.framesToActive === dodgeWhen && e.state === 'attack') p.requestDodge();
+      if (pressAt !== null && !pressed && e.state === 'attack' && e.framesToActive <= pressAt) {
+        p.press(button);
+        pressed = true;
+      }
       ev = ev.concat(sim.step());
     }
-    return { p, e, ev };
+    const blocks = ev.filter((x): x is Extract<CombatEvent, { type: 'block' }> => x.type === 'block' && x.defender === p);
+    const dodges = ev.filter((x): x is Extract<CombatEvent, { type: 'dodge' }> => x.type === 'dodge' && x.defender === p);
+    return { p, e, ev, blocks, dodges };
   };
 
-  it('a dodge timed to the strike beats it: a perfect dodge, a longer counter window, a harder counter', () => {
-    const { p, ev } = swingAt(6);
-    const dodge = ev.find((x) => x.type === 'dodge' && x.defender === p) as Extract<CombatEvent, { type: 'dodge' }> | undefined;
-    expect(dodge?.perfect).toBe(true);
-    expect(hits(ev, p).length).toBe(0);
+  it('timed to the last instant, a punch is parried perfectly: the attacker is knocked off balance and the counter is yours', () => {
+    const r = meet('straight', 5);
+    expect(r.blocks[0]?.parry).toBe(true);
+    expect(r.blocks[0]?.perfect).toBe(true);
+    expect(hits(r.ev, r.p).length).toBe(0);
+    expect(r.e.state === 'hitstun' || r.e.state === 'idle' || r.e.state === 'walk').toBe(true);
+    // (No punch thrown: the press met the strike instead.)
+    expect(r.ev.some((x) => x.type === 'attackStart' && x.f === r.p)).toBe(false);
   });
 
-  it("without one the haymaker lands; thrown at nothing, a dodge costs you the wait", () => {
-    const none = swingAt(null);
+  it('pressed early it only blocks; a big swing it slides you out of instead; no strike coming, it attacks; kicks stay kicks', () => {
+    const early = meet('straight', 12);
+    expect(early.blocks.length).toBe(1);
+    expect(early.blocks[0].parry).toBe(false);
+    const big = meet('haymaker', 6);
+    expect(hits(big.ev, big.p).length).toBe(0);
+    expect(big.dodges[0]?.perfect).toBe(true);
+    const none = meet('haymaker', null);
     expect(hits(none.ev, none.p).length).toBeGreaterThan(0);
-    const { sim, player: p } = setup(3);
-    p.requestDodge();
-    sim.step();
-    expect(p.state).toBe('defend');
-    expect(p.dodgeCooldown).toBeGreaterThan(20);
-    const first = p.manualDodgeFrame;
-    for (let i = 0; i < 10; i++) sim.step();
-    p.requestDodge();
-    sim.step();
-    // (Still waiting: no second dodge.)
-    expect(p.manualDodgeFrame).toBe(first);
+    const { sim, player } = setup(3);
+    player.press('lpunch');
+    const ev = run(sim, 3);
+    expect(ev.some((x) => x.type === 'attackStart' && x.f === player)).toBe(true);
+    const kick = meet('straight', 5, 'rkick');
+    expect(kick.blocks.length).toBe(0);
   });
 });

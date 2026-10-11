@@ -168,14 +168,11 @@ export class Fighter {
   counter: Counter | null = null;
   lastDefendedSerial = -1;
   defenseCooldown: Record<DefenseKind, number> = { block: 0, duck: 0, weave: 0, slide: 0 };
-  /** A dodge you asked for (frames it stays buffered), and how long until the next one. */
-  dodgeRequest = 0;
-  dodgeCooldown = 0;
-  /** Sim frame the last dodge you asked for started (a strike it beats is a perfect dodge). */
-  manualDodgeFrame = -9999;
-  /** The strike your dodge was timed perfectly to (-1: none). */
+  /** The current defence was yours (Q / E met a strike), not the automatic guard. */
+  defenseManual = false;
+  /** The strike your parry / dodge was timed perfectly to (-1: none). */
   perfectSerial = -1;
-  /** The strike your last dodge got you out of the way of (it was reaching you). */
+  /** The strike your last parry / dodge got you out of the way of (it was reaching you). */
   dodgedSerial = -1;
   weaveSide: 1 | -1 = 1;
 
@@ -395,11 +392,6 @@ export class Fighter {
     this.buffer = { button, frames };
   }
 
-  /** Dodge pressed: taken as soon as you're able to (buffered for a few frames). */
-  requestDodge(frames = 8) {
-    this.dodgeRequest = frames;
-  }
-
   // ---------------------------------------------------------------------------
   // State transitions
   // ---------------------------------------------------------------------------
@@ -597,6 +589,7 @@ export class Fighter {
     this.setState('defend');
     if (kind === 'weave') this.weaveSide = slipSide ?? (this.weaveSide === 1 ? -1 : 1);
     this.defense = { def, threatSerial, phase: 'startup', success: false, side: this.weaveSide };
+    this.defenseManual = false;
     this.lastDefendedSerial = threatSerial;
     this.stamina = Math.max(0, this.stamina - 0.015);
     this.defenseCooldown[kind] = def.cooldown;

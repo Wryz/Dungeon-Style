@@ -72,8 +72,9 @@ export function buildPanel(game: Game): { toggle: () => void } {
 
   const cam = pane.addFolder({ title: 'Camera', expanded: false });
   cam.addBinding(CAMERA_TUNING, 'distance', { min: 1.5, max: 8, step: 0.05 });
-  cam.addBinding(CAMERA_TUNING, 'rise', { min: 0, max: 3, step: 0.05 });
+  cam.addBinding(CAMERA_TUNING, 'rise', { min: 0.5, max: 5, step: 0.05 });
   cam.addBinding(CAMERA_TUNING, 'shoulder', { min: -1, max: 1, step: 0.05 });
+  cam.addBinding(CAMERA_TUNING, 'sideAngle', { min: 0, max: 1.4, step: 0.02, label: 'side angle' });
   cam.addBinding(CAMERA_TUNING, 'turnRate', { min: 0.5, max: 10, step: 0.1, label: 'turn spring' });
   cam.addBinding(CAMERA_TUNING, 'fov', { min: 30, max: 90, step: 1 });
 

@@ -229,13 +229,12 @@ export class Hud {
     const k = (code: string) => `<b>${keyLabel(code)}</b>`;
     this.hint.innerHTML = `
       <span>${k(b.up)}${k(b.left)}${k(b.down)}${k(b.right)} move</span>
-      <span>${k(b.lpunch)} ${k(b.rpunch)} punch L / R</span>
+      <span>${k(b.lpunch)} ${k(b.rpunch)} punch L / R <span class="dim">· as a strike lands: parry</span></span>
       <span>${k(b.lkick)} ${k(b.rkick)} kick L / R</span>
       <span>${k(b.pickup)} grab / drop weapon</span>
-      <span>${k(b.dodge)} dodge <span class="dim">(time it: perfect dodge)</span></span>
       <span class="dim">blocking is automatic</span>
       <span class="dim"><b>Esc</b> settings</span>
-      <span class="dim"><b>L</b> tuning</span>`;
+      <span class="dim"><b>M</b> mute</span>`;
   }
 
   get gearButton(): HTMLButtonElement {

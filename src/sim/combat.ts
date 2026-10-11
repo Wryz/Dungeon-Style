@@ -57,7 +57,7 @@ export type CombatEvent =
       /** A piece torn away (an ear, scalp, a chunk of flesh). */
       tear: Tear | null;
     }
-  | { type: 'block'; attacker: Fighter; defender: Fighter; move: MoveDef; point: Vector3; dir: Vector3; guardBreak: boolean; wound: Wound | null; parry: boolean }
+  | { type: 'block'; attacker: Fighter; defender: Fighter; move: MoveDef; point: Vector3; dir: Vector3; guardBreak: boolean; wound: Wound | null; parry: boolean; perfect?: boolean }
   | { type: 'pickup'; f: Fighter; drop: Drop }
   | { type: 'drop'; drop: Drop }
   | { type: 'bleedout'; f: Fighter }
@@ -184,10 +184,10 @@ function readiness(f: Fighter): number {
 /** Something to block with: at least one forearm left. */
 const canGuard = (f: Fighter) => !(f.isSevered('foreArmL') && f.isSevered('foreArmR'));
 /** Frames after the guard is up during which meeting a strike parries it. */
-const PARRY_WINDOW = 4;
-/** Frames between dodges you throw yourself. */
-const DODGE_COOLDOWN = 32;
-/** A dodge thrown with the strike at most this many frames from landing: a perfect dodge. */
+export const PARRY_WINDOW = 4;
+/** How close to landing (frames) a strike is when Q / E meets it instead of attacking. */
+export const PARRY_READ = 12;
+/** A slide thrown with the strike at most this many frames from landing: a perfect dodge. */
 export const PERFECT_DODGE = 10;
 /** Frames into a stagger before the guard can come back up. */
 const COVER_AFTER = 8;
@@ -292,7 +292,7 @@ export class CombatSim {
     for (const f of fs) this.tickTimers(f);
     for (const f of fs) this.advance(f);
     for (const f of fs) this.ais.get(f)?.think(f, f.target, this.walkable);
-    for (const f of fs) this.manualDodge(f);
+    for (const f of fs) this.manualDefense(f);
     for (const f of fs) this.autoDefend(f);
     for (const f of fs) this.tryBufferedAttack(f);
     for (const f of fs) this.tryPickup(f);
@@ -472,40 +472,56 @@ export class CombatSim {
   }
 
   /**
-   * A dodge you threw yourself: a step back out of everything (or, moving sideways, a
-   * slip to that side under anything high). Thrown just as a strike was about to land,
-   * it's a perfect dodge — a longer, stronger counter window. Thrown at nothing, it's a
-   * step back you'll have to wait out.
+   * The strike coming at `f` that a press of Q / E would meet instead of throwing one:
+   * on its way in, aimed at them, in range, and close enough to landing to be read.
    */
-  private manualDodge(f: Fighter) {
-    if (f.dodgeCooldown > 0) f.dodgeCooldown--;
-    if (f.dodgeRequest <= 0) return;
-    f.dodgeRequest--;
-    const able = f.free || (f.state === 'defend' && (f.defense!.phase === 'recovery' || f.defense!.success)) || f.state === 'blockstun';
-    if (!able || !f.alive || f.dodgeCooldown > 0) return;
-    // The nearest strike on its way in, if any.
+  threatFor(f: Fighter): Fighter | null {
     let threat: Fighter | null = null;
     for (const o of this.opponents(f)) {
-      if (o.state !== 'attack' || !o.move || o.hitThisAttack || o.move.noHit) continue;
+      if (o.state !== 'attack' || !o.move || o.hitThisAttack || o.move.noHit || o.attackEnd) continue;
+      const fta = o.framesToActive;
+      if (fta > PARRY_READ || fta < -o.move.active + 1) continue;
       if (f.distanceTo(o) > (o.move.reach + o.stats.reach) * o.scale + 0.6) continue;
-      if (!threat || o.framesToActive < threat.framesToActive) threat = o;
+      if (!threat || fta < threat.framesToActive) threat = o;
     }
-    // Sideways input: slip to that side (under a high one). Otherwise: step back.
-    const c = Math.cos(f.yaw);
-    const sn = Math.sin(f.yaw);
-    const lateral = f.moveInput.x * c - f.moveInput.z * sn;
-    const sideways = Math.abs(lateral) > 0.5 && (!threat || threat.strikeHeight === 'high');
-    const kind: DefenseKind = sideways ? 'weave' : 'slide';
-    const serial = threat ? threat.id * 100000 + threat.attackSerial : -2;
+    return threat;
+  }
+
+  /** Whether a strike can be parried (met with the guard), or only got out of the way of. */
+  static parryable(f: Fighter, o: Fighter): boolean {
+    const m = o.move!;
+    return m.blockable && m.weight !== 'heavy' && o.strikeHeight !== 'low' && canGuard(f);
+  }
+
+  /**
+   * Q / E pressed with a strike about to land: the press meets it instead. A punch or a
+   * kick gets parried — the guard comes up into it and, timed to the last instant, it's
+   * knocked aside and you're straight in on the counter; a big swing (or one at the legs)
+   * you can't stop, so you slide back out of it. Pressed early, it's only a block (or a
+   * step back), with nothing on the end of it — so mashing defends, but only timing pays.
+   */
+  private manualDefense(f: Fighter) {
+    const b = f.buffer;
+    if (!b || (b.button !== 'lpunch' && b.button !== 'rpunch') || f.team !== 'player' || f.counter || !f.alive) return;
+    // (Taking over from the automatic guard if it's only just started.)
+    const able = f.free || f.state === 'blockstun' || (f.state === 'defend' && (f.defense!.phase === 'recovery' || f.defense!.success || !f.defenseManual));
+    if (!able) return;
+    const t = this.threatFor(f);
+    if (!t) return;
+    const serial = t.id * 100000 + t.attackSerial;
+    if (f.state === 'defend' && f.defenseManual && f.defense!.threatSerial === serial) return;
+    const kind: DefenseKind = CombatSim.parryable(f, t) ? 'block' : 'slide';
+    const def = DEFENSES[kind];
+    const fta = t.framesToActive;
+    f.buffer = null;
     f.defenseCooldown[kind] = 0;
-    f.startDefense(kind, serial, lateral > 0 ? 1 : -1);
+    f.startDefense(kind, serial, undefined, Math.max(def.startup, fta));
+    f.defenseManual = true;
     f.framesSinceDefend = 0;
-    f.manualDodgeFrame = this.frame;
-    // Timed to it: thrown in the last instant before it lands (but still in time).
-    f.perfectSerial = threat && threat.framesToActive <= PERFECT_DODGE && threat.framesToActive >= DEFENSES[kind].startup - 1 ? serial : -1;
-    f.dodgedSerial = threat && threat.framesToActive <= 20 && f.distanceTo(threat) <= (threat.move!.reach + threat.stats.reach) * threat.scale + 0.3 ? serial : -1;
-    f.dodgeRequest = 0;
-    f.dodgeCooldown = DODGE_COOLDOWN;
+    // Timed to it: met in the last instant before it lands (but still in time).
+    const window = kind === 'block' ? def.startup + PARRY_WINDOW : PERFECT_DODGE;
+    f.perfectSerial = fta <= window && fta >= def.startup - 1 ? serial : -1;
+    f.dodgedSerial = f.distanceTo(t) <= (t.move!.reach + t.stats.reach) * t.scale + 0.3 ? serial : -1;
     this.events.push({ type: 'defend', f, kind });
   }
 
@@ -968,7 +984,8 @@ export class CombatSim {
 
     if (d.state === 'defend' && d.defense) {
       const def = d.defense.def;
-      const inPosition = d.defense.phase !== 'startup' || d.stateFrame >= def.startup - 1;
+      // (One you threw yourself, on Q / E, is set almost at once — you saw it coming.)
+      const inPosition = d.defense.phase !== 'startup' || d.stateFrame >= def.startup - 1 || (d.defenseManual && d.stateFrame >= 1);
       if (inPosition && def.evades.includes(height)) {
         this.markDodge(d, a, point);
         return;
@@ -1007,10 +1024,7 @@ export class CombatSim {
     const perfect = def.threatSerial >= 0 && def.threatSerial === d.perfectSerial;
     d.perfectSerial = -1;
     d.counter = { kind: def.def.kind, frames: def.def.counterWindow + (perfect ? 24 : 0) };
-    if (perfect) {
-      d.perfectCounter = true;
-      d.dodgeCooldown = 0;
-    }
+    if (perfect) d.perfectCounter = true;
     const attacker = a ?? this.opponents(d).find((o) => o.id * 100000 + o.attackSerial === def.threatSerial) ?? null;
     if (!attacker || !attacker.move) return;
     const p = point ?? bonePoint(d.rig, 'head', 0.12, new Vector3());
@@ -1031,10 +1045,16 @@ export class CombatSim {
     // A parry: the guard came up just as it arrived, meeting it rather than absorbing
     // it — the attacker is knocked off balance, the defender's hardly checked.
     const parry = !thrown && m.weight !== 'heavy' && d.state === 'defend' && d.defense?.def.kind === 'block' && d.stateFrame <= DEFENSES.block.startup + PARRY_WINDOW;
+    // Your own parry, timed to it: a perfect parry — and a counter that goes in hard.
+    const perfect = parry && d.perfectSerial >= 0 && d.perfectSerial === a.id * 100000 + a.attackSerial;
+    if (perfect) {
+      d.perfectCounter = true;
+      d.perfectSerial = -1;
+    }
     if (parry) {
       d.guard += m.guardDamage * 0.75;
       d.enterBlockstun(4);
-      d.counter = { kind: 'block', frames: DEFENSES.block.counterWindow + 10 };
+      d.counter = { kind: 'block', frames: DEFENSES.block.counterWindow + 10 + (perfect ? 20 : 0) };
     } else if (d.guard <= 0) {
       guardBreak = true;
       d.guard = d.stats.maxGuard * 0.5;
@@ -1056,7 +1076,7 @@ export class CombatSim {
         wound = this.addWound(d, side, point, m.damage * w.damageMul * 0.4, w.cut);
       }
     }
-    this.events.push({ type: 'block', attacker: a, defender: d, move: m, point: point.clone(), dir: dir.clone(), guardBreak, wound, parry });
+    this.events.push({ type: 'block', attacker: a, defender: d, move: m, point: point.clone(), dir: dir.clone(), guardBreak, wound, parry, perfect });
     // Stopped by the guard: a blade bites into the forearm, anything else bounces off.
     if (thrown) return;
     if (parry) {

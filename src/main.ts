@@ -1,5 +1,5 @@
 import './style.css';
-import { buildPanel } from './debug/panel';
+import { DEV } from './dev';
 import { Game } from './game/game';
 
 async function boot() {
@@ -8,14 +8,17 @@ async function boot() {
   const loading = document.querySelector<HTMLDivElement>('#loading');
   try {
     const game = await Game.create(canvas, hud);
-    const panel = buildPanel(game);
-    game.onTogglePanel = panel.toggle;
+    if (DEV) {
+      // (Loaded only in developer mode: none of it ships in the player's bundle.)
+      const { buildPanel } = await import('./debug/panel');
+      game.onTogglePanel = buildPanel(game).toggle;
+      (window as unknown as { game: Game }).game = game;
+    }
     game.start();
     loading?.remove();
-    (window as unknown as { game: Game }).game = game;
   } catch (err) {
     console.error(err);
-    if (loading) loading.textContent = `Failed to start: ${(err as Error).message}`;
+    if (loading) loading.textContent = "Couldn't start the game — please reload the page.";
   }
 }
 

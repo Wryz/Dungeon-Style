@@ -1,17 +1,16 @@
 import type { Button } from '../sim/fighter';
 
-export type Action = 'up' | 'down' | 'left' | 'right' | Button | 'dodge' | 'pickup';
+export type Action = 'up' | 'down' | 'left' | 'right' | Button | 'pickup';
 
 export const ACTIONS: { id: Action; label: string }[] = [
   { id: 'up', label: 'Move up' },
   { id: 'down', label: 'Move down' },
   { id: 'left', label: 'Move left' },
   { id: 'right', label: 'Move right' },
-  { id: 'lpunch', label: 'Left punch' },
-  { id: 'rpunch', label: 'Right punch' },
+  { id: 'lpunch', label: 'Left punch (parry as a strike lands)' },
+  { id: 'rpunch', label: 'Right punch (parry as a strike lands)' },
   { id: 'lkick', label: 'Left kick' },
   { id: 'rkick', label: 'Right kick' },
-  { id: 'dodge', label: 'Dodge (step back; sideways: slip)' },
   { id: 'pickup', label: 'Pick up / drop weapon' },
 ];
 
@@ -27,12 +26,11 @@ export const DEFAULT_BINDINGS: Bindings = {
   rpunch: 'KeyE',
   lkick: 'KeyR',
   rkick: 'KeyF',
-  dodge: 'ShiftLeft',
   pickup: 'KeyG',
 };
 
-/** Keys reserved for menus / the tuning panel; they can't be bound to actions. */
-export const RESERVED_KEYS = new Set(['Escape', 'KeyL']);
+/** Keys reserved for the menu and mute; they can't be bound to actions. */
+export const RESERVED_KEYS = new Set(['Escape', 'KeyM']);
 
 const STORAGE_KEY = 'brawler.bindings.v1';
 
