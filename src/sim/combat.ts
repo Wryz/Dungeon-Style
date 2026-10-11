@@ -138,6 +138,8 @@ export function pushScale(a: Fighter, d: Fighter, weapon: WeaponDef | null, powe
 export function readChance(f: Fighter, o: Fighter, opponents: Fighter[]): number {
   let p = readiness(f);
   const m = o.move!;
+  // Throwing the same strike again and again: they see it coming.
+  p *= 1 + 0.15 * Math.min(4, o.repeatCount);
   p *= Math.max(0.8, Math.min(1.1, 0.75 + m.startup * 0.02));
   for (const x of opponents) if (x !== o && x.state === 'attack' && !x.hitThisAttack) p *= 0.55;
   return Math.max(0.12, Math.min(0.95, p));
@@ -145,7 +147,7 @@ export function readChance(f: Fighter, o: Fighter, opponents: Fighter[]): number
 
 /** How sharp a fighter is right now: fresh and settled, or tired, rattled, already reacting. */
 function readiness(f: Fighter): number {
-  let p = 0.82;
+  let p = 0.82 * f.readSkill;
   p *= 0.5 + 0.5 * f.stamina;
   if (f.framesSinceHit < 40) p *= 0.6;
   if (f.framesSinceDefend < 24) p *= 0.75;
@@ -154,6 +156,8 @@ function readiness(f: Fighter): number {
 
 /** Something to block with: at least one forearm left. */
 const canGuard = (f: Fighter) => !(f.isSevered('foreArmL') && f.isSevered('foreArmR'));
+/** Frames into a stagger before the guard can come back up. */
+const COVER_AFTER = 8;
 /** How far ahead of a strike landing (in multiples of the defence's startup) people react. */
 const REACT_LEAD = 2.5;
 const _strike = new Vector3();
@@ -281,6 +285,7 @@ export class CombatSim {
     f.framesSinceHit++;
     f.framesSinceLanded++;
     f.framesSinceDefend++;
+    f.sinceMoveStart++;
     if (f.framesSinceBlock > 60 && f.guard < f.stats.maxGuard) f.guard = Math.min(f.stats.maxGuard, f.guard + 0.35);
     if (f.framesSinceHit > 50 && f.poise < f.stats.maxPoise) f.poise = Math.min(f.stats.maxPoise, f.poise + 0.8);
     if (f.target && f.target.state !== 'hitstun' && f.target.state !== 'guardbreak' && f.target.state !== 'knockdown') {
@@ -380,9 +385,14 @@ export class CombatSim {
   }
 
   private autoDefend(f: Fighter) {
-    if (!f.autoDefense || !f.alive) return;
+    // (A sparring dummy — an AI told to stand there — doesn't react either.)
+    if (!f.autoDefense || !f.alive || this.ais.get(f)?.cfg.passive) return;
+    // Rocked by one, you can still get the guard up for the next once the first jolt has
+    // passed — covering up, not slipping (that takes balance you haven't got back yet).
+    const covering = f.state === 'hitstun' && f.stateFrame >= COVER_AFTER;
     const canReact =
       f.free ||
+      covering ||
       f.state === 'blockstun' ||
       (f.state === 'defend' && (f.defense!.phase === 'recovery' || f.defense!.success));
     if (!canReact) return;
@@ -394,7 +404,8 @@ export class CombatSim {
       const fta = o.framesToActive;
       if (fta < -o.move.active) continue;
       if (f.distanceTo(o) > (o.move.reach + o.stats.reach) * o.scale + 0.45) continue;
-      const kind = chooseDefense(f, o.move, fta, o.strikeHeight);
+      let kind = chooseDefense(f, o.move, fta, o.strikeHeight);
+      if (covering) kind = o.move.blockable && o.strikeHeight !== 'low' && canGuard(f) && DEFENSES.block.startup <= Math.max(fta, 0) + 1 ? 'block' : null;
       if (!kind) continue;
       // People read a strike and start moving a beat before it lands (~150-200 ms for a
       // slip), rather than snapping out of the way in the last 60 ms.
@@ -402,7 +413,9 @@ export class CombatSim {
       if (fta <= Math.round(def.startup * REACT_LEAD) + 1) {
         // Nobody reads everything: one look at it, and a miss is a miss.
         if (serial === f.misreadSerial) continue;
-        if (!this.rng.chance(readChance(f, o, this.opponents(f)))) {
+        // (Under a flurry, keeping the hands up is the easy part, rattled or not.)
+        const chance = covering ? 0.45 + 0.4 * f.readSkill : readChance(f, o, this.opponents(f));
+        if (!this.rng.chance(chance)) {
           f.misreadSerial = serial;
           continue;
         }
@@ -881,6 +894,7 @@ export class CombatSim {
   }
 
   private block(a: Fighter, d: Fighter, m: MoveDef, point: Vector3, dir: Vector3, thrown: WeaponDef | null = null) {
+    if (!thrown) a.wasBlocked = true;
     d.guard -= m.guardDamage;
     d.framesSinceBlock = 0;
     // Taking a heavy weapon (or a giant's fist) on the guard drives you back.
@@ -892,7 +906,8 @@ export class CombatSim {
       d.enterGuardBreak(48);
       d.vel.addScaledVector(dir, kb * 0.9);
     } else {
-      d.enterBlockstun(m.blockstun);
+      // (A jab on the gloves barely stops you; a big shot on them does.)
+      d.enterBlockstun(Math.round(m.blockstun * (m.weight === 'light' ? 0.6 : 1)));
       d.vel.addScaledVector(dir, kb * 0.6);
       if (d.autoDefense) d.counter = { kind: 'block', frames: DEFENSES.block.counterWindow + m.blockstun };
     }
@@ -921,9 +936,13 @@ export class CombatSim {
     const caughtInStartup = d.state === 'attack' && !!d.move && d.stateFrame < d.move.startup;
     const counter = caughtInStartup || (!thrown && a.isCounterAttack);
     const armor = d.state === 'attack' && d.move?.armor;
-    const armored = !!armor && d.stateFrame >= armor[0] && d.stateFrame < armor[1] && m.weight === 'light';
+    // A big, hard man walks through a jab: it doesn't stop what he's throwing.
+    const tough = d.state === 'attack' && !!d.move && !d.move.noHit && d.stats.staggerResist >= 0.4;
+    const armored = m.weight === 'light' && ((!!armor && d.stateFrame >= armor[0] && d.stateFrame < armor[1]) || tough);
 
-    let dmg = m.damage * a.stats.damageMul * (counter ? 1.25 : 1) * (1 - d.stats.defense);
+    // A tired arm hits softer (nothing behind it).
+    const behind = thrown ? 1 : 0.5 + 0.5 * a.swingStamina;
+    let dmg = m.damage * a.stats.damageMul * (counter ? 1.25 : 1) * (1 - d.stats.defense) * behind;
     if (armored) dmg *= 0.5;
     if (w) dmg *= w.damageMul;
     if (m.weapon) dmg *= Math.min(1, power) * (haft ? 0.45 : 1);
@@ -934,7 +953,7 @@ export class CombatSim {
     a.framesSinceLanded = 0;
     const comboing = d.state === 'hitstun' || d.state === 'guardbreak';
     a.combo = comboing ? a.combo + 1 : 1;
-    d.poise -= m.poiseDamage * (1 - d.stats.staggerResist) * (counter ? 1.3 : 1) * (w?.edge === 'blunt' ? 1.35 : 1) * (m.weapon ? Math.min(1, power) * (haft ? 0.5 : 1) : 1);
+    d.poise -= behind * m.poiseDamage * (1 - d.stats.staggerResist) * (counter ? 1.3 : 1) * (w?.edge === 'blunt' ? 1.35 : 1) * (m.weapon ? Math.min(1, power) * (haft ? 0.5 : 1) : 1);
     d.buffer = null;
     d.counter = null;
 
@@ -1197,7 +1216,7 @@ export class CombatSim {
         const { points, at } = projectilePoints(p);
         if (p.live) {
           for (const d of this.opponents(p.owner)) {
-            if (!d.alive || d.state === 'knockdown' || d.state === 'ko' || d.state === 'getup') continue;
+            if (!d.alive || d.state === 'knockdown' || d.state === 'ko' || d.state === 'getup' || p.passed?.has(d)) continue;
             const c = overlapBody(points, p.weapon.radius * p.scale, d, at);
             if (c) {
               this.projectileStrike(p, d, c, at[c.index], points[c.index]);
@@ -1278,6 +1297,16 @@ export class CombatSim {
       hitstop: Math.round(4 + Math.min(8, dmg / 3)), shake: Math.min(0.5, 0.08 + dmg / 50), radius: 0, reach: 0,
       blockable: true, weapon: true, keys: [],
     };
+    if (d.state === 'defend' && d.defense) {
+      const def = d.defense.def;
+      // Slipped, ducked or slid out of its way: it flies on past.
+      const inPosition = d.defense.phase !== 'startup' || d.stateFrame >= def.startup - 1;
+      if (inPosition && def.evades.includes(height)) {
+        (p.passed ??= new Set()).add(d);
+        this.markDodge(d, null, c.point);
+        return;
+      }
+    }
     p.live = false;
     // Bounces back off whatever it hit, tumbling.
     p.vel.multiplyScalar(-0.18);

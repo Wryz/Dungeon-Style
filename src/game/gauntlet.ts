@@ -52,7 +52,9 @@ export function roundSpec(round: number, rng: Rng): RoundSpec {
   const mods: EnemyMods = {
     hpMul: 1 + 0.1 * tier,
     dmgMul: 1 + 0.05 * tier,
-    aggression: Math.min(1.6, 0.9 + 0.04 * round),
+    aggression: Math.min(1.7, 1.05 + 0.05 * round),
+    // Sharper every round.
+    readMul: Math.min(1.35, 1 + 0.03 * tier),
   };
   let boss: EnemyKind | null = null;
   let kind: EnemyKind;

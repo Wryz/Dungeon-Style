@@ -198,8 +198,20 @@ export class Fighter {
   readonly limbDamage: Partial<Record<BoneName, number>> = {};
   hitReaction: PoseName = 'hitHigh';
 
-  /** Player gets automatic defense; enemies defend through their AI. */
+  /** Reads strikes coming in and reacts on its own (the player; enemies, by their skill). */
   autoDefense: boolean;
+  /** How well this fighter reads strikes coming in (1 = the player's own reactions). */
+  readSkill = 1;
+  /** Same strike as last time, again and again: how many in a row (predictable). */
+  repeatCount = 0;
+  /** The last strike this fighter started. */
+  lastMoveId = '';
+  /** Frames since this fighter last started an attack. */
+  sinceMoveStart = 999;
+  /** How much was left in the tank when the current strike was thrown. */
+  swingStamina = 1;
+  /** The current strike landed on a guard. */
+  wasBlocked = false;
   stats: FighterStats;
 
   readonly anim = new Animator();
@@ -322,6 +334,9 @@ export class Fighter {
   inCancelWindow(): boolean {
     const m = this.move;
     if (this.state !== 'attack' || !m?.cancel) return false;
+    // A punch that landed on a guard can't be rolled straight into the next: it has to
+    // come all the way back first.
+    if (this.state === 'attack' && this.wasBlocked) return false;
     if (this.stateFrame < this.stuckUntil) return false;
     return this.stateFrame >= m.cancel.from && this.stateFrame <= m.cancel.to && (!this.attackEnd || this.stateFrame < this.attackEnd);
   }
@@ -404,11 +419,18 @@ export class Fighter {
     // Timing fits the body and the tool: big bodies move their limbs slower (like a
     // longer pendulum), small ones quicker; heavy weapons take longer to bring round.
     // Tired arms are slow arms.
-    const tempo = Math.sqrt(this.scale) * (move.weapon && this.weapon ? weaponTempo(this.weapon, this.scale) : 1) * (1 + (1 - this.stamina) * 0.3);
+    const tempo = Math.sqrt(this.scale) * (move.weapon && this.weapon ? weaponTempo(this.weapon, this.scale) : 1) * (1 + (1 - this.stamina) * 0.6);
+    // Gassed, a punch is an arm with nothing behind it.
+    this.swingStamina = this.stamina;
     // Swinging a heavy weapon costs the breath it looks like it costs.
     const lift = move.weapon && this.weapon ? 0.8 + 0.15 * heft(this.weapon, this.scale) : 1;
     const cost = (move.weight === 'light' ? 0.035 : move.weight === 'medium' ? 0.055 : 0.085) * lift * (isCounter ? 0.8 : 1);
     this.stamina = Math.max(0, this.stamina - cost);
+    // The same thing over and over is easy to see coming.
+    this.repeatCount = move.id === this.lastMoveId && this.sinceMoveStart < 100 ? this.repeatCount + 1 : 0;
+    this.lastMoveId = move.id;
+    this.sinceMoveStart = 0;
+    this.wasBlocked = false;
     move = timed(move, tempo);
     this.setState('attack');
     this.move = move;

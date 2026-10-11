@@ -44,7 +44,6 @@ import { Cinematics, type Shot } from '../render/cinematics';
 import { item, loadSave, type SaveData, SLOTS, statsWithGear, writeSave } from './economy';
 import { type RoundSpec, roundSpec } from './gauntlet';
 import { Trauma } from './trauma';
-import { Tutorial } from './tutorial';
 
 export const GAME_TUNING = {
   timeScale: 1,
@@ -107,15 +106,13 @@ export class Game {
   private envBody: RAPIER.RigidBody | null = null;
 
   // Gauntlet.
-  /** Current round (0 = the tutorial sparring session). */
+  /** Current round. */
   round = 0;
   spec: RoundSpec | null = null;
   private readonly roundRng = new Rng((Date.now() & 0xffff) + 7);
   private holdIn = -1;
   private clearIn = -1;
   private nextRoundIn = -1;
-  private tutorial: Tutorial | null = null;
-  private tutorialPartner: Fighter | null = null;
 
   // Training.
   wave = 1;
@@ -231,7 +228,6 @@ export class Game {
 
     this.applyGear();
     if (this.mode === 'training') this.setupTraining();
-    else if (!this.save.tutorialDone) this.startTutorial();
     else this.startRound(1);
     this.hud.setCoins(this.save.coins, false);
     this.hud.showCoins(this.mode === 'gauntlet');
@@ -512,8 +508,6 @@ export class Game {
     this.blood.clear();
     this.trauma.clear();
     this.views.get(this.player)?.setTrauma(0, false);
-    this.tutorial = null;
-    this.tutorialPartner = null;
     this.player.minHp = 0;
     this.holdIn = this.clearIn = this.nextRoundIn = this.downIn = this.shopIn = this.respawnIn = -1;
     this.slowmo = 0;
@@ -583,46 +577,7 @@ export class Game {
     this.setMenuPause(false);
   }
 
-  private startTutorial() {
-    this.resetArena();
-    this.round = 0;
-    this.spec = null;
-    this.setTheme('ring');
-    this.placePlayer();
-    const [x, z] = this.theme.enemySpawns[0];
-    const partner = this.spawn('rookie', x, z, {}, false);
-    partner.name = 'Sparring partner';
-    this.tutorial = new Tutorial(partner, this.sim.ais.get(partner)!, this.player);
-    this.tutorialPartner = partner;
-    this.banner('THE GAUNTLET', 'warm up first', 'intro');
-  }
-
-  private finishTutorial() {
-    const partner = this.tutorialPartner;
-    if (partner) {
-      this.effects.dust(partner.pos, 20, 0.6);
-      this.effects.ring(partner.pos, 1, '#ffd36b', 0.6);
-      this.detach(partner);
-    }
-    this.tutorial = null;
-    this.tutorialPartner = null;
-    this.player.minHp = 0;
-    this.save.tutorialDone = true;
-    writeSave(this.save);
-    this.hud.prompt('');
-    this.sfx.chime();
-    this.banner('READY', 'the gauntlet begins', 'intro', 1.6);
-    this.nextRoundIn = 1.8;
-  }
-
   private updateGauntlet() {
-    if (this.tutorial) {
-      this.tutorial.update();
-      // Finished, or the partner went down anyway: on to the real fights.
-      const partnerDown = !!this.tutorialPartner && !this.tutorialPartner.alive;
-      if ((this.tutorial.finished || partnerDown) && this.nextRoundIn < 0) this.finishTutorial();
-      return;
-    }
     if (this.phase !== 'play' || !this.spec || this.clearIn >= 0) return;
     if (this.enemies.length > 0 && this.enemies.every((e) => !e.alive)) this.clearIn = 2.3;
   }
@@ -758,8 +713,7 @@ export class Game {
   restart() {
     this.shop.close();
     if (this.mode === 'gauntlet') {
-      if (this.tutorial) this.startTutorial();
-      else this.startRound(Math.max(1, this.round));
+      this.startRound(Math.max(1, this.round));
       return;
     }
     this.wave = 1;
@@ -904,10 +858,6 @@ export class Game {
       case 'KeyH':
         GAME_TUNING.showHitboxes = !GAME_TUNING.showHitboxes;
         break;
-      case 'Enter':
-      case 'NumpadEnter':
-        if (this.tutorial && this.nextRoundIn < 0) this.finishTutorial();
-        break;
       case 'Backspace':
         if (this.phase === 'play') this.restart();
         break;
@@ -960,7 +910,6 @@ export class Game {
   }
 
   private handleEvent(e: CombatEvent) {
-    this.tutorial?.onEvent(e);
     switch (e.type) {
       case 'hit': {
         const m = e.move;
@@ -1388,9 +1337,7 @@ export class Game {
     // (A weapon falls at the same speed as everything else, slowed in a slow-motion.)
     for (const [id, v] of this.dropViews) v.update(this.simClock, near?.id === id);
     this.syncProjectiles();
-    if (this.tutorial) {
-      this.hud.prompt(this.tutorial.prompt(this.input.bindings), head, this.camRig.camera);
-    } else if (near && this.phase === 'play') {
+    if (near && this.phase === 'play') {
       const k = keyLabel(this.input.bindings.pickup);
       this.hud.prompt(`<b>${k}</b> ${p.weapon ? 'swap for' : 'grab'} ${near.weapon.name}`, head, this.camRig.camera);
     } else {
@@ -1444,7 +1391,6 @@ export class Game {
 
   private label(): string {
     if (this.mode === 'training') return `TRAINING · ROUND ${this.wave}${this.kos ? `  ·  ${this.kos} KO` : ''}`;
-    if (this.tutorial || this.round === 0) return 'WARM-UP';
     const best = this.save.bestRound > 0 ? `  ·  BEST ${this.save.bestRound}` : '';
     return `ROUND ${this.round}  ·  ${this.theme.name.toUpperCase()}${best}`;
   }

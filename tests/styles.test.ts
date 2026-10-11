@@ -178,7 +178,12 @@ describe('thrown weapons', () => {
     let hit = 0;
     for (let k = 0; k < 10; k++) {
       const { sim, p, e } = stage(6, 'axe');
+      // Alert (not a dummy), with your reactions, but not about to attack.
+      const ai = sim.ais.get(e)!;
+      ai.cfg.passive = false;
+      ai.cfg.aggression = 0;
       e.autoDefense = true;
+      e.readSkill = 1;
       p.startMove(WEAPON_MOVES.throwHeavy);
       for (let i = 0; i < 120; i++) {
         for (const ev of sim.step()) {

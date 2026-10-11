@@ -25,6 +25,8 @@ export interface Archetype {
   weapon?: WeaponId;
   /** Carries throwing weapons on the belt. */
   ammo?: { weapon: WeaponId; count: number };
+  /** How well it reads what's coming and gets out of the way (1 = as well as you). */
+  read: number;
 }
 
 const LIGHT_STYLE: FighterStyle = {
@@ -88,6 +90,7 @@ const SAMURAI_STYLE: FighterStyle = {
 export const ARCHETYPES = {
   rookie: {
     kind: 'rookie',
+    read: 0.3,
     name: 'Rookie',
     stats: { maxHp: 45, walkSpeed: 2.1 },
     style: LIGHT_STYLE,
@@ -112,12 +115,15 @@ export const ARCHETYPES = {
   },
   brawler: {
     kind: 'brawler',
+    read: 0.45,
     name: 'Brawler',
     stats: { maxHp: 70, walkSpeed: 1.9, staggerResist: 0.1 },
     style: BRAWLER_STYLE,
     // Street fighter: walks you down, picks up whatever's lying around — and throws it.
     plan: {
       ...BRAWLER_PLAN,
+      moves: [...BRAWLER_PLAN.moves, ['quickJab', 18]],
+      counters: ['quickJab'],
       temper: 'pressure',
       specials: [
         { move: 'throwOne', min: 2.5, max: 9, rate: 0.05, cooldown: 420, weapons: ['bottle', 'pan', 'cleaver', 'crowbar', 'pipe', 'machete', 'kunai'] },
@@ -128,6 +134,7 @@ export const ARCHETYPES = {
   },
   kicker: {
     kind: 'kicker',
+    read: 0.55,
     name: 'Kicker',
     stats: { maxHp: 60, walkSpeed: 2.0 },
     style: KICKER_STYLE,
@@ -142,6 +149,7 @@ export const ARCHETYPES = {
       attackRange: 1.45,
       punish: 'teep',
       chains: { kLowKick: 'straight' },
+      counters: ['quickJab'],
       temper: 'pressure',
       // Taekwondo off the back foot: a spinning back kick in close, a jumping kick to
       // close the distance.
@@ -155,6 +163,7 @@ export const ARCHETYPES = {
   },
   bruiser: {
     kind: 'bruiser',
+    read: 0.4,
     name: 'Bruiser',
     stats: { maxHp: 120, walkSpeed: 1.5, staggerResist: 0.4, defense: 0.15 },
     style: HEAVY_STYLE,
@@ -180,9 +189,10 @@ export const ARCHETYPES = {
   },
   samurai: {
     kind: 'samurai',
+    read: 0.85,
     name: 'Samurai',
     weapon: 'katana',
-    stats: { maxHp: 90, walkSpeed: 1.9, staggerResist: 0.3 },
+    stats: { maxHp: 90, walkSpeed: 1.9, staggerResist: 0.45 },
     style: SAMURAI_STYLE,
     // Waits just out of reach, sword up. Step in and he's already cutting; miss and the
     // draw cut answers before you've recovered.
@@ -192,6 +202,7 @@ export const ARCHETYPES = {
       attackRange: 1.35,
       punish: 'straight',
       chains: {},
+      counters: ['quickJab'],
       temper: 'patient',
       armed: [
         { weapons: ['katana', 'bokken'], moves: [['kesa', 3], ['menCut', 2], ['tsuki', 2], ['iai', 1]], punish: 'tsuki' },
@@ -208,6 +219,7 @@ export const ARCHETYPES = {
   },
   ninja: {
     kind: 'ninja',
+    read: 0.7,
     name: 'Ninja',
     weapon: 'ninjato',
     ammo: { weapon: 'kunai', count: 5 },
@@ -221,6 +233,7 @@ export const ARCHETYPES = {
       attackRange: 1.4,
       punish: 'rookieJab',
       chains: {},
+      counters: ['quickJab'],
       temper: 'skirmish',
       armed: [{ weapons: ['ninjato', 'katana', 'machete', 'gladius', 'cleaver', 'kunai'], moves: [['slash', 3], ['thrust', 2], ['dashSlash', 1]] }],
       specials: [
@@ -254,6 +267,7 @@ const BOSS_STYLE: FighterStyle = {
 Object.assign(ARCHETYPES, {
   imp: {
     kind: 'imp',
+    read: 0.5,
     name: 'Imp',
     stats: { maxHp: 34, walkSpeed: 2.7 },
     style: LIGHT_STYLE,
@@ -277,6 +291,7 @@ Object.assign(ARCHETYPES, {
   },
   demon: {
     kind: 'demon',
+    read: 0.55,
     name: 'Demon',
     stats: { maxHp: 95, walkSpeed: 2.2, staggerResist: 0.25 },
     style: KICKER_STYLE,
@@ -287,6 +302,7 @@ Object.assign(ARCHETYPES, {
       attackRange: 1.4,
       punish: 'straight',
       chains: { straight: 'hookChain' },
+      counters: ['quickJab'],
       temper: 'skirmish',
       specials: [
         { move: 'pounce', min: 1.8, max: 3.6, rate: 0.08, cooldown: 280 },
@@ -299,16 +315,18 @@ Object.assign(ARCHETYPES, {
   },
   champion: {
     kind: 'champion',
+    read: 0.75,
     name: 'The Champion',
     stats: { maxHp: 260, walkSpeed: 1.7, staggerResist: 0.6, defense: 0.15 },
     style: BRAWLER_STYLE,
     // A pro: combinations, and the superman punch to cover distance.
     plan: {
-      moves: [['straight', 30], ['hook', 30], ['body', 25], ['bruiserHook', 15]],
+      moves: [['quickJab', 30], ['straight', 25], ['hook', 25], ['body', 25], ['bruiserHook', 12]],
       range: 1.05,
       attackRange: 1.3,
       punish: 'straight',
-      chains: { straight: 'hookChain' },
+      chains: { straight: 'hookChain', quickJab: 'straight' },
+      counters: ['quickJab'],
       temper: 'pressure',
       specials: [{ move: 'superman', min: 0.8, max: 2.0, rate: 0.04, cooldown: 260 }],
     },
@@ -319,6 +337,7 @@ Object.assign(ARCHETYPES, {
   },
   minotaur: {
     kind: 'minotaur',
+    read: 0.45,
     name: 'The Minotaur',
     weapon: 'axe',
     stats: { maxHp: 320, walkSpeed: 1.6, staggerResist: 0.7, defense: 0.2 },
@@ -346,6 +365,7 @@ Object.assign(ARCHETYPES, {
   },
   cyclops: {
     kind: 'cyclops',
+    read: 0.35,
     name: 'The Cyclops',
     weapon: 'club',
     stats: { maxHp: 380, walkSpeed: 1.35, staggerResist: 0.75, defense: 0.25 },
@@ -372,17 +392,23 @@ Object.assign(ARCHETYPES, {
   },
 } satisfies Partial<Record<EnemyKind, Archetype>>);
 
+/** How much more punishment opponents can take than their archetype's base. */
+const ENEMY_HP = 1.6;
+
 export interface EnemyMods {
   hpMul?: number;
   dmgMul?: number;
   aggression?: number;
+  /** Sharper reactions (multiplies the archetype's read). */
+  readMul?: number;
 }
 
 /** Builds an enemy; round modifiers make later rounds tougher. */
 export function createEnemy(kind: EnemyKind, rng: Rng, mods: EnemyMods = {}, baseAi: Partial<AIConfig> = {}): { fighter: Fighter; ai: BrawlerAI } {
   const a = ARCHETYPES[kind];
   const sc = a.scale ?? 1;
-  const stats = { ...a.stats, maxHp: Math.round((a.stats.maxHp ?? 70) * (mods.hpMul ?? 1)) };
+  // (Everyone takes a good deal more than a few clean shots to put away.)
+  const stats = { ...a.stats, maxHp: Math.round((a.stats.maxHp ?? 70) * ENEMY_HP * (mods.hpMul ?? 1)) };
   stats.damageMul = (stats.damageMul ?? 1) * (mods.dmgMul ?? 1);
   // Bigger bodies stride further per step.
   if (stats.walkSpeed) stats.walkSpeed *= Math.sqrt(sc);
@@ -390,6 +416,10 @@ export function createEnemy(kind: EnemyKind, rng: Rng, mods: EnemyMods = {}, bas
   fighter.scale = sc;
   if (a.weapon) fighter.weapon = WEAPONS[a.weapon];
   if (a.ammo) fighter.ammo = { weapon: WEAPONS[a.ammo.weapon], count: a.ammo.count };
+  // They see your strikes coming and react — block, slip, duck, slide — as you do,
+  // each as well as it's able.
+  fighter.autoDefense = true;
+  fighter.readSkill = Math.min(1, a.read * (mods.readMul ?? 1));
   const cfg = { ...DEFAULT_AI, ...baseAi, ...a.ai };
   cfg.aggression *= mods.aggression ?? 1;
   // Spacing scales with size.

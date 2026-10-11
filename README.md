@@ -88,8 +88,6 @@ demons and giant bosses.
   sand kicks up underfoot in the colosseum, and hits don't freeze time.
 - **Movement:** in a fight, boxer footwork; out of range, a real run (~3.8 m/s) with a
   clocked stride, flight phase, forward lean, pumping arms and a lean into turns.
-- **Tutorial:** the first visit is a warm-up in the ring against a sparring partner —
-  punches, a combo, automatic defense, countering, kicks — with few-word prompts.
 
 A training ring with a respawning brawler is at `?mode=training` (or the **L** panel →
 Gauntlet, which can also jump to any round; **Weapons** puts any weapon in your hands).
@@ -116,7 +114,6 @@ npm run build      # typecheck + production build into dist/
 | Left kick | **R** | | A / LT | L KICK |
 | Right kick | **F** | | B / RT | R KICK |
 | Grab / drop weapon | **G** | | R3 / Back | |
-| Skip warm-up | **Enter** | | | |
 
 **Esc** (or the ⚙ button) opens **Settings**, where every key can be rebound; bindings
 are saved in the browser. Debug: **L** tuning panel · **H** hitboxes · **T** cycle
@@ -344,7 +341,7 @@ src/
   feel/       procedural impact audio (WebAudio, no assets)
   input/      rebindable keyboard, mouse, gamepad and touch input
   game/       glue: fixed-step loop, gauntlet flow (rounds, bosses, coins, shop, weapons),
-              round generation, economy + save data, trauma/blood, tutorial
+              round generation, economy + save data, trauma/blood
   ui/         HUD, settings (key rebinding, blood toggle), shop
   debug/      Tweakpane live tuning (frame data, feel, physics, AI)
 ```

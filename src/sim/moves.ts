@@ -610,6 +610,9 @@ const P = PLAYER_MOVES;
 const E = ENEMY_MOVES;
 // Rookie: a telegraphed jab and the straight / body shot.
 E.rookieJab = { ...P.jab, id: 'rookieJab', name: 'Jab', startup: 13, recovery: 15, damage: 5, reach: 1.45, cancel: { into: ['straight', 'body'], from: 15, to: 28 }, aims: [{ id: 'head', weight: 3 }] };
+// A trained fighter's jab: nearly as quick as yours, used to counter and to punch into
+// the gaps of a flurry.
+E.quickJab = { ...P.jab, id: 'quickJab', name: 'Jab', startup: 8, recovery: 14, damage: 5, reach: 1.4, cancel: { into: ['straight', 'body', 'hookChain'], from: 10, to: 24 }, aims: [{ id: 'head', weight: 3 }, { ...BODY_PUNCH(0.33), weight: 1 }] };
 // Kicker (Muay Thai): push kick, low kick, body roundhouse.
 E.teep = { ...P.frontKick, id: 'teep', name: 'Teep', startup: 19, recovery: 20, damage: 8, reach: 1.35, guardDamage: 30, aims: [{ id: 'stomach', weight: 1 }] };
 E.kLowKick = { ...P.lowKick, id: 'kLowKick', name: 'Low Kick', startup: 21, recovery: 20, damage: 9, poiseDamage: 40, cancel: { into: ['straight'], from: 24, to: 38 }, aims: [{ id: 'thigh', weight: 1 }] };

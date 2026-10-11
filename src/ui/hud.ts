@@ -96,7 +96,7 @@ export class Hud {
     this.coinsEl.style.display = show ? '' : 'none';
   }
 
-  /** Short tutorial prompt floating above a world position (empty text hides it). */
+  /** Short prompt floating above a world position (empty text hides it). */
   prompt(text: string, world?: Vector3, camera?: Camera) {
     if (!text) {
       this.promptEl.classList.remove('show');

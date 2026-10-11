@@ -51,16 +51,15 @@ export interface SaveData {
   gear: Record<Slot, number>;
   /** Best gauntlet round reached. */
   bestRound: number;
-  tutorialDone: boolean;
 }
 
-export const NEW_SAVE: SaveData = { coins: 0, gear: { helmet: 0, chest: 0, legs: 0, boots: 0, cuffs: 0 }, bestRound: 0, tutorialDone: false };
+export const NEW_SAVE: SaveData = { coins: 0, gear: { helmet: 0, chest: 0, legs: 0, boots: 0, cuffs: 0 }, bestRound: 0 };
 const KEY = 'brawler.save.v2';
 const OLD_KEY = 'brawler.save.v1';
 
 export function loadSave(storage: Pick<Storage, 'getItem'> | null = safeStorage()): SaveData {
   try {
-    // Saves from the dungeon version carry over their coins, gear and tutorial.
+    // Saves from the dungeon version carry over their coins and gear.
     const raw = storage?.getItem(KEY) ?? storage?.getItem(OLD_KEY);
     if (raw) {
       const s = JSON.parse(raw) as Partial<SaveData>;
@@ -68,7 +67,6 @@ export function loadSave(storage: Pick<Storage, 'getItem'> | null = safeStorage(
         coins: Math.max(0, Number(s.coins) || 0),
         gear: { ...NEW_SAVE.gear, ...(s.gear ?? {}) },
         bestRound: Math.max(0, Number(s.bestRound) || 0),
-        tutorialDone: !!s.tutorialDone,
       };
     }
   } catch {

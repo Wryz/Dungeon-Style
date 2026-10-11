@@ -35,6 +35,8 @@ export interface Projectile {
   live: boolean;
   /** Frames since release. */
   age: number;
+  /** People it has already gone past (they got out of its way). */
+  passed?: Set<Fighter>;
 }
 
 /** Where along the weapon its mass sits: by the head of an axe or hammer, mid-way along a stick or blade. */

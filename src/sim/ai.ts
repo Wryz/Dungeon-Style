@@ -65,6 +65,8 @@ export interface AIPlan {
   chains: Record<string, string>;
   temper?: Temper;
   specials?: Special[];
+  /** What it counters with when there's no time for anything slower (default: a jab). */
+  counters?: string[];
   /** How this fighter uses particular weapons (first match wins; no `weapons` = any). */
   armed?: { weapons?: WeaponId[]; moves: [string, number][]; punish?: string }[];
 }
@@ -100,6 +102,11 @@ export class AIDirector {
   }
 }
 
+/** A strike of theirs still on its way in (wind-up or active), not yet spent. */
+function incoming(t: Fighter): boolean {
+  return t.state === 'attack' && !!t.move && !t.move.noHit && t.stateFrame <= t.move.startup + t.move.active;
+}
+
 /** The heaviest a weapon can be (for its body) and still be worth fighting with. */
 export const MAX_HEFT = 4.6;
 
@@ -107,7 +114,7 @@ export const MAX_HEFT = 4.6;
 const _probe = new Vector3();
 
 export class BrawlerAI {
-  private cooldown = 70;
+  private cooldown = 40;
   private strafe = 0;
   private strafeTimer = 0;
   /** Going round something: which way (+1 left / -1 right), and for how much longer. */
@@ -173,7 +180,9 @@ export class BrawlerAI {
       this.decidedSerial = target.attackSerial;
       this.willBlock = this.rng.chance(this.cfg.blockChance * (self.framesSinceHit < 40 ? 1.6 : 1));
     }
+    // (A fighter with reactions of its own reads strikes itself; see autoDefend.)
     if (
+      !self.autoDefense &&
       this.willBlock &&
       self.free &&
       target.state === 'attack' &&
@@ -191,6 +200,20 @@ export class BrawlerAI {
       this.punishDelay = 0;
       return;
     }
+    // Got out of the way of one (or took it on the guard): straight back with a counter
+    // while they're still recovering.
+    const d = self.defense;
+    const canCounter = self.free || (self.state === 'defend' && !!d && (d.success || d.phase === 'recovery'));
+    if (self.counter && canCounter && dist < plan.attackRange + 0.3 * self.scale) {
+      // The quickest thing it has: a counter has to land before they've recovered.
+      const m = this.quickest(self, plan);
+      if (m) {
+        self.startMove(m, true);
+        this.director?.claim();
+        this.cooldown = this.rng.range(40, 80);
+        return;
+      }
+    }
     if (!self.free) return;
 
     // Their own techniques, when the moment is right for one.
@@ -204,7 +227,7 @@ export class BrawlerAI {
       this.punishDelay++;
       if (this.punishDelay > 2) {
         this.punishDelay = -1;
-        if (dist < plan.attackRange + 0.1 && this.rng.chance(0.6)) {
+        if (dist < plan.attackRange + 0.1 && this.rng.chance(0.85)) {
           this.start(self, plan.punish);
           return;
         }
@@ -272,7 +295,7 @@ export class BrawlerAI {
 
     // Punish a player stuck in recovery.
     if (target.state === 'attack' && target.move && target.stateFrame > target.move.startup + target.move.active + 2) {
-      if (dist < plan.attackRange + 0.05 && this.rng.chance(0.05 * this.cfg.aggression)) {
+      if (dist < plan.attackRange + 0.05 && this.rng.chance(0.12 * this.cfg.aggression)) {
         this.start(self, plan.punish);
         return;
       }
@@ -316,11 +339,37 @@ export class BrawlerAI {
     }
     this.pinned = 0;
     this.lastPos.copy(self.pos);
-    // Getting out, not trading.
+    // Getting out, not trading. And not winding up into a strike already on its way in:
+    // cover up, take it on the guard, and answer when it's spent.
     if (this.winded || this.retreatFor > 0) return;
+    if (incoming(target)) {
+      // ...unless there's a gap: a quick shot that lands before theirs does.
+      const q = this.quickest(self, plan);
+      const startup = q ? q.startup * Math.sqrt(self.scale) : Infinity;
+      if (q && startup < target.framesToActive - 1 && dist < plan.attackRange && this.rng.chance(0.6 * this.cfg.aggression)) {
+        self.startMove(q);
+        this.director?.claim();
+        this.cooldown = this.rng.range(30, 60);
+      }
+      return;
+    }
     if (this.cooldown <= 0 && dist < plan.attackRange && (!this.director || this.director.canAttack())) {
       this.start(self, this.rng.pickWeighted<string>(this.choices(self, target, plan, dist)));
     }
+  }
+
+  /** The fastest strike this fighter can throw right now (for countering). */
+  private quickest(self: Fighter, plan: AIPlan) {
+    let best: import('./moves').MoveDef | null = null;
+    // Armed, it answers with the weapon (which outreaches a fist anyway).
+    const armed = !!self.weapon;
+    for (const id of [plan.punish, ...plan.moves.map(([m]) => m), ...(this.plan.counters ?? ['rookieJab'])]) {
+      const m = self.moveDef(id);
+      if (!m || m.noHit || m.air || m.throw || m.spin || !self.canUse(m) || !self.canReach(m)) continue;
+      if (best && armed && best.weapon && !m.weapon) continue;
+      if (!best || (armed && m.weapon && !best.weapon) || m.startup < best.startup) best = m;
+    }
+    return best;
   }
 
   private trySpecial(self: Fighter, target: Fighter, plan: AIPlan, dist: number, entered: boolean): boolean {
@@ -362,6 +411,7 @@ export class BrawlerAI {
       }
       // Evasions and counters go when they're needed; anything else waits its turn.
       // (Throwing from range isn't crowding in on anyone's turn.)
+      if (!(sp.when === 'targetAttacking' || sp.when === 'afterHit') && incoming(target) && !m.armor) continue;
       const urgent = sp.when === 'targetAttacking' || sp.when === 'afterHit' || sp.when === 'targetWhiffed' || sp.when === 'targetEntered' || !!m.throw;
       if (!urgent && this.director && !this.director.canAttack()) continue;
       if (!this.rng.chance(sp.rate * this.cfg.aggression)) continue;
@@ -382,7 +432,8 @@ export class BrawlerAI {
       // Only what can get to the part it's aimed at (a giant's head is out of reach).
       return self.canReach(d);
     };
-    const out = plan.moves.filter(([id]) => ok(id));
+    // Mix it up: the same strike again straight away is the one they'll see coming.
+    const out = plan.moves.filter(([id]) => ok(id)).map(([id, w]): [string, number] => [id, id === self.lastMoveId ? w * 0.25 : w]);
     // Against something much bigger, go for the legs.
     if (target.scale > self.scale * 1.5) for (const k of ['kLowKick', 'lowKick']) if (ok(k) && !out.some(([id]) => id === k)) out.push([k, 30]);
     return out.length ? out : plan.moves;
@@ -551,6 +602,6 @@ export class BrawlerAI {
     this.director?.claim();
     const next = this.planFor(self).chains[id];
     this.chain = next && this.rng.chance(this.cfg.stringChance) ? next : null;
-    this.cooldown = this.rng.range(50, 110);
+    this.cooldown = this.rng.range(30, 70);
   }
 }
