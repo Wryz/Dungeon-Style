@@ -15,6 +15,15 @@ export interface Palette {
   bald?: boolean;
   /** Shin colour (defaults to pants; skin for shorts). */
   shins?: string;
+  /** Creature features. */
+  addons?: {
+    horns?: 'small' | 'big' | 'bull';
+    /** Glowing eye colour. */
+    eyes?: string;
+    cyclops?: boolean;
+    snout?: boolean;
+    tail?: boolean;
+  };
 }
 
 export const PLAYER_PALETTE: Palette = {
@@ -55,7 +64,7 @@ export const GEAR_COLORS: Record<string, { color: string; metalness: number; rou
 
 export type GearLook = Partial<Record<'helmet' | 'chest' | 'legs' | 'boots' | 'cuffs', { material: string; tier: number }>>;
 
-type Slot = keyof Omit<Palette, 'sleeves' | 'bald' | 'shins'>;
+type Slot = keyof Omit<Palette, 'sleeves' | 'bald' | 'shins' | 'addons'>;
 
 
 /** Low-poly body built from simple faceted shapes, one group per physics bone. */
@@ -110,7 +119,33 @@ export class FighterView {
     } else {
       this.add('head', box(0.2, 0.07, 0.04), 'hair', [0, 0.06, 0.13]); // beard
     }
-    for (const s of [1, -1]) this.add('head', box(0.045, 0.05, 0.02), 'hair', [s * 0.06, 0.18, 0.135]);
+    const A = P.addons ?? {};
+    const eyeMat = (bone: BoneName) => {
+      const m = new MeshStandardMaterial({ color: A.eyes ?? P.hair, emissive: A.eyes ?? '#000000', emissiveIntensity: A.eyes ? 1.6 : 0, flatShading: true });
+      this.mats[bone].push(m);
+      return m;
+    };
+    const addMesh = (bone: BoneName, geo: BufferGeometry, mat: MeshStandardMaterial, pos: [number, number, number], rot?: [number, number, number]) => {
+      const mesh = new Mesh(geo, mat);
+      mesh.position.set(...pos);
+      if (rot) mesh.rotation.set(...rot);
+      mesh.castShadow = true;
+      this.bones[bone].add(mesh);
+      return mesh;
+    };
+    if (A.cyclops) addMesh('head', box(0.1, 0.08, 0.02), eyeMat('head'), [0, 0.19, 0.136]);
+    else for (const s of [1, -1]) addMesh('head', box(0.045, 0.05, 0.02), eyeMat('head'), [s * 0.06, 0.18, 0.135]);
+    if (A.snout) this.add('head', box(0.16, 0.1, 0.1), 'skin', [0, 0.1, 0.16]);
+    if (A.horns) {
+      const hm = new MeshStandardMaterial({ color: A.horns === 'bull' ? '#e8dcc0' : '#1c1414', flatShading: true, roughness: 0.5 });
+      this.mats.head.push(hm);
+      const size = A.horns === 'small' ? 0.08 : A.horns === 'big' ? 0.14 : 0.18;
+      for (const s of [1, -1]) {
+        if (A.horns === 'bull') addMesh('head', box(size, 0.04, 0.04), hm, [s * 0.18, 0.27, 0.02], [0, 0, s * 0.5]);
+        else addMesh('head', box(0.04, size, 0.04), hm, [s * 0.08, 0.31 + size / 2, 0.02], [0.3, 0, -s * 0.35]);
+      }
+    }
+    if (A.tail) this.add('pelvis', box(0.05, 0.05, 0.4), 'skin', [0, 0.0, -0.25]).rotation.set(-0.6, 0, 0);
 
     for (const side of ['L', 'R'] as const) {
       const ua = `upperArm${side}` as const;
@@ -220,6 +255,11 @@ export class FighterView {
       this.bones[b].position.copy(f.rig[b].pos);
       this.bones[b].quaternion.copy(f.rig[b].rot);
     }
+  }
+
+  /** Uniform model scale (giants / small creatures). */
+  setScale(sc: number) {
+    for (const b of BONES) this.bones[b].scale.setScalar(sc);
   }
 
   hitFlash() {

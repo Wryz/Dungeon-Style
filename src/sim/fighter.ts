@@ -112,6 +112,8 @@ export class Fighter {
   /** Actual footwork velocity (m/s): walking, or momentum carried into a move. */
   readonly walkVel = new Vector3();
   yaw = 0;
+  /** Uniform size (giant bosses ~1.7, imps ~0.75). Poses are authored at 1. */
+  scale = 1;
 
   hp: number;
   guard: number;
@@ -379,7 +381,7 @@ export class Fighter {
       solveLegs(L, { at: this.footwork.localTarget('L', this, 0), hint: KNEE_HINT.L }, { at: this.footwork.localTarget('R', this, 0), hint: KNEE_HINT.R });
       blendPose(this.anim.out, L, this.moveBlend, this.pose);
     }
-    forwardKinematics(this.pose, this.rig, this.pos, this.yaw);
+    forwardKinematics(this.pose, this.rig, this.pos, this.yaw, this.scale);
     // Authored-leg animations (kicks, defense, reactions): feet are wherever the pose put them.
     if (!driven) this.footwork.syncToRig(this.rig);
   }
@@ -438,23 +440,40 @@ export class Fighter {
     const footR = this.footwork.localTarget('R', this, raise);
     // Walking arm swing: each hand swings with the opposite foot.
     const swing = Math.max(-0.35, Math.min(0.35, footR[2] - footL[2])) * g;
+    // Running: elbows locked near 90°, arms pumping hard from the shoulder.
+    const run = this.footwork.run * g;
+    const pump = Math.max(-1, Math.min(1, (footR[2] - footL[2]) / 0.55));
     const guardL = guardHand(GUARD.handL!, M.guardY + back * 0.02 * m, M.guardZ);
     const guardR = guardHand(GUARD.handR!, M.guardY + back * 0.02 * m, M.guardZ * 0.6);
-    const relaxedL: V3 = [0.21, 0.94 + Math.max(0, swing) * 0.15, 0.03 + swing * 0.55];
-    const relaxedR: V3 = [-0.21, 0.94 + Math.max(0, -swing) * 0.15, 0.03 - swing * 0.55];
+    const lerp3 = (a: V3, b: V3, k: number): V3 => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+    const runHand = (side: 1 | -1): V3 => {
+      const th = 0.32 + 0.68 * pump * side;
+      return [side * (0.2 - 0.07 * Math.max(0, pump * side)), 1.4 - 0.39 * Math.cos(th), 0.17 + 0.39 * Math.sin(th)];
+    };
+    const relaxedL = lerp3([0.21, 0.94 + Math.max(0, swing) * 0.15, 0.03 + swing * 0.55], runHand(1), run);
+    const relaxedR = lerp3([-0.21, 0.94 + Math.max(0, -swing) * 0.15, 0.03 - swing * 0.55], runHand(-1), run);
+    const hintL = lerp3([0.2, -0.25, -1], [0.3, -0.35, -1], run);
+    const hintR = lerp3([-0.2, -0.25, -1], [-0.3, -0.35, -1], run);
+    // Running bob: lowest as the body passes over the planted foot, highest in flight.
+    let compress = 0;
+    for (const [foot, at] of [[this.footwork.L, footL], [this.footwork.R, footR]] as const) {
+      if (!foot.stepping) compress = Math.max(compress, 1 - Math.min(1, Math.abs(at[2] - 0.03) / 0.35));
+    }
+    const bob = run * (0.022 - 0.05 * compress);
     const mix = (a: V3, b: V3): V3 => [a[0] * f + b[0] * g, a[1] * f + b[1] * g, a[2] * f + b[2] * g];
     const kneeR = mix(KNEE_HINT.R, [-0.15, 0, 1]);
     const spec: PoseSpec = {
       ...GUARD,
       // Hips ride over the support foot; walking stands a little taller.
-      root: [wx * 0.6 + dx * 0.03 * m, 0.86 + M.crouch + 0.03 * g - 0.012 * m, 0.01 + wz * 0.6 + fwd * 0.03 * m],
+      root: [wx * 0.6 + dx * 0.03 * m, 0.86 + M.crouch + 0.03 * g - 0.012 * m - 0.04 * run + bob, 0.01 + wz * 0.6 + fwd * 0.03 * m],
       // Bladed stance → square hips when walking; the chest counter-rotates with the arm swing.
-      pelvis: [0, -0.3 * f + swing * 0.25, 0],
-      abdomen: [(0.1 + M.lean) * f + 0.04 * g + fwd * 0.05 * m + back * 0.03 * m, 0, -dx * 0.05 * m * f],
-      chest: [0.08 * f + 0.02 * g + Math.sin(this.breath * 2.2) * 0.01, -0.1 * f - swing * 0.45, 0],
-      head: [-0.04 * f, 0.4 * f, 0],
-      handL: { at: mix(guardL.at, relaxedL), hint: mix(guardL.hint ?? [0.35, -1, 0], [0.2, -0.25, -1]) },
-      handR: { at: mix(guardR.at, relaxedR), hint: mix(guardR.hint ?? [-0.35, -1, 0], [-0.2, -0.25, -1]) },
+      pelvis: [0, -0.3 * f + swing * 0.25 * (1 - run) + pump * 0.16 * run, 0],
+      // Running leans the whole body into the stride.
+      abdomen: [(0.1 + M.lean) * f + 0.04 * g + 0.13 * run + fwd * 0.05 * m + back * 0.03 * m, 0, -dx * 0.05 * m * f],
+      chest: [0.08 * f + 0.02 * g + 0.04 * run + Math.sin(this.breath * 2.2) * 0.01, -0.1 * f - swing * 0.45 * (1 - run) - pump * 0.3 * run, 0],
+      head: [-0.04 * f - 0.15 * run, 0.4 * f, 0],
+      handL: { at: mix(guardL.at, relaxedL), hint: mix(guardL.hint ?? [0.35, -1, 0], hintL) },
+      handR: { at: mix(guardR.at, relaxedR), hint: mix(guardR.hint ?? [-0.35, -1, 0], hintR) },
       footL: { at: footL, hint: KNEE_HINT.L },
       footR: { at: footR, hint: kneeR },
     };

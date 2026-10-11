@@ -1,37 +1,39 @@
 # Roguelike Brawler
 
 A 3D low-poly roguelike where combat is automatic and physics-driven: **you only choose
-when and how to attack — the character defends on its own.** Run short roofless
-dungeons, collect coins, choose to erase your memories at the end and run it again —
-each loop pays more and runs easier, while the world slowly reveals it is a simulation
-on a man's computer.
+when and how to attack — the character defends on its own.** Fight round after round in
+a gladiator gauntlet whose arena keeps changing — a boxing ring, the street, a grocery
+store, the Roman colosseum — against tougher and tougher opponents, groups, demons and
+giant bosses.
 
 ## What's in
 
-- **Milestone 1 – combat:** context-sensitive punches and kicks, automatic
-  block/duck/weave/slide, counters, powered-ragdoll hit reactions, boxer footwork and
-  contextual movement, hit-pause, shake, procedural audio.
-- **Milestone 2 – dungeon & camera:** seeded roofless dungeons (start room, combat rooms
-  joined by turning corridors, exit room). Walls between the camera and the fight
-  dissolve in a dithered cutout; gates seal a room until it is cleared; the camera
-  looks ahead while exploring and frames the fight in combat.
-- **Milestone 3 – enemies, coins, shop:** four archetypes — Rookie (quick jabs),
-  Brawler (haymakers), Kicker (teep / low kick / body roundhouse), Bruiser (slow,
-  armored, heavy). An attack director makes groups take turns. KOs burst into coins that
-  fly to you; between runs a shop sells helmet, chestplate, leggings, boots and fist
-  cuffs (3 tiers each) that change your stats and show on your character. Progress is
-  saved in the browser.
-- **Milestone 4 – story loop:** the exit room's floating screen offers to erase your
-  memories. Each loop: more coins (+35% per loop), smaller enemy groups, softer enemies.
-  Story beats per loop, and environmental hints that escalate — missing-texture blocks
-  and screen glitches, then floating UI windows, a mouse cursor, a desktop taskbar,
-  until the explicit realization.
-- **Milestone 5 – tutorial & polish:** the first visit teaches against a sparring
-  partner, in order: punches, a combo, automatic defense, countering, kicks — with
-  few-word prompts. Gate / coin / glitch sounds, transitions, settings and key rebinding.
+- **Combat:** context-sensitive punches and kicks, automatic block/duck/weave/slide,
+  counters, powered-ragdoll hit reactions, boxer footwork and contextual movement
+  (distance zones + fight state), hit-pause, shake, procedural audio, blood and facial
+  damage that build up with punishment.
+- **The gauntlet:** each round swaps the arena theme (ring → street → grocery store →
+  colosseum). Opponents get tougher every round; groups grow from 1 to 4 (an attack
+  director makes them take turns); every 4th round is a **boss** in the colosseum.
+  Falling sends you back to round 1 — coins and gear stay. Your best round is saved.
+- **Opponents:** Rookie (quick jabs), Brawler (haymakers), Kicker (teep / low kick /
+  body roundhouse), Bruiser (slow, armored, heavy), and from round 6 mythical creatures:
+  **Imps** (small, fast swarmers) and **Demons** (horned heavy hitters). Humans dress for
+  the venue — trunks and gloves in the ring, hoodies on the street, aprons in the store,
+  helmets in the colosseum.
+- **Bosses (giants):** The Champion (1.6×), The Minotaur (1.75×, horns and snout) and
+  The Cyclops (1.85×). Size scales reach, step length, mass and hit weight; later bosses
+  bring imp minions.
+- **Economy:** KOs burst into coins and each cleared round pays a bonus; between rounds
+  a shop sells helmet, chestplate, leggings, boots and fist cuffs (3 tiers each) that
+  change your stats and show on your character. Progress is saved in the browser.
+- **Movement:** in a fight, boxer footwork; out of range, a real run (~3.8 m/s) with a
+  clocked stride, flight phase, forward lean and pumping arms.
+- **Tutorial:** the first visit is a warm-up in the ring against a sparring partner —
+  punches, a combo, automatic defense, countering, kicks — with few-word prompts.
 
-The training arena from milestone 1 is still there: add `?mode=arena` to the URL (or use
-the **L** panel → Run).
+A training ring with a respawning brawler is at `?mode=training` (or the **L** panel →
+Gauntlet, which can also jump to any round).
 
 Built with **Three.js + Rapier (WASM physics) + TypeScript + Vite**. Runs entirely in the
 browser, no backend.
@@ -139,14 +141,15 @@ src/
     motion.ts   contextual movement profile (distance zones + fight-state modifiers)
     ragdoll.ts  Rapier powered ragdoll: joint "muscles" chase the animated pose;
                 hits relax muscles near the impact + add impulses, then recover
-  world/      dungeon generation (grid, rooms, gates), collision, dungeon visuals
-  story/      story beats per loop and the escalating simulation hints
-  render/     blocky low-poly fighters + gear, arena, camera, wall cutout, coins, particles
+  arena/      arena themes (shape, props, spawns) and their visuals (crowds, lights)
+  world/      walkable areas and obstacle collision
+  render/     blocky low-poly fighters + gear + creature parts, looks per venue, camera,
+              wall cutout, blood, coins, particles
   feel/       procedural impact audio (WebAudio, no assets)
   input/      rebindable keyboard, mouse, gamepad and touch input
-  game/       glue: fixed-step loop, run flow (rooms, coins, terminal, shop, loops),
-              economy + save data, tutorial
-  ui/         HUD, settings (key rebinding), shop, end-of-dungeon choice
+  game/       glue: fixed-step loop, gauntlet flow (rounds, bosses, coins, shop),
+              round generation, economy + save data, trauma/blood, tutorial
+  ui/         HUD, settings (key rebinding, blood toggle), shop
   debug/      Tweakpane live tuning (frame data, feel, physics, AI)
 ```
 

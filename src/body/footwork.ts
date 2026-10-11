@@ -21,12 +21,16 @@ export interface Foot {
   t: number;
   dur: number;
   height: number;
+  /** Walking/running: seconds of travel the landing spot leads the stance home. */
+  lead: number;
 }
 
 interface Body {
   pos: Vector3;
   yaw: number;
   walkVel: Vector3;
+  /** Body scale: local (authored) space × scale = world metres. */
+  scale?: number;
 }
 
 /** Fighter-local stance home for each ankle (orthodox: left foot leads). */
@@ -47,22 +51,26 @@ const _home = new Vector3();
 const _v = new Vector3();
 
 function makeFoot(side: Side): Foot {
-  return { side, pos: new Vector3(), from: new Vector3(), to: new Vector3(), stepping: false, t: 0, dur: 1, height: 0 };
+  return { side, pos: new Vector3(), from: new Vector3(), to: new Vector3(), stepping: false, t: 0, dur: 1, height: 0, lead: 0 };
 }
 
+/** World point → fighter-local (authored, unscaled) coordinates. */
 export function toLocal(world: Vector3, body: Body, out: Vector3): Vector3 {
+  const k = 1 / (body.scale ?? 1);
   const dx = world.x - body.pos.x;
   const dz = world.z - body.pos.z;
   const c = Math.cos(body.yaw);
   const s = Math.sin(body.yaw);
   // Inverse of the yaw rotation used by forwardKinematics.
-  return out.set(dx * c - dz * s, world.y, dx * s + dz * c);
+  return out.set((dx * c - dz * s) * k, world.y * k, (dx * s + dz * c) * k);
 }
 
+/** Fighter-local (authored) ground point → world. */
 export function toWorld(lx: number, lz: number, body: Body, out: Vector3): Vector3 {
+  const k = body.scale ?? 1;
   const c = Math.cos(body.yaw);
   const s = Math.sin(body.yaw);
-  return out.set(body.pos.x + lx * c + lz * s, 0, body.pos.z - lx * s + lz * c);
+  return out.set(body.pos.x + (lx * c + lz * s) * k, 0, body.pos.z + (-lx * s + lz * c) * k);
 }
 
 /**
@@ -82,6 +90,11 @@ export class Footwork {
   private lastStepper: Side | null = null;
   /** Live multipliers from the contextual motion profile. */
   readonly mods = { stance: 1, stepFrames: 1, stepHeight: 1, stride: 1, gait: 0 };
+  /** 0 = walking, 1 = full run (only meaningful while the walking gait is on). */
+  run = 0;
+  /** Walking/running cycle phase (0..1): the left foot lifts at 0, the right at 0.5. */
+  private phase = 0;
+  private wasGait = false;
   private initialized = false;
 
   constructor(public style: FootworkStyle) {}
@@ -124,7 +137,8 @@ export class Footwork {
     }
 
     const moving = speedFrac > 0.08;
-    const speed = Math.hypot(body.walkVel.x, body.walkVel.z);
+    const sc = body.scale ?? 1;
+    const speed = Math.hypot(body.walkVel.x, body.walkVel.z) / sc;
     const dur = Math.max(5, Math.round(this.style.stepFrames * this.mods.stepFrames - 3.5 * speedFrac));
     const errors = { L: 0, R: 0 };
     const homes = { L: new Vector3(), R: new Vector3() };
@@ -135,6 +149,7 @@ export class Footwork {
       _home.addScaledVector(body.walkVel, STEP_LEAD);
       homes[f.side].copy(_home);
       errors[f.side] = Math.hypot(_home.x - f.pos.x, _home.z - f.pos.z);
+      errors[f.side] /= sc;
       if (errors[f.side] > SNAP_THRESHOLD) {
         f.pos.copy(_home);
         f.stepping = false;
@@ -146,7 +161,7 @@ export class Footwork {
     for (const f of [this.L, this.R]) {
       if (!f.stepping) continue;
       f.t = Math.min(1, f.t + 1 / f.dur);
-      f.to.copy(homes[f.side]).addScaledVector(body.walkVel, ((1 - f.t) * f.dur) / 60);
+      f.to.copy(homes[f.side]).addScaledVector(body.walkVel, ((1 - f.t) * f.dur) / 60 + f.lead);
       const u = f.t * f.t * (3 - 2 * f.t);
       f.pos.lerpVectors(f.from, f.to, u);
       if (f.t >= 1) {
@@ -157,6 +172,19 @@ export class Footwork {
     }
 
     const walking = this.mods.gait > 0.5;
+    const gaitOn = walking && moving;
+    // Walking / running: stride length and cadence follow speed like a person's do —
+    // longer steps and a quicker rhythm, and at a run the swing outlasts the stance so
+    // both feet leave the ground (flight phase).
+    const run = gaitOn ? Math.min(1, Math.max(0, (speed - 2.2) / 1.4)) : 0;
+    this.run += (run - this.run) * 0.15;
+    const stepLen = 0.35 + 0.17 * speed;
+    const period = Math.max(0.3, (2 * stepLen) / Math.max(0.6, speed));
+    // Each foot is planted for at most ~0.6 m of travel (what the leg can reach).
+    const stanceSec = Math.min(period * (0.58 - 0.22 * run), 0.62 / Math.max(0.6, speed));
+    const swingSec = period - stanceSec;
+    const walkDur = Math.max(6, Math.round(swingSec * 60));
+    const walkLead = Math.max(0, stanceSec / 2 - STEP_LEAD);
     // Crossing guard: if the feet are lining up (fast turns), force a corrective step.
     const lL = toLocal(this.L.pos, body, new Vector3());
     const lR = toLocal(this.R.pos, body, new Vector3());
@@ -174,16 +202,19 @@ export class Footwork {
       // Turning on the spot: pivot on the lead foot, swing the rear foot.
       leader = errors.R > IDLE_THRESHOLD || errors.L <= IDLE_THRESHOLD ? 'R' : 'L';
     }
-    if (walking && moving) {
-      // Normal walk: feet simply alternate and pass each other.
-      leader = this.lastStepper === 'L' ? 'R' : this.lastStepper === 'R' ? 'L' : errors.L >= errors.R ? 'L' : 'R';
-    }
     const follower: Side = leader === 'L' ? 'R' : 'L';
     // Stride grows with speed: longer planted phases instead of frantic stepping.
     // Retreating: shorter, gliding steps (never reach back with a long stride).
     const retreat = moving && lz < -0.4 && !walking;
     const stride = this.mods.stride * (retreat ? 0.75 : 1);
-    const thr = walking && moving ? 0.05 + speed * 0.1 : ((moving ? MOVING_THRESHOLD : IDLE_THRESHOLD) + speed * 0.06) * stride;
+    const thr = ((moving ? MOVING_THRESHOLD : IDLE_THRESHOLD) + speed * 0.06) * stride;
+
+    if (gaitOn) {
+      this.updateGait(body, homes, errors, walkDur, walkLead, run, period, stanceSec);
+      this.wasGait = true;
+      return;
+    }
+    this.wasGait = false;
 
     const tryStep = (side: Side) => {
       const f = this.foot(side);
@@ -193,11 +224,12 @@ export class Footwork {
       if (errors[side] <= thr) return false;
       if (other.stepping && other.t < (walking ? 0.85 : 0.55) && !forced) return false;
       f.from.copy(f.pos);
-      // Aim where the home will be when the foot lands (walking: a full stride ahead).
-      f.to.copy(homes[side]).addScaledVector(body.walkVel, dur / 60 + (walking ? 0.12 : 0));
       f.t = 0;
+      f.lead = 0;
       f.dur = forced ? Math.max(4, dur - 2) : dur;
       f.height = this.style.stepHeight * this.mods.stepHeight * (retreat ? 0.6 : 1) * (0.6 + 0.6 * speedFrac) * Math.min(1, errors[side] / (0.15 * stride));
+      // Aim where the home will be when the foot lands.
+      f.to.copy(homes[side]).addScaledVector(body.walkVel, f.dur / 60);
       f.stepping = true;
       if (this.steps === 0) this.firstStepper = side;
       this.steps++;
@@ -210,12 +242,66 @@ export class Footwork {
     if (!walking && moving && this.lastStepper !== leader && errors[follower] > thr && errors[leader] > 0.02 && errors[leader] <= thr) {
       errors[leader] = thr + 0.001;
     }
-    if (!tryStep(leader) && !(walking && moving)) {
+    if (!tryStep(leader)) {
       // The follower drags in after the leader has moved (once it has mostly landed),
       // or on its own only if it is badly out of place.
       const lead = this.foot(leader);
       const due = this.lastStepper === leader && (!lead.stepping || lead.t > 0.55);
       if (due || errors[follower] > Math.max(thr * 1.8, 0.12) || errors[follower] > FORCE_THRESHOLD) tryStep(follower);
+    }
+  }
+
+  /**
+   * Walking and running run on a clock rather than on error thresholds, so the rhythm is
+   * steady: each foot lifts once per cycle, half a cycle apart, swings for `dur` frames
+   * and lands `lead` seconds of travel ahead of its home — under the hips mid-stance.
+   */
+  private updateGait(body: Body, homes: Record<Side, Vector3>, errors: Record<Side, number>, dur: number, lead: number, run: number, period: number, stanceSec: number) {
+    const sc = body.scale ?? 1;
+    const speed = Math.hypot(body.walkVel.x, body.walkVel.z) / sc;
+    if (!this.wasGait) {
+      // Starting off: the foot furthest from its home goes first, right away.
+      const first: Side = errors.L >= errors.R ? 'L' : 'R';
+      this.phase = first === 'L' ? 0.999 : 0.499;
+    }
+    const prev = this.phase;
+    this.phase = (this.phase + 1 / (period * 60)) % 1;
+    const crossed = (at: number) => (at === 0 ? this.phase < prev : prev < at && this.phase >= at);
+    const lift = (side: Side) => {
+      const f = this.foot(side);
+      if (f.stepping) return;
+      f.from.copy(f.pos);
+      f.t = 0;
+      f.dur = dur;
+      f.lead = lead;
+      f.height = (0.045 + 0.02 * speed + 0.07 * run) * Math.min(1.4, this.mods.stepHeight);
+      f.to.copy(homes[side]).addScaledVector(body.walkVel, dur / 60 + lead);
+      f.stepping = true;
+      if (this.steps === 0) this.firstStepper = side;
+      this.steps++;
+      this.lastStepper = side;
+    };
+    if (crossed(0)) lift('L');
+    if (crossed(0.5)) lift('R');
+    // Speeding up, turning or shoved: a planted foot that has fallen too far behind (or
+    // out to the side) goes now, and the rhythm re-syncs to it.
+    const vx = body.walkVel.x / (speed * sc || 1);
+    const vz = body.walkVel.z / (speed * sc || 1);
+    const limit = (speed * (stanceSec / 2 + STEP_LEAD)) * 1.12 + 0.03;
+    for (const side of ['L', 'R'] as const) {
+      const f = this.foot(side);
+      const other = this.foot(side === 'L' ? 'R' : 'L');
+      if (f.stepping || (other.stepping && other.t < 0.45)) continue;
+      const dx = (f.pos.x - homes[side].x) / sc;
+      const dz = (f.pos.z - homes[side].z) / sc;
+      const behind = -(dx * vx + dz * vz);
+      const aside = Math.abs(dx * vz - dz * vx);
+      const wayOff = errors[side] > FORCE_THRESHOLD + 0.3;
+      if (side === this.lastStepper && !wayOff) continue;
+      if (behind > limit || aside > 0.3 || wayOff) {
+        lift(side);
+        this.phase = side === 'L' ? 0 : 0.5;
+      }
     }
   }
 
@@ -243,7 +329,8 @@ export class Footwork {
       if (!f.stepping) continue;
       const k = 0.35 * Math.sin(Math.PI * f.t);
       cx += (planted.x - cx) * k;
-      cz += (planted.z - cz) * k;
+      // Walking/running carries the hips forward at a steady pace instead of rocking.
+      cz += (planted.z - cz) * k * (1 - 0.85 * this.mods.gait);
     }
     const [hlx, hlz] = this.homeLocal('L', offX, offZ);
     const [hrx, hrz] = this.homeLocal('R', offX, offZ);

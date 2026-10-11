@@ -75,7 +75,7 @@ export class CombatSim {
   /** Turn-taking between enemies (only one starts an attack per window). */
   readonly director = new AIDirector();
   frame = 0;
-  /** Where fighters can stand (arena box or dungeon grid). */
+  /** Where fighters can stand (the arena floor minus its props). */
   walkable: Walkable = new RectWalkable(-7.5, 7.5, -4.5, 4.5);
   readonly rng: Rng;
   /** When set, knocked-down fighters' positions are driven externally (ragdoll). */
@@ -167,8 +167,8 @@ export class CombatSim {
         const m = f.move!;
         if (f.stateFrame === m.startup) this.events.push({ type: 'swing', f, move: m });
         if (m.lunge && f.stateFrame >= m.lunge.from && f.stateFrame < m.lunge.to) {
-          let step = m.lunge.distance / (m.lunge.to - m.lunge.from);
-          if (f.target && f.target.alive) step = Math.min(step, Math.max(0, f.distanceTo(f.target) - LUNGE_STOP));
+          let step = (m.lunge.distance * f.scale) / (m.lunge.to - m.lunge.from);
+          if (f.target && f.target.alive) step = Math.min(step, Math.max(0, f.distanceTo(f.target) - (LUNGE_STOP * (f.scale + f.target.scale)) / 2));
           f.pos.addScaledVector(f.forward, step);
         }
         if (f.stateFrame >= moveLength(m)) f.enterLocomotion(5);
@@ -178,7 +178,7 @@ export class CombatSim {
         const d = f.defense!;
         if (d.def.retreat) {
           const frames = d.def.startup + 8;
-          if (f.stateFrame <= frames && d.phase !== 'recovery') f.pos.addScaledVector(f.forward, -d.def.retreat / frames);
+          if (f.stateFrame <= frames && d.phase !== 'recovery') f.pos.addScaledVector(f.forward, (-d.def.retreat * f.scale) / frames);
         }
         if (d.phase === 'startup' && f.stateFrame >= d.def.startup) d.phase = 'active';
         if (d.phase === 'active' || d.phase === 'startup') {
@@ -235,7 +235,7 @@ export class CombatSim {
       if (serial === f.lastDefendedSerial) continue;
       const fta = o.framesToActive;
       if (fta < -o.move.active) continue;
-      if (f.distanceTo(o) > o.move.reach + o.stats.reach + 0.45) continue;
+      if (f.distanceTo(o) > (o.move.reach + o.stats.reach) * o.scale + 0.45) continue;
       const kind = chooseDefense(f, o.move, fta, o.strikeHeight);
       if (!kind) continue;
       if (fta <= DEFENSES[kind].startup + 1) {
@@ -379,8 +379,9 @@ export class CombatSim {
         const dx = b.pos.x - a.pos.x;
         const dz = b.pos.z - a.pos.z;
         const d = Math.hypot(dx, dz);
-        if (d < MIN_SEPARATION) {
-          const push = (MIN_SEPARATION - d) / 2;
+        const minSep = (MIN_SEPARATION * (a.scale + b.scale)) / 2;
+        if (d < minSep) {
+          const push = (minSep - d) / 2;
           const nx = d > 1e-4 ? dx / d : 1;
           const nz = d > 1e-4 ? dz / d : 0;
           a.pos.x -= nx * push;
@@ -391,7 +392,7 @@ export class CombatSim {
       }
     }
     for (const f of fs) {
-      if (f.state !== 'knockdown' && f.state !== 'ko') this.walkable.resolve(f.pos, BODY_RADIUS);
+      if (f.state !== 'knockdown' && f.state !== 'ko') this.walkable.resolve(f.pos, BODY_RADIUS * f.scale);
       f.pos.y = 0;
     }
   }
@@ -408,7 +409,7 @@ export class CombatSim {
       strikePoint(a, m, _strike);
       for (const d of this.opponents(a)) {
         if (!d.alive || d.state === 'knockdown' || d.state === 'getup') continue;
-        const c = overlap(_strike, m.radius + a.stats.reach, d, a.strikeHeight);
+        const c = overlap(_strike, (m.radius + a.stats.reach) * a.scale, d, a.strikeHeight);
         if (c) {
           contacts.push({ attacker: a, defender: d, ...c });
           break;
@@ -560,6 +561,12 @@ export interface HurtSphere {
 }
 
 export function hurtSpheres(d: Fighter, height: Height): HurtSphere[] {
+  const spheres = hurtSpheresUnscaled(d, height);
+  if (d.scale !== 1) for (const h of spheres) h.r *= d.scale;
+  return spheres;
+}
+
+function hurtSpheresUnscaled(d: Fighter, height: Height): HurtSphere[] {
   const rig = d.rig;
   if (height === 'high') {
     return [

@@ -1,9 +1,11 @@
 import { Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { toLocal } from '../src/body/footwork';
+import { bonePoint } from '../src/body/skeleton';
 import { CombatSim } from '../src/sim/combat';
 import { angleDelta } from '../src/sim/math';
 import { createBrawler, createPlayer } from '../src/sim/roster';
+import { RectWalkable } from '../src/world/collision';
 
 function setup(enemyDist: number) {
   const sim = new CombatSim(13);
@@ -60,6 +62,46 @@ describe('walking outside a fight', () => {
     expect(steady.length).toBeGreaterThan(6);
     for (let k = 1; k < steady.length; k++) expect(steady[k]).not.toBe(steady[k - 1]);
     expect(passes).toBeGreaterThan(4);
+  });
+
+  it('runs with long strides, a steady rhythm and pumping arms', () => {
+    const { sim, player } = setup(30);
+    sim.walkable = new RectWalkable(-500, 500, -500, 500);
+    const starts: number[] = [];
+    const travel: number[] = [];
+    const was = { L: false, R: false };
+    const from = { L: new Vector3(), R: new Vector3() };
+    const hand = new Vector3();
+    let speed = 0;
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let i = 0; i < 240; i++) {
+      player.moveInput.set(0, 0, -1);
+      sim.step();
+      if (i < 80) continue;
+      speed += Math.hypot(player.walkVel.x, player.walkVel.z) / 160;
+      for (const s of ['L', 'R'] as const) {
+        const f = player.footwork.foot(s);
+        if (f.stepping && !was[s]) {
+          starts.push(i);
+          from[s].copy(f.pos);
+        }
+        if (!f.stepping && was[s]) travel.push(f.pos.distanceTo(from[s]));
+        was[s] = f.stepping;
+      }
+      const z = toLocal(bonePoint(player.rig, 'foreArmL', 0.26, hand), player, hand).z;
+      lo = Math.min(lo, z);
+      hi = Math.max(hi, z);
+    }
+    const gaps = starts.slice(1).map((s, k) => s - starts[k]);
+    const cadence = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+    const stride = travel.reduce((a, b) => a + b, 0) / travel.length;
+    expect(speed).toBeGreaterThan(3.5);
+    // ~3.5 steps a second, each ~1 m (a foot travels two steps per swing).
+    expect(cadence).toBeGreaterThan(13);
+    expect(cadence).toBeLessThan(20);
+    expect(stride).toBeGreaterThan(1.6);
+    expect(hi - lo).toBeGreaterThan(0.35);
   });
 
   it('still squares up to an opponent in range while backing away', () => {

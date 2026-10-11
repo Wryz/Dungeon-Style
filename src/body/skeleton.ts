@@ -95,13 +95,15 @@ export function blendPose(a: Pose, b: Pose, t: number, out: Pose): Pose {
 export interface BoneXform {
   pos: Vector3; // joint position (world or fighter-local)
   rot: Quaternion;
+  /** Uniform body scale (giants > 1, small creatures < 1). */
+  s: number;
 }
 
 export type Rig = Record<BoneName, BoneXform>;
 
 export function makeRig(): Rig {
   const r = {} as Rig;
-  for (const b of BONES) r[b] = { pos: new Vector3(), rot: new Quaternion() };
+  for (const b of BONES) r[b] = { pos: new Vector3(), rot: new Quaternion(), s: 1 };
   return r;
 }
 
@@ -113,18 +115,19 @@ const Y_AXIS = new Vector3(0, 1, 0);
  * Computes joint transforms. With `origin`/`yaw` the result is in world space,
  * otherwise in fighter-local space.
  */
-export function forwardKinematics(pose: Pose, out: Rig, origin?: Vector3, yaw = 0): Rig {
+export function forwardKinematics(pose: Pose, out: Rig, origin?: Vector3, yaw = 0, scale = 1): Rig {
   _yawQ.setFromAxisAngle(Y_AXIS, yaw);
   for (const name of BONES) {
     const def = SKELETON[name];
     const x = out[name];
+    x.s = scale;
     if (!def.parent) {
-      x.pos.copy(pose.root).applyQuaternion(_yawQ);
+      x.pos.copy(pose.root).multiplyScalar(scale).applyQuaternion(_yawQ);
       if (origin) x.pos.add(origin);
       x.rot.copy(_yawQ).multiply(pose.rot[name]);
     } else {
       const p = out[def.parent];
-      x.pos.set(def.offset[0], def.offset[1], def.offset[2]).applyQuaternion(p.rot).add(p.pos);
+      x.pos.set(def.offset[0] * scale, def.offset[1] * scale, def.offset[2] * scale).applyQuaternion(p.rot).add(p.pos);
       x.rot.copy(p.rot).multiply(pose.rot[name]);
     }
   }
@@ -134,7 +137,7 @@ export function forwardKinematics(pose: Pose, out: Rig, origin?: Vector3, yaw = 
 /** Point along a bone, `t` metres from its joint (negative/over-length allowed). */
 export function bonePoint(rig: Rig, bone: BoneName, t: number, out: Vector3): Vector3 {
   const def = SKELETON[bone];
-  return out.set(0, def.dir * t, 0).applyQuaternion(rig[bone].rot).add(rig[bone].pos);
+  return out.set(0, def.dir * t * rig[bone].s, 0).applyQuaternion(rig[bone].rot).add(rig[bone].pos);
 }
 
 export function fistPoint(rig: Rig, side: Side, out: Vector3): Vector3 {
@@ -147,7 +150,7 @@ export function footPoint(rig: Rig, side: Side, out: Vector3): Vector3 {
   const shin = side === 'L' ? 'shinL' : 'shinR';
   bonePoint(rig, shin, SKELETON[shin].length + 0.04, out);
   // Push a little along the shin's local forward axis (toes).
-  _v.set(0, 0, 0.08).applyQuaternion(rig[shin].rot);
+  _v.set(0, 0, 0.08 * rig[shin].s).applyQuaternion(rig[shin].rot);
   return out.add(_v);
 }
 

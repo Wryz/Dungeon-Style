@@ -1,9 +1,12 @@
-import type { EnemyKind } from '../world/dungeon';
 import { type AIConfig, type AIPlan, BRAWLER_PLAN, BrawlerAI, DEFAULT_AI } from './ai';
 import { Fighter, type FighterStats, type FighterStyle } from './fighter';
 import type { Rng } from './math';
 import { ENEMY_MOVES } from './moves';
 import { BRAWLER_STYLE } from './roster';
+
+export type EnemyKind = 'rookie' | 'brawler' | 'kicker' | 'bruiser' | 'imp' | 'demon' | 'champion' | 'minotaur' | 'cyclops';
+
+export const BOSSES: EnemyKind[] = ['champion', 'minotaur', 'cyclops'];
 
 export interface Archetype {
   kind: EnemyKind;
@@ -12,8 +15,11 @@ export interface Archetype {
   style: FighterStyle;
   plan: AIPlan;
   ai: Partial<AIConfig>;
-  /** Coins dropped on KO [min, max] before loop bonuses. */
+  /** Coins dropped on KO [min, max] before round bonuses. */
   coins: [number, number];
+  /** Body size (giant bosses > 1, small creatures < 1). */
+  scale?: number;
+  boss?: boolean;
 }
 
 const LIGHT_STYLE: FighterStyle = {
@@ -59,7 +65,7 @@ const HEAVY_STYLE: FighterStyle = {
   },
 };
 
-export const ARCHETYPES: Record<EnemyKind, Archetype> = {
+export const ARCHETYPES = {
   rookie: {
     kind: 'rookie',
     name: 'Rookie',
@@ -127,20 +133,102 @@ export const ARCHETYPES: Record<EnemyKind, Archetype> = {
     ai: { blockChance: 0.4, aggression: 0.8, stringChance: 0 },
     coins: [16, 24],
   },
+} as unknown as Record<EnemyKind, Archetype>; // creatures and bosses are added below
+
+const BOSS_STYLE: FighterStyle = {
+  footwork: { stanceWidth: 1.15, stepFrames: 15, stepHeight: 0.035 },
+  idle: {
+    bounceHz: 0.7,
+    bounceAmp: 0.012,
+    swayAmp: 0.06,
+    feintEvery: [3, 6],
+    feintWeights: { jab: 1, shoulder: 3, level: 0, step: 3 },
+    shuffleEvery: [1.4, 2.8],
+    pawEvery: [2.5, 4.5],
+    shoulderRoll: 0.12,
+  },
 };
 
-/** Builds an enemy. Each memory erase (loop) makes enemies a little softer and calmer. */
-export function createEnemy(kind: EnemyKind, rng: Rng, loop = 0, baseAi: Partial<AIConfig> = {}): { fighter: Fighter; ai: BrawlerAI } {
-  const a = ARCHETYPES[kind];
-  const ease = Math.max(0.6, 1 - 0.08 * loop);
-  const stats = { ...a.stats, maxHp: Math.round((a.stats.maxHp ?? 70) * ease) };
-  const fighter = new Fighter('enemy', a.name, ENEMY_MOVES, stats, a.style);
-  const cfg = { ...DEFAULT_AI, ...baseAi, ...a.ai };
-  cfg.aggression *= Math.max(0.7, 1 - 0.05 * loop);
-  return { fighter, ai: new BrawlerAI(cfg, rng, a.plan) };
+Object.assign(ARCHETYPES, {
+  imp: {
+    kind: 'imp',
+    name: 'Imp',
+    stats: { maxHp: 34, walkSpeed: 2.7 },
+    style: LIGHT_STYLE,
+    plan: { moves: [['rookieJab', 40], ['body', 25], ['teep', 20]], range: 1.05, attackRange: 1.35, punish: 'rookieJab', chains: { rookieJab: 'body' } },
+    ai: { blockChance: 0.1, aggression: 1.35 },
+    coins: [5, 8],
+    scale: 0.72,
+  },
+  demon: {
+    kind: 'demon',
+    name: 'Demon',
+    stats: { maxHp: 95, walkSpeed: 2.2, staggerResist: 0.25 },
+    style: KICKER_STYLE,
+    plan: { moves: [['hook', 30], ['straight', 20], ['roundhouse', 25], ['bruiserBody', 20]], range: 1.1, attackRange: 1.4, punish: 'straight', chains: { straight: 'hookChain' } },
+    ai: { blockChance: 0.3, aggression: 1.15 },
+    coins: [14, 20],
+    scale: 1.12,
+  },
+  champion: {
+    kind: 'champion',
+    name: 'The Champion',
+    stats: { maxHp: 260, walkSpeed: 1.7, staggerResist: 0.6, defense: 0.15 },
+    style: BRAWLER_STYLE,
+    plan: { moves: [['straight', 30], ['hook', 30], ['body', 25], ['bruiserHook', 15]], range: 1.05, attackRange: 1.3, punish: 'straight', chains: { straight: 'hookChain' } },
+    ai: { blockChance: 0.45, aggression: 1 },
+    coins: [60, 80],
+    scale: 1.6,
+    boss: true,
+  },
+  minotaur: {
+    kind: 'minotaur',
+    name: 'The Minotaur',
+    stats: { maxHp: 320, walkSpeed: 1.6, staggerResist: 0.7, defense: 0.2 },
+    style: BOSS_STYLE,
+    plan: { moves: [['bruiserHook', 30], ['bruiserBody', 30], ['sweep', 20], ['teep', 20]], range: 1.0, attackRange: 1.3, punish: 'bruiserBody', chains: {} },
+    ai: { blockChance: 0.25, aggression: 1.05, stringChance: 0 },
+    coins: [80, 110],
+    scale: 1.75,
+    boss: true,
+  },
+  cyclops: {
+    kind: 'cyclops',
+    name: 'The Cyclops',
+    stats: { maxHp: 380, walkSpeed: 1.35, staggerResist: 0.75, defense: 0.25 },
+    style: BOSS_STYLE,
+    plan: { moves: [['bruiserHook', 35], ['sweep', 25], ['bruiserBody', 25], ['roundhouse', 15]], range: 1.0, attackRange: 1.3, punish: 'bruiserBody', chains: {} },
+    ai: { blockChance: 0.2, aggression: 0.95, stringChance: 0 },
+    coins: [100, 140],
+    scale: 1.85,
+    boss: true,
+  },
+} satisfies Partial<Record<EnemyKind, Archetype>>);
+
+export interface EnemyMods {
+  hpMul?: number;
+  dmgMul?: number;
+  aggression?: number;
 }
 
-export function coinDrop(kind: EnemyKind, rng: Rng, loop: number): number {
+/** Builds an enemy; round modifiers make later rounds tougher. */
+export function createEnemy(kind: EnemyKind, rng: Rng, mods: EnemyMods = {}, baseAi: Partial<AIConfig> = {}): { fighter: Fighter; ai: BrawlerAI } {
+  const a = ARCHETYPES[kind];
+  const sc = a.scale ?? 1;
+  const stats = { ...a.stats, maxHp: Math.round((a.stats.maxHp ?? 70) * (mods.hpMul ?? 1)) };
+  stats.damageMul = (stats.damageMul ?? 1) * (mods.dmgMul ?? 1);
+  // Bigger bodies stride further per step.
+  if (stats.walkSpeed) stats.walkSpeed *= Math.sqrt(sc);
+  const fighter = new Fighter('enemy', a.name, ENEMY_MOVES, stats, a.style);
+  fighter.scale = sc;
+  const cfg = { ...DEFAULT_AI, ...baseAi, ...a.ai };
+  cfg.aggression *= mods.aggression ?? 1;
+  // Spacing scales with size.
+  const plan = { ...a.plan, range: a.plan.range * sc, attackRange: a.plan.attackRange * sc };
+  return { fighter, ai: new BrawlerAI(cfg, rng, plan) };
+}
+
+export function coinDrop(kind: EnemyKind, rng: Rng, round: number): number {
   const [lo, hi] = ARCHETYPES[kind].coins;
-  return Math.round(rng.range(lo, hi + 1) * (1 + 0.35 * loop));
+  return Math.round(rng.range(lo, hi + 1) * (1 + 0.08 * Math.max(0, round - 1)));
 }

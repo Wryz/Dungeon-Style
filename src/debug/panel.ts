@@ -93,13 +93,18 @@ export function buildPanel(game: Game): { toggle: () => void } {
     }
   }
 
-  const runF = pane.addFolder({ title: 'Run', expanded: false });
-  runF.addButton({ title: game.mode === 'run' ? 'Open training arena' : 'Back to the dungeon' }).on('click', () => {
-    location.search = game.mode === 'run' ? '?mode=arena' : '';
+  const runF = pane.addFolder({ title: 'Gauntlet', expanded: false });
+  runF.addButton({ title: game.mode === 'gauntlet' ? 'Open training ring' : 'Back to the gauntlet' }).on('click', () => {
+    location.search = game.mode === 'gauntlet' ? '?mode=training' : '';
   });
+  if (game.mode === 'gauntlet') {
+    const jump = { round: 4 };
+    runF.addBinding(jump, 'round', { min: 1, max: 40, step: 1, label: 'jump to' });
+    runF.addButton({ title: 'Start that round' }).on('click', () => game.startRound(jump.round));
+  }
   runF.addButton({ title: 'New game (reset save)' }).on('click', () => {
     try {
-      localStorage.removeItem('brawler.save.v1');
+      localStorage.removeItem('brawler.save.v2');
     } catch {
       // ignore
     }

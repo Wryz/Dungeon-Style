@@ -49,13 +49,13 @@ export interface SaveData {
   coins: number;
   /** Highest tier owned per slot (0 = none); the best owned piece is worn. */
   gear: Record<Slot, number>;
-  /** Number of times memories were erased. */
-  loop: number;
+  /** Best gauntlet round reached. */
+  bestRound: number;
   tutorialDone: boolean;
 }
 
-export const NEW_SAVE: SaveData = { coins: 0, gear: { helmet: 0, chest: 0, legs: 0, boots: 0, cuffs: 0 }, loop: 0, tutorialDone: false };
-const KEY = 'brawler.save.v1';
+export const NEW_SAVE: SaveData = { coins: 0, gear: { helmet: 0, chest: 0, legs: 0, boots: 0, cuffs: 0 }, bestRound: 0, tutorialDone: false };
+const KEY = 'brawler.save.v2';
 
 export function loadSave(storage: Pick<Storage, 'getItem'> | null = safeStorage()): SaveData {
   try {
@@ -65,7 +65,7 @@ export function loadSave(storage: Pick<Storage, 'getItem'> | null = safeStorage(
       return {
         coins: Math.max(0, Number(s.coins) || 0),
         gear: { ...NEW_SAVE.gear, ...(s.gear ?? {}) },
-        loop: Math.max(0, Number(s.loop) || 0),
+        bestRound: Math.max(0, Number(s.bestRound) || 0),
         tutorialDone: !!s.tutorialDone,
       };
     }
@@ -118,9 +118,4 @@ export function statsWithGear(s: SaveData, base: FighterStats = DEFAULT_STATS): 
   out.defense = Math.min(0.6, out.defense);
   out.staggerResist = Math.min(0.7, out.staggerResist);
   return out;
-}
-
-/** Coin reward multiplier for a loop (each memory erase pays more). */
-export function loopRewardMul(loop: number): number {
-  return 1 + 0.35 * loop;
 }

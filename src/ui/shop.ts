@@ -10,7 +10,7 @@ const STAT_LABELS: Record<string, (v: number) => string> = {
   maxHp: (v) => `+${v} health`,
 };
 
-/** Between-instance shop: spend coins on the five gear slots. */
+/** Between-rounds shop: spend coins on the five gear slots. */
 export class Shop {
   private readonly el: HTMLDivElement;
   onBuy: ((slot: Slot) => void) | null = null;
@@ -25,8 +25,8 @@ export class Shop {
     root.appendChild(this.el);
   }
 
-  open(loop: number) {
-    this.render(loop);
+  open(round: number) {
+    this.render(round);
     this.el.classList.add('show');
   }
 
@@ -34,7 +34,7 @@ export class Shop {
     this.el.classList.remove('show');
   }
 
-  private render(loop: number) {
+  private render(round: number) {
     const s = this.save;
     const cards = SLOTS.map((slot) => {
       const owned = item(slot, s.gear[slot]);
@@ -54,11 +54,11 @@ export class Shop {
     }).join('');
     this.el.innerHTML = `
       <div class="panel-card wide">
-        <h2>Between runs</h2>
-        <p class="sub">Memory loop ${loop} · gear stays with you across loops.</p>
+        <h2>Round ${round} cleared</h2>
+        <p class="sub">Gear and coins stay with you, even if you fall.</p>
         <div class="wallet"><span class="coin"></span> ${Math.floor(s.coins)}</div>
         <div class="cards">${cards}</div>
-        <div class="actions"><span></span><button class="primary go">Enter the dungeon</button></div>
+        <div class="actions"><span></span><button class="primary go">Next round · ${round + 1}</button></div>
       </div>`;
     for (const b of Array.from(this.el.querySelectorAll<HTMLButtonElement>('button[data-slot]'))) {
       b.addEventListener('click', () => {
@@ -66,7 +66,7 @@ export class Shop {
         const next = nextItem(s, slot);
         if (next && buy(s, next)) {
           this.onBuy?.(slot);
-          this.render(loop);
+          this.render(round);
         }
       });
     }

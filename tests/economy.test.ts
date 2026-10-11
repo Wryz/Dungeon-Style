@@ -29,11 +29,11 @@ describe('economy', () => {
     const store = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v) };
     const s = structuredClone(NEW_SAVE);
     s.coins = 77;
-    s.loop = 2;
+    s.bestRound = 2;
     s.gear.boots = 1;
     writeSave(s, store);
     expect(loadSave(store)).toEqual(s);
-    mem.set('brawler.save.v1', '{broken');
+    mem.set('brawler.save.v2', '{broken');
     expect(loadSave(store)).toEqual(NEW_SAVE);
   });
 });

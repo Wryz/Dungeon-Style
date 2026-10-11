@@ -121,6 +121,7 @@ export class Ragdoll {
     fighter: Fighter,
   ) {
     const rig = fighter.rig;
+    const sc = fighter.scale;
     for (const name of BONES) {
       const def = SKELETON[name];
       const x = rig[name];
@@ -133,18 +134,18 @@ export class Ragdoll {
       const body = world.createRigidBody(desc);
       let cd: RAPIER_NS.ColliderDesc;
       if (name === 'head') {
-        cd = RAPIER.ColliderDesc.ball(0.11).setTranslation(0, 0.15, 0);
+        cd = RAPIER.ColliderDesc.ball(0.11 * sc).setTranslation(0, 0.15 * sc, 0);
       } else if (name === 'pelvis') {
-        cd = RAPIER.ColliderDesc.cuboid(0.14, 0.08, 0.09).setTranslation(0, 0.03, 0);
+        cd = RAPIER.ColliderDesc.cuboid(0.14 * sc, 0.08 * sc, 0.09 * sc).setTranslation(0, 0.03 * sc, 0);
       } else if (name === 'abdomen') {
-        cd = RAPIER.ColliderDesc.cuboid(0.13, 0.1, 0.09).setTranslation(0, 0.1, 0);
+        cd = RAPIER.ColliderDesc.cuboid(0.13 * sc, 0.1 * sc, 0.09 * sc).setTranslation(0, 0.1 * sc, 0);
       } else if (name === 'chest') {
-        cd = RAPIER.ColliderDesc.cuboid(0.17, 0.13, 0.1).setTranslation(0, 0.13, 0);
+        cd = RAPIER.ColliderDesc.cuboid(0.17 * sc, 0.13 * sc, 0.1 * sc).setTranslation(0, 0.13 * sc, 0);
       } else {
-        const half = Math.max(0.01, def.length / 2 - def.radius * 0.5);
-        cd = RAPIER.ColliderDesc.capsule(half, def.radius).setTranslation(0, (def.dir * def.length) / 2, 0);
+        const half = Math.max(0.01, def.length / 2 - def.radius * 0.5) * sc;
+        cd = RAPIER.ColliderDesc.capsule(half, def.radius * sc).setTranslation(0, (def.dir * def.length * sc) / 2, 0);
       }
-      cd.setMass(MASS[name]).setFriction(0.9).setRestitution(0.05).setCollisionGroups(groups(GROUP_BODY, GROUP_ENV));
+      cd.setMass(MASS[name] * Math.pow(sc, 2.5)).setFriction(0.9).setRestitution(0.05).setCollisionGroups(groups(GROUP_BODY, GROUP_ENV));
       world.createCollider(cd, body);
       this.bodies[name] = body;
       this.prev[name] = { p: x.pos.clone(), q: x.rot.clone() };
@@ -154,7 +155,7 @@ export class Ragdoll {
       const def = SKELETON[name];
       if (!def.parent) continue;
       const jd = RAPIER.JointData.spherical(
-        { x: def.offset[0], y: def.offset[1], z: def.offset[2] },
+        { x: def.offset[0] * sc, y: def.offset[1] * sc, z: def.offset[2] * sc },
         { x: 0, y: 0, z: 0 },
       );
       const j = world.createImpulseJoint(jd, this.bodies[def.parent], this.bodies[name], true);
