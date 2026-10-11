@@ -362,9 +362,9 @@ export class FighterView {
     const fore = this.bones.foreArmR;
     fore.updateMatrixWorld();
     fore.localToWorld(_grip.set(0, -(SKELETON.foreArmR.length + FIST_OFFSET), 0));
-    w.position.copy(_grip);
     w.scale.setScalar(f.scale);
 
+    w.position.copy(_grip);
     const b = _lb.copy(f.pose.blade).normalize();
     // The edge only moves when the sim does (render-only frames just re-place it).
     const edge = simDt > 0 ? this.edgeModel.update(f, Math.max(1, Math.round(simDt * 60))) : this.edgeModel.edge;

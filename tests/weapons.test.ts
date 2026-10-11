@@ -117,15 +117,28 @@ describe('weapons', () => {
     expect(player.severed.size).toBe(0);
   });
 
-  it('picks up, swaps and drops weapons', () => {
+  it('picks up, swaps and drops weapons (bending down for them takes time)', () => {
     const { sim, player } = duel(null, 4);
     sim.addDrop(WEAPONS.machete, 0.4, 0);
     sim.addDrop(WEAPONS.bat, -0.5, 0.2);
+    const pick = () => {
+      player.pickupRequest = 10;
+      sim.step();
+      let n = 1;
+      while (!player.free && n < 200) {
+        sim.step();
+        n++;
+      }
+      return n;
+    };
     player.pickupRequest = 10;
     sim.step();
+    // Not in hand the instant you reach for it.
+    expect(player.state).toBe('pickup');
+    expect(player.weapon).toBeNull();
+    while (!player.free) sim.step();
     expect(player.weapon?.id).toBe('machete');
-    player.pickupRequest = 10;
-    sim.step();
+    pick();
     expect(player.weapon?.id).toBe('bat');
     expect(sim.drops.map((d) => d.weapon.id)).toEqual(['machete']);
     player.pos.set(5, 0, 5);
@@ -133,6 +146,45 @@ describe('weapons', () => {
     sim.step();
     expect(player.weapon).toBeNull();
     expect(sim.drops.length).toBe(2);
+    void pick;
+  });
+
+  it('a heavy weapon takes longer to get up off the floor than a light one', () => {
+    const time = (id: 'machete' | 'axe' | 'sledgehammer') => {
+      const { sim, player } = duel(null, 4);
+      sim.addDrop(WEAPONS[id], 0.4, 0);
+      player.pickupRequest = 10;
+      sim.step();
+      let n = 1;
+      while (!player.free && n < 200) {
+        sim.step();
+        n++;
+      }
+      expect(player.weapon?.id).toBe(id);
+      return n;
+    };
+    const machete = time('machete');
+    const axe = time('axe');
+    const sledge = time('sledgehammer');
+    expect(axe).toBeGreaterThan(machete + 8);
+    expect(sledge).toBeGreaterThan(axe + 8);
+  });
+
+  it("caught while bending down for a weapon, you don't get it", () => {
+    const { sim, player, enemy } = duel(null, 1.3);
+    player.autoDefense = false;
+    sim.addDrop(WEAPONS.axe, 0.2, 0.5);
+    // (Bent over, the head is down out of the way of a straight: it's the body that's open.)
+    enemy.startMove(enemy.moves.body);
+    for (let i = 0; i < 8; i++) sim.step();
+    player.pickupRequest = 10;
+    sim.step();
+    expect(player.state).toBe('pickup');
+    let hit = false;
+    for (let i = 0; i < 60; i++) for (const e of sim.step()) if (e.type === 'hit' && e.defender === player) hit = true;
+    expect(hit).toBe(true);
+    expect(player.weapon).toBeNull();
+    expect(sim.drops.length).toBe(1);
   });
 
   it('armed buttons: Q is the quick strike, E the heavy one', () => {

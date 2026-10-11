@@ -8,7 +8,7 @@ import { bodyCapsules, overlap as capsuleOverlap, segDist as segDistance, striki
 import { angleDelta, approachAngle, DT, Rng } from './math';
 import { DEFENSES, type DefenseKind, type Height, type MoveDef, moveLength } from './moves';
 import { chooseDefense, moveContext, selectPlayerMove } from './select';
-import { bladePoints, LIMB_TOUGHNESS, limbBones, sampleOffsets, SEVER_AT, selectWeaponMove, WEAPON_MOVES, type WeaponDef, type Wound } from './weapons';
+import { bladePoints, heft, LIMB_TOUGHNESS, limbBones, sampleOffsets, SEVER_AT, selectWeaponMove, WEAPON_MOVES, type WeaponDef, type Wound } from './weapons';
 
 /** A weapon lying on the arena floor. */
 export interface Drop {
@@ -214,7 +214,9 @@ export class CombatSim {
       const run = f.footwork.run * f.motion.gait;
       const resting = f.free ? (run > 0.3 ? -0.035 * run : 0.085) : f.state === 'attack' ? 0 : 0.03;
       const hurt = 0.5 + 0.5 * (f.hp / f.stats.maxHp);
-      f.stamina = Math.max(0, Math.min(1, f.stamina + (resting > 0 ? resting * hurt : resting) * DT));
+      // Holding a heavy weapon up is work in itself: you get your breath back slower.
+      const burden = 1 - Math.min(0.5, 0.06 * heft(f.weapon, f.scale));
+      f.stamina = Math.max(0, Math.min(1, f.stamina + (resting > 0 ? resting * hurt * burden : resting) * DT));
     }
     for (const k of Object.keys(f.defenseCooldown) as DefenseKind[]) {
       if (f.defenseCooldown[k] > 0) f.defenseCooldown[k]--;
@@ -241,7 +243,12 @@ export class CombatSim {
           f.pos.addScaledVector(f.forward, step);
         }
         f.refitSwing();
-        if (f.stateFrame >= (f.attackEnd || moveLength(m))) f.enterLocomotion(5);
+        // A heavy swing that meets nothing keeps going: its weight drags the body on a
+        // step and takes longer to haul back under control.
+        const over = m.weapon && !f.attackEnd ? Math.max(0, heft(f.weapon, f.scale) - 1.2) : 0;
+        const past = f.stateFrame - (m.startup + m.active);
+        if (over > 0 && past > 0 && past <= 10 && !f.hitThisAttack) f.pos.addScaledVector(f.forward, 0.012 * over * f.scale);
+        if (f.stateFrame >= (f.attackEnd || moveLength(m) + Math.round((f.hitThisAttack ? 0 : 4) * over))) f.enterLocomotion(5);
         break;
       }
       case 'defend': {
@@ -273,6 +280,9 @@ export class CombatSim {
           f.enterGetup();
           this.events.push({ type: 'getup', f });
         }
+        break;
+      case 'pickup':
+        this.advancePickup(f);
         break;
       case 'getup':
       case 'celebrate':
@@ -393,7 +403,9 @@ export class CombatSim {
         // Locked on: backpedalling is slower. Free walking: turn first, then go.
         const turnFirst = locked ? 1 : Math.max(0.3, (1 + dot) / 2);
         const sp =
-          f.stats.walkSpeed * len * f.motion.speed * (locked && dot < -0.3 ? 0.72 : 1) * turnFirst * (handStrike ? 0.6 : 1);
+          f.stats.walkSpeed * len * f.motion.speed * (locked && dot < -0.3 ? 0.72 : 1) * turnFirst * (handStrike ? 0.6 : 1) *
+          // Lugging something heavy slows you down.
+          (1 - Math.min(0.25, 0.035 * heft(f.weapon, f.scale)));
         _want.set(mi.x / raw, 0, mi.z / raw).multiplyScalar(sp);
       }
       // Accelerate rather than snap, so starts/stops have weight.
@@ -975,11 +987,39 @@ export class CombatSim {
     }
     // Two-handed weapons need both hands.
     if (best.weapon.style === 'twoHand' && f.isSevered('foreArmL')) return;
-    this.drops.splice(this.drops.indexOf(best), 1);
-    const old = f.weapon;
-    f.weapon = best.weapon;
-    this.events.push({ type: 'pickup', f, drop: best });
-    if (old) this.addDrop(old, best.pos.x, best.pos.z, best.yaw + 0.8);
+    // Going down for it takes time — more the heavier it is for you.
+    f.startPickup(best, Math.round(18 + 7 * heft(best.weapon, f.scale)));
+  }
+
+  /** Bending down for a weapon: step in to it, turn to it, close the hands, rise. */
+  private advancePickup(f: Fighter) {
+    const t = f.pickupTarget;
+    if (t) {
+      const dx = t.pos.x - f.pos.x;
+      const dz = t.pos.z - f.pos.z;
+      const d = Math.hypot(dx, dz);
+      if (f.stateFrame < t.grabAt) {
+        // Face it, and step in if it's beyond arm's reach of a squat.
+        f.yaw = approachAngle(f.yaw, Math.atan2(dx, dz), 0.12);
+        const near = 0.45 * f.scale;
+        if (d > near) {
+          const k = Math.min(0.045 * f.scale, d - near) / d;
+          f.pos.x += dx * k;
+          f.pos.z += dz * k;
+        }
+      }
+      if (f.stateFrame === t.grabAt) {
+        const drop = this.drops.find((x) => x.pos === t.pos && x.weapon === t.weapon);
+        if (drop && !f.isSevered('foreArmR')) {
+          this.drops.splice(this.drops.indexOf(drop), 1);
+          const old = f.weapon;
+          f.weapon = drop.weapon;
+          this.events.push({ type: 'pickup', f, drop });
+          if (old) this.addDrop(old, drop.pos.x, drop.pos.z, drop.yaw + 0.8);
+        }
+      }
+    }
+    if (f.stateFrame >= f.stunFrames) f.enterLocomotion(6);
   }
 }
 

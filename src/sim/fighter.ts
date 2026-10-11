@@ -21,7 +21,7 @@ import {
   solveArm,
   solveLegs,
 } from '../body/skeleton';
-import { bladeFrame, sampleOffsets, SECOND_HAND, WEAPON_MOVES, type WeaponDef, type Wound } from './weapons';
+import { bladeFrame, gripSlide, heft, sampleOffsets, SECOND_HAND, WEAPON_MOVES, type WeaponDef, weaponTempo, type Wound } from './weapons';
 import { bodyCapsules, type Capsule, closestOnSegment } from './bodyShapes';
 
 export interface FighterStyle {
@@ -57,7 +57,9 @@ export type FighterState =
   | 'knockdown'
   | 'getup'
   | 'ko'
-  | 'celebrate';
+  | 'celebrate'
+  /** Bending down for a weapon on the floor (committed, and open to being hit). */
+  | 'pickup';
 
 /** Attack inputs: left/right punch, left/right kick. */
 export type Button = 'lpunch' | 'rpunch' | 'lkick' | 'rkick';
@@ -346,6 +348,32 @@ export class Fighter {
       this.stuckUntil = 0;
     }
     if (s !== 'defend') this.defense = null;
+    if (s !== 'pickup') this.pickupTarget = null;
+  }
+
+  /** The weapon being reached for, and when the hands close on it. */
+  pickupTarget: { pos: Vector3; weapon: WeaponDef; grabAt: number } | null = null;
+
+  /**
+   * Go down for a weapon: squat and bend over it (both hands for a two-hander), take
+   * hold at the bottom, and come back up with the weight. `frames` grows with how heavy
+   * it is for this body.
+   */
+  startPickup(target: { pos: Vector3; weapon: WeaponDef }, frames: number) {
+    this.setState('pickup');
+    this.stunFrames = frames;
+    const grabAt = Math.round(frames * 0.5);
+    this.pickupTarget = { pos: target.pos, weapon: target.weapon, grabAt };
+    this.idle.interrupt();
+    const two = target.weapon.style === 'twoHand';
+    const low = getPose(two ? 'pickupLow2' : 'pickupLow1');
+    const up = getPose(two ? 'wGuard2' : 'wGuard1');
+    this.anim.play([
+      { f: grabAt, pose: low, ease: 'inOut' },
+      { f: grabAt + 3, pose: low },
+      // Heavier things come up slower: most of the effort is in the first half.
+      { f: frames, pose: up, ease: 'inOut' },
+    ]);
   }
 
   /** @param aimId force a specific aim (tests, scripted moves); otherwise one is picked. */
@@ -353,8 +381,10 @@ export class Fighter {
     // Timing fits the body and the tool: big bodies move their limbs slower (like a
     // longer pendulum), small ones quicker; heavy weapons take longer to bring round.
     // Tired arms are slow arms.
-    const tempo = Math.sqrt(this.scale) * (move.weapon && this.weapon ? this.weapon.tempo : 1) * (1 + (1 - this.stamina) * 0.3);
-    const cost = (move.weight === 'light' ? 0.035 : move.weight === 'medium' ? 0.055 : 0.085) * (move.weapon && this.weapon ? this.weapon.tempo : 1) * (isCounter ? 0.8 : 1);
+    const tempo = Math.sqrt(this.scale) * (move.weapon && this.weapon ? weaponTempo(this.weapon, this.scale) : 1) * (1 + (1 - this.stamina) * 0.3);
+    // Swinging a heavy weapon costs the breath it looks like it costs.
+    const lift = move.weapon && this.weapon ? 0.8 + 0.15 * heft(this.weapon, this.scale) : 1;
+    const cost = (move.weight === 'light' ? 0.035 : move.weight === 'medium' ? 0.055 : 0.085) * lift * (isCounter ? 0.8 : 1);
     this.stamina = Math.max(0, this.stamina - cost);
     move = timed(move, tempo);
     this.setState('attack');
@@ -594,7 +624,8 @@ export class Fighter {
     // Rocked, blocking, slipping: the upper body reacts, but the feet stay where they're
     // planted (and step to recover) rather than gliding to the pose's stance.
     // (A slide is the exception: the feet do slide.)
-    const legsUnder = this.state === 'hitstun' || this.state === 'blockstun' || this.state === 'guardbreak' || (this.state === 'defend' && this.defense?.def.kind !== 'slide');
+    const legsUnder =
+      this.state === 'hitstun' || this.state === 'blockstun' || this.state === 'guardbreak' || this.state === 'pickup' || (this.state === 'defend' && this.defense?.def.kind !== 'slide');
     const driven = this.anim.isProcedural || (handStrike && this.moveBlend > 0.25) || legsUnder;
     const [offX, offZ] = this.anim.isProcedural ? this.idle.stanceOffset() : [0, 0];
     if (driven) this.footwork.update(this, offX, offZ, localDirX, localDirZ, speedFrac);
@@ -691,10 +722,13 @@ export class Fighter {
     // blow — until it's knocked flat.
     if (this.state === 'knockdown' || this.state === 'ko' || this.state === 'getup') return;
     forwardKinematics(this.pose, _localRig);
+    const w = this.weapon!;
     bladeFrame({ rig: _localRig, pose: this.pose, yaw: 0, scale: 1 }, _grip, _dir);
-    // The lead hand rides the haft: normally a hand's width below the rear one, but it
-    // slides up or down the handle to wherever the left arm can reach (a turned
-    // shoulder, an overhead wind-up) instead of hanging straight in mid-air.
+    // The rear hand holds the end of the handle. On a heavy tool the lead hand rides up
+    // toward the head to hold and lift the weight, and slides back down to the rear
+    // hand as the swing comes through (leverage at impact); on a sword the hands stay a
+    // hand's width apart. Either way it moves along the handle to wherever the left arm
+    // can reach (a turned shoulder, an overhead wind-up) instead of hanging in mid-air.
     const sh = _localRig.upperArmL.pos;
     const reach = SKELETON.upperArmL.length + SKELETON.foreArmL.length + FIST_OFFSET - 0.02;
     // Points of the haft the hand can reach form a stretch around the point nearest the
@@ -703,7 +737,11 @@ export class Fighter {
     const tc = _q.dot(_dir);
     const room = reach * reach - (_q.lengthSq() - tc * tc);
     const half = room > 0 ? Math.sqrt(room) : 0;
-    const best = Math.max(-0.38, Math.min(0.3, Math.max(tc - half, Math.min(tc + half, -SECOND_HAND))));
+    const want = w.choke > 0 ? Math.max(0.11, gripSlide(this.pose.slide, w)) : -SECOND_HAND;
+    // Stay on the handle: above the rear hand and short of the head.
+    const lo = w.choke > 0 ? 0.1 : -0.38;
+    const hi = w.choke > 0 ? Math.max(0.12, w.strikeFrom - 0.06) : 0.3;
+    const best = Math.max(lo, Math.min(hi, Math.max(tc - half, Math.min(tc + half, want))));
     _p.copy(_grip).addScaledVector(_dir, best);
     solveArm(this.pose, 'L', { at: [_p.x, _p.y, _p.z], hint: [0.5, -1, -0.2] });
   }
@@ -831,6 +869,8 @@ export class Fighter {
       // Weapon: on guard in a fight; walking or running, a one-hander hangs point-down
       // and forward at the side, a two-hander is carried across the body.
       blade: this.weapon ? mix(G.blade ?? DEFAULT_BLADE, this.weapon.style === 'oneHand' ? [0.05, -0.55, 0.83] : (G.blade ?? DEFAULT_BLADE)) : undefined,
+      // A heavy two-hander is carried with the lead hand right up by the head.
+      slide: (G.slide ?? 0) * f + 1 * g,
     };
     this.idle.apply(spec, (1 - m * 0.7) * f);
     return resolvePose(spec, this.locoPose);

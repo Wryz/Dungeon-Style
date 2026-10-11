@@ -711,8 +711,34 @@ export const POSE_SPECS = {
     ...feet(0.02, 0.14, 0),
     blade: [0.05, -0.88, 0.45],
   },
+  // Picking a weapon up off the floor: knees bent, back bent over it, hands down by it.
+  pickupLow1: {
+    ...GUARD,
+    root: [0, 0.6, 0.02],
+    pelvis: [0, -0.15, 0],
+    abdomen: [0.6, 0, 0],
+    chest: [0.28, 0, 0],
+    head: [-0.2, 0, 0],
+    handR: { at: [-0.06, 0.2, 0.5], hint: [-0.5, -1, 0] },
+    handL: { at: [0.22, 0.62, 0.3], hint: [0.5, -1, 0] },
+    blade: [0.15, -0.12, 1],
+  },
+  // ...and with both hands for something heavy (lead hand out along the handle).
+  pickupLow2: {
+    ...GUARD,
+    slide: 1,
+    root: [0, 0.57, 0.02],
+    pelvis: [0, -0.2, 0],
+    abdomen: [0.65, 0, 0],
+    chest: [0.3, 0, 0],
+    head: [-0.2, 0, 0],
+    handR: { at: [-0.08, 0.17, 0.42], hint: [-0.5, -1, 0] },
+    handL: { at: [0.12, 0.17, 0.52], hint: [0.5, -1, 0] },
+    blade: [0.35, -0.08, 0.93],
+  },
   // Two-handed guard: weapon across the body at the rear shoulder, both hands on it.
   wGuard2: {
+    slide: 0.85,
     ...GUARD,
     pelvis: [0, -0.45, 0],
     chest: [0.06, -0.25, 0],
@@ -724,6 +750,7 @@ export const POSE_SPECS = {
   },
   // Horizontal sweep: big hip and shoulder coil, swing flat through the target.
   wSweepWind: {
+    slide: 0.7,
     ...GUARD,
     root: [0, 0.86, -0.06],
     pelvis: [0, -0.75, 0],
@@ -735,6 +762,7 @@ export const POSE_SPECS = {
     blade: [-0.7, 0.45, -0.55],
   },
   wSweepExt: {
+    slide: 0.12,
     ...GUARD,
     root: [0, 0.84, 0.12],
     pelvis: [0, 0.05, 0],
@@ -747,6 +775,7 @@ export const POSE_SPECS = {
     blade: [0.3, 0.0, 0.95],
   },
   wSweepFollow: {
+    slide: 0.0,
     ...GUARD,
     root: [0, 0.82, 0.1],
     pelvis: [0, 0.4, 0],
@@ -759,6 +788,7 @@ export const POSE_SPECS = {
     blade: [0.85, 0.05, -0.5],
   },
   wSweepBackWind: {
+    slide: 0.6,
     ...GUARD,
     root: [0, 0.83, 0.08],
     pelvis: [0, 0.35, 0],
@@ -769,6 +799,7 @@ export const POSE_SPECS = {
     blade: [0.8, 0.3, -0.5],
   },
   wSweepBackExt: {
+    slide: 0.12,
     ...GUARD,
     root: [0, 0.84, 0.12],
     pelvis: [0, -0.2, 0],
@@ -780,6 +811,7 @@ export const POSE_SPECS = {
     blade: [-0.3, 0.0, 0.95],
   },
   wSweepBackFollow: {
+    slide: 0.0,
     ...GUARD,
     root: [0, 0.85, 0.04],
     pelvis: [0, -0.7, 0],
@@ -791,6 +823,7 @@ export const POSE_SPECS = {
   },
   // Overhead smash: weapon all the way up behind the head, whole body comes down with it.
   wOverheadWind: {
+    slide: 0.8,
     ...GUARD,
     root: [0, 0.93, -0.06],
     pelvis: [0, -0.3, 0],
@@ -802,6 +835,7 @@ export const POSE_SPECS = {
     blade: [0.0, 0.2, -0.98],
   },
   wOverheadExt: {
+    slide: 0.08,
     ...GUARD,
     root: [0, 0.76, 0.2],
     pelvis: [0, -0.1, 0],
@@ -814,6 +848,7 @@ export const POSE_SPECS = {
     blade: [0.0, 0.28, 0.96],
   },
   wOverheadFollow: {
+    slide: 0.0,
     ...GUARD,
     root: [0, 0.72, 0.2],
     pelvis: [0, -0.1, 0],

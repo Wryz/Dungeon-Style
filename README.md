@@ -213,6 +213,26 @@ each other or the scenery.
 - **Two-handed weapons:** the lead hand slides along the haft to wherever it can reach,
   and running with one doesn't pump the shoulders.
 
+**Weapons have weight.**
+- **Mass:** every weapon has a mass (machete 0.6 kg, axe 2.6, sledgehammer 4.5). How
+  heavy it is depends on who holds it: mass over strength, and strength grows with body
+  size squared. A giant swings an axe like you'd swing a light weapon.
+- **Grip:** heavy two-handers are held like tools. The rear hand holds the end of the
+  handle, and the lead hand rides up under the head to hold, carry and wind up the
+  weight. It slides back down to meet the rear hand as the swing comes through. Swords
+  keep their hands a hand's width apart.
+- **The head holds its orientation:** a weapon is rigid in the hands, and a heavy head
+  won't roll round the handle. Through a swing the edge stays in the plane of the
+  swing: upright for an overhead, level for a sweep. At rest the head hangs upright, and
+  it twists only as fast as the wrists can turn that weight.
+- **Picking one up takes time:** turn to it, step in, squat and bend over it (two hands
+  for a two-hander), grab it, and rise with the weight. That's ~0.4 s for a machete and
+  ~0.8 s for a sledgehammer. Get hit before your hands close on it and it stays on the
+  floor.
+- **Heavy to swing and carry:** heavier means slower swings that cost more stamina,
+  slower stamina recovery while you hold it, and slower walking. A heavy swing that
+  meets nothing drags you on a step and takes longer to recover from.
+
 **Fighting logic.**
 - **Steering:** enemies walk round props instead of pressing into them.
 - **Blocking:** enemies only block what a guard can stop, and need an arm to do it. An

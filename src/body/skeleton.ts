@@ -70,6 +70,12 @@ export interface Pose {
   rot: Record<BoneName, Quaternion>;
   /** Direction a held weapon points from the rear fist (fighter-local, unit). */
   blade: Vector3;
+  /**
+   * How far up the handle the top hand rides (0 = down by the bottom hand, 1 = choked
+   * right up toward the head). Heavy two-handers are held and wound up with the hands
+   * apart and swung with the top hand sliding down to meet the bottom one.
+   */
+  slide: number;
 }
 
 /** Weapon held up and forward when a pose doesn't say otherwise. */
@@ -78,13 +84,14 @@ export const DEFAULT_BLADE: V3 = [0.1, 0.72, 0.68];
 export function makePose(): Pose {
   const rot = {} as Record<BoneName, Quaternion>;
   for (const b of BONES) rot[b] = new Quaternion();
-  return { root: new Vector3(0, STAND_HEIGHT, 0), rot, blade: new Vector3(...DEFAULT_BLADE).normalize() };
+  return { root: new Vector3(0, STAND_HEIGHT, 0), rot, blade: new Vector3(...DEFAULT_BLADE).normalize(), slide: 0 };
 }
 
 export function copyPose(src: Pose, out: Pose): Pose {
   out.root.copy(src.root);
   for (const b of BONES) out.rot[b].copy(src.rot[b]);
   out.blade.copy(src.blade);
+  out.slide = src.slide;
   return out;
 }
 
@@ -92,6 +99,7 @@ export function blendPose(a: Pose, b: Pose, t: number, out: Pose): Pose {
   out.root.lerpVectors(a.root, b.root, t);
   for (const n of BONES) out.rot[n].slerpQuaternions(a.rot[n], b.rot[n], t);
   slerpDir(a.blade, b.blade, t, out.blade);
+  out.slide = a.slide + (b.slide - a.slide) * t;
   return out;
 }
 
@@ -213,6 +221,8 @@ export interface PoseSpec {
   rot?: Partial<Record<BoneName, V3>>;
   /** Where a held weapon points from the rear fist (fighter-local direction). */
   blade?: V3;
+  /** Top hand's place up the handle of a heavy two-hander (0 bottom .. 1 choked up). */
+  slide?: number;
 }
 
 const _e = new Euler();
@@ -330,6 +340,7 @@ export function resolvePose(spec: PoseSpec, out: Pose = makePose()): Pose {
   const r = spec.root ?? [0, STAND_HEIGHT, 0];
   out.root.set(r[0], r[1], r[2]);
   out.blade.set(...(spec.blade ?? DEFAULT_BLADE)).normalize();
+  out.slide = spec.slide ?? 0;
   setEuler(out.rot.pelvis, spec.pelvis);
   setEuler(out.rot.abdomen, spec.abdomen);
   setEuler(out.rot.chest, spec.chest);

@@ -36,6 +36,13 @@ export interface WeaponDef {
   bite: number;
   /** Swing time multiplier: heavy weapons are slower to bring round. */
   tempo: number;
+  /** Mass (kg): how heavy it is to lift, carry and swing. */
+  mass: number;
+  /**
+   * How far the top hand can ride up the handle (fraction of the length): an axe or a
+   * sledge is held choked up and the hand slides down the swing; a sword isn't.
+   */
+  choke: number;
   /** How it's used: quick strike (Q), committed strike (E), and what Q chains into. */
   light: string;
   heavy: string;
@@ -46,23 +53,23 @@ const ONE_HAND_CUTS = { light: 'slash', heavy: 'chop', chain: { slash: 'backslas
 const TWO_HAND = { light: 'sweep', heavy: 'overhead', chain: { sweep: 'sweepBack' } };
 
 export const WEAPONS: Record<WeaponId, WeaponDef> = {
-  cleaver: { id: 'cleaver', name: 'Meat Cleaver', style: 'oneHand', edge: 'blade', length: 0.36, strikeFrom: 0.12, radius: 0.07, damageMul: 1.25, cut: 0.85, cleave: 0.6, bite: 12, tempo: 0.9, light: 'hack', heavy: 'chop', chain: { hack: 'hack' } },
-  machete: { id: 'machete', name: 'Machete', style: 'oneHand', edge: 'blade', length: 0.6, strikeFrom: 0.14, radius: 0.06, damageMul: 1.2, cut: 0.9, cleave: 0.45, bite: 9, tempo: 1, ...ONE_HAND_CUTS },
-  gladius: { id: 'gladius', name: 'Gladius', style: 'oneHand', edge: 'blade', length: 0.64, strikeFrom: 0.14, radius: 0.06, damageMul: 1.3, cut: 0.85, cleave: 0.5, bite: 10, tempo: 0.95, light: 'thrust', heavy: 'slash', chain: { thrust: 'thrust', slash: 'backslash' } },
-  pan: { id: 'pan', name: 'Frying Pan', style: 'oneHand', edge: 'blunt', length: 0.46, strikeFrom: 0.24, radius: 0.11, damageMul: 1.25, cut: 0, cleave: 0, bite: 0, tempo: 1, ...ONE_HAND_CUTS },
-  axe: { id: 'axe', name: 'Battle Axe', style: 'twoHand', edge: 'blade', length: 0.98, strikeFrom: 0.45, radius: 0.1, damageMul: 1.6, cut: 1, cleave: 1, bite: 18, tempo: 1.15, ...TWO_HAND },
-  bat: { id: 'bat', name: 'Baseball Bat', style: 'twoHand', edge: 'blunt', length: 0.88, strikeFrom: 0.3, radius: 0.07, damageMul: 1.45, cut: 0, cleave: 0, bite: 0, tempo: 1, ...TWO_HAND },
-  chair: { id: 'chair', name: 'Folding Chair', style: 'twoHand', edge: 'blunt', length: 0.66, strikeFrom: 0.2, radius: 0.16, damageMul: 1.35, cut: 0, cleave: 0, bite: 0, tempo: 1.1, ...TWO_HAND },
-  club: { id: 'club', name: 'Spiked Club', style: 'twoHand', edge: 'blunt', length: 1.0, strikeFrom: 0.35, radius: 0.11, damageMul: 1.6, cut: 0.3, cleave: 0, bite: 6, tempo: 1.2, ...TWO_HAND },
-  crowbar: { id: 'crowbar', name: 'Crowbar', style: 'oneHand', edge: 'blunt', length: 0.62, strikeFrom: 0.3, radius: 0.05, damageMul: 1.3, cut: 0.2, cleave: 0, bite: 5, tempo: 1, ...ONE_HAND_CUTS },
-  sledgehammer: { id: 'sledgehammer', name: 'Sledgehammer', style: 'twoHand', edge: 'blunt', length: 0.95, strikeFrom: 0.72, radius: 0.11, damageMul: 1.8, cut: 0, cleave: 0, bite: 0, tempo: 1.3, ...TWO_HAND },
-  cue: { id: 'cue', name: 'Pool Cue', style: 'twoHand', edge: 'blunt', length: 1.25, strikeFrom: 0.55, radius: 0.04, damageMul: 1.1, cut: 0, cleave: 0, bite: 0, tempo: 0.9, ...TWO_HAND },
-  bottle: { id: 'bottle', name: 'Beer Bottle', style: 'oneHand', edge: 'blunt', length: 0.3, strikeFrom: 0.12, radius: 0.06, damageMul: 1.1, cut: 0, cleave: 0, bite: 0, tempo: 0.85, light: 'hack', heavy: 'chop', chain: { hack: 'hack' } },
+  cleaver: { id: 'cleaver', name: 'Meat Cleaver', style: 'oneHand', edge: 'blade', length: 0.36, strikeFrom: 0.12, radius: 0.07, damageMul: 1.25, cut: 0.85, cleave: 0.6, bite: 12, tempo: 0.9, mass: 0.8, choke: 0, light: 'hack', heavy: 'chop', chain: { hack: 'hack' } },
+  machete: { id: 'machete', name: 'Machete', style: 'oneHand', edge: 'blade', length: 0.6, strikeFrom: 0.14, radius: 0.06, damageMul: 1.2, cut: 0.9, cleave: 0.45, bite: 9, tempo: 1, mass: 0.6, choke: 0, ...ONE_HAND_CUTS },
+  gladius: { id: 'gladius', name: 'Gladius', style: 'oneHand', edge: 'blade', length: 0.64, strikeFrom: 0.14, radius: 0.06, damageMul: 1.3, cut: 0.85, cleave: 0.5, bite: 10, tempo: 0.95, mass: 0.9, choke: 0, light: 'thrust', heavy: 'slash', chain: { thrust: 'thrust', slash: 'backslash' } },
+  pan: { id: 'pan', name: 'Frying Pan', style: 'oneHand', edge: 'blunt', length: 0.46, strikeFrom: 0.24, radius: 0.11, damageMul: 1.25, cut: 0, cleave: 0, bite: 0, tempo: 1, mass: 1.6, choke: 0, ...ONE_HAND_CUTS },
+  axe: { id: 'axe', name: 'Battle Axe', style: 'twoHand', edge: 'blade', length: 0.98, strikeFrom: 0.45, radius: 0.1, damageMul: 1.6, cut: 1, cleave: 1, bite: 18, tempo: 1.15, mass: 2.6, choke: 0.42, ...TWO_HAND },
+  bat: { id: 'bat', name: 'Baseball Bat', style: 'twoHand', edge: 'blunt', length: 0.88, strikeFrom: 0.3, radius: 0.07, damageMul: 1.45, cut: 0, cleave: 0, bite: 0, tempo: 1, mass: 1.0, choke: 0.12, ...TWO_HAND },
+  chair: { id: 'chair', name: 'Folding Chair', style: 'twoHand', edge: 'blunt', length: 0.66, strikeFrom: 0.2, radius: 0.16, damageMul: 1.35, cut: 0, cleave: 0, bite: 0, tempo: 1.1, mass: 3.4, choke: 0, ...TWO_HAND },
+  club: { id: 'club', name: 'Spiked Club', style: 'twoHand', edge: 'blunt', length: 1.0, strikeFrom: 0.35, radius: 0.11, damageMul: 1.6, cut: 0.3, cleave: 0, bite: 6, tempo: 1.2, mass: 2.6, choke: 0.3, ...TWO_HAND },
+  crowbar: { id: 'crowbar', name: 'Crowbar', style: 'oneHand', edge: 'blunt', length: 0.62, strikeFrom: 0.3, radius: 0.05, damageMul: 1.3, cut: 0.2, cleave: 0, bite: 5, tempo: 1, mass: 1.6, choke: 0, ...ONE_HAND_CUTS },
+  sledgehammer: { id: 'sledgehammer', name: 'Sledgehammer', style: 'twoHand', edge: 'blunt', length: 0.95, strikeFrom: 0.72, radius: 0.11, damageMul: 1.8, cut: 0, cleave: 0, bite: 0, tempo: 1.3, mass: 4.5, choke: 0.5, ...TWO_HAND },
+  cue: { id: 'cue', name: 'Pool Cue', style: 'twoHand', edge: 'blunt', length: 1.25, strikeFrom: 0.55, radius: 0.04, damageMul: 1.1, cut: 0, cleave: 0, bite: 0, tempo: 0.9, mass: 0.55, choke: 0.15, ...TWO_HAND },
+  bottle: { id: 'bottle', name: 'Beer Bottle', style: 'oneHand', edge: 'blunt', length: 0.3, strikeFrom: 0.12, radius: 0.06, damageMul: 1.1, cut: 0, cleave: 0, bite: 0, tempo: 0.85, mass: 0.45, choke: 0, light: 'hack', heavy: 'chop', chain: { hack: 'hack' } },
   // A katana slices: deep, long cuts that pass through rather than lodge.
-  katana: { id: 'katana', name: 'Katana', style: 'twoHand', edge: 'blade', length: 0.98, strikeFrom: 0.22, radius: 0.05, damageMul: 1.5, cut: 1, cleave: 0.85, bite: 5, tempo: 0.95, ...TWO_HAND },
-  bokken: { id: 'bokken', name: 'Bokken', style: 'twoHand', edge: 'blunt', length: 0.95, strikeFrom: 0.3, radius: 0.05, damageMul: 1.3, cut: 0, cleave: 0, bite: 0, tempo: 0.9, ...TWO_HAND },
-  pipe: { id: 'pipe', name: 'Lead Pipe', style: 'oneHand', edge: 'blunt', length: 0.72, strikeFrom: 0.25, radius: 0.045, damageMul: 1.3, cut: 0, cleave: 0, bite: 0, tempo: 1, ...ONE_HAND_CUTS },
-  fireaxe: { id: 'fireaxe', name: 'Fire Axe', style: 'twoHand', edge: 'blade', length: 0.9, strikeFrom: 0.42, radius: 0.09, damageMul: 1.5, cut: 1, cleave: 0.95, bite: 16, tempo: 1.1, ...TWO_HAND },
+  katana: { id: 'katana', name: 'Katana', style: 'twoHand', edge: 'blade', length: 0.98, strikeFrom: 0.22, radius: 0.05, damageMul: 1.5, cut: 1, cleave: 0.85, bite: 5, tempo: 0.95, mass: 1.1, choke: 0, ...TWO_HAND },
+  bokken: { id: 'bokken', name: 'Bokken', style: 'twoHand', edge: 'blunt', length: 0.95, strikeFrom: 0.3, radius: 0.05, damageMul: 1.3, cut: 0, cleave: 0, bite: 0, tempo: 0.9, mass: 0.6, choke: 0, ...TWO_HAND },
+  pipe: { id: 'pipe', name: 'Lead Pipe', style: 'oneHand', edge: 'blunt', length: 0.72, strikeFrom: 0.25, radius: 0.045, damageMul: 1.3, cut: 0, cleave: 0, bite: 0, tempo: 1, mass: 1.4, choke: 0, ...ONE_HAND_CUTS },
+  fireaxe: { id: 'fireaxe', name: 'Fire Axe', style: 'twoHand', edge: 'blade', length: 0.9, strikeFrom: 0.42, radius: 0.09, damageMul: 1.5, cut: 1, cleave: 0.95, bite: 16, tempo: 1.1, mass: 2.8, choke: 0.42, ...TWO_HAND },
 };
 
 
@@ -224,6 +231,29 @@ export function bladeFrame(f: Rigged, grip: Vector3, dir: Vector3) {
   const c = Math.cos(f.yaw);
   const s = Math.sin(f.yaw);
   dir.set(b.x * c + b.z * s, b.y, -b.x * s + b.z * c).normalize();
+}
+
+/**
+ * How heavy a weapon is for whoever holds it: mass over strength (strength goes with
+ * the square of body size, so a giant swings an axe like you'd swing a machete).
+ * ~1 = a light, handy weapon; 2.6 an axe in your hands; 4.5 a sledgehammer.
+ */
+export function heft(w: WeaponDef | null, scale: number): number {
+  return w ? w.mass / (scale * scale) : 0;
+}
+
+/** Swing time multiplier for a weapon in these hands: heavy is slow to bring round. */
+export function weaponTempo(w: WeaponDef, scale: number): number {
+  return w.tempo * (1 + 0.06 * Math.max(0, heft(w, scale) - 1));
+}
+
+/**
+ * How far up the handle from the rear (bottom) hand the lead hand rides on a heavy
+ * two-hander (m, authored scale), for a pose's `slide`: choked up toward the head to
+ * hold and lift it, slid down to the bottom hand to swing it.
+ */
+export function gripSlide(slide: number, w: WeaponDef): number {
+  return Math.max(0, Math.min(1, slide)) * w.choke * w.length;
 }
 
 /** How far down the haft the second hand sits on a two-handed weapon (m). */
