@@ -144,7 +144,6 @@ export class Game {
   /** Game time: runs with the slow-motion, stops for pauses and hitstop. */
   private simClock = 0;
   private pausedBySettings = false;
-  private readonly lookAhead = new Vector3();
   /** Exposed for the debug panel and automated capture scripts. */
   readonly tuning = GAME_TUNING;
   readonly cameraTuning = CAMERA_TUNING;
@@ -521,7 +520,7 @@ export class Game {
     this.applyGear();
     // Face the middle of the arena.
     this.resetPlayer(x, z, Math.atan2(-x, -z * 0.3));
-    this.camRig.snap(new Vector3(x * 0.5, 0.9, z * 0.5));
+    this.camRig.snap(this.player);
   }
 
   private banner(text: string, sub: string, cls = '', secs = 2.2) {
@@ -743,7 +742,7 @@ export class Game {
       this.ragdolls.get(e)?.snapTo(e);
     }
     this.hitstop = 0;
-    this.camRig.snap(new Vector3(0, 0.9, 0));
+    this.camRig.snap(this.player);
   }
 
   private revivePlayer() {
@@ -1313,20 +1312,14 @@ export class Game {
     this.updateWeaponsAndWounds(simDt);
     if (simDt > 0) this.panting(realDt);
 
-    // Camera: frame the nearest fight, look ahead while moving freely.
+    // Camera: behind the player, looking past them at the nearest fight.
     const p = this.player;
     const t = p.target && p.target.alive && p.distanceTo(p.target) < 9 ? p.target : null;
-    const focus = p.pos.clone();
-    let spread = 0;
-    this.lookAhead.lerp(t ? new Vector3() : new Vector3(p.walkVel.x, 0, p.walkVel.z).multiplyScalar(0.35), 1 - Math.exp(-realDt * 3));
-    if (t) {
-      focus.lerp(t.pos, CAMERA_TUNING.focusMix);
-      spread = p.distanceTo(t) + (t.scale - 1) * 2.2;
-    }
-    focus.add(this.lookAhead);
-    focus.y = 0.9 + (t ? (t.scale - 1) * 0.5 : 0);
+    const spread = t ? p.distanceTo(t) + (t.scale - 1) * 2.2 : 0;
     this.camRig.zoom = this.slowmo > 0 ? 1.12 : 1;
-    this.camRig.update(realDt, focus, spread);
+    const walk = this.sim.walkable;
+    this.camRig.inside = (x, z) => walk.isWalkable(x, z);
+    this.camRig.update(realDt, p, t);
     const cutFocus = p.pos.clone();
     if (t) cutFocus.lerp(t.pos, 0.5);
     cutFocus.y = 1;

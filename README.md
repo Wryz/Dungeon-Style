@@ -1,8 +1,8 @@
-# Roguelike Brawler
+# DungeonStyles
 
-A 3D low-poly roguelike where combat is automatic and physics-driven: **you only choose
+A 3D low-poly fighting game where combat is physics-driven: **you only choose
 when and how to attack — the character defends on its own.** Fight round after round,
-one on one, in a gladiator gauntlet whose arena keeps changing — a boxing ring, the
+one on one, in arenas that keep changing — a boxing ring, the
 street, a grocery store, the Roman colosseum — against tougher and tougher opponents,
 demons and giant bosses.
 
