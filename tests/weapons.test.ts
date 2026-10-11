@@ -1,9 +1,12 @@
+import { Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
+import { fistPoint } from '../src/body/skeleton';
+import { moveLength } from '../src/sim/moves';
 import { BLEED_DPS, type CombatEvent, CombatSim } from '../src/sim/combat';
 import { createEnemy } from '../src/sim/enemies';
 import { type Fighter } from '../src/sim/fighter';
 import { createBrawler, createPlayer } from '../src/sim/roster';
-import { WEAPON_MOVES, type WeaponId, WEAPONS } from '../src/sim/weapons';
+import { bladePoints, WEAPON_MOVES, type WeaponId, WEAPONS } from '../src/sim/weapons';
 import { RectWalkable } from '../src/world/collision';
 
 function duel(weapon: WeaponId | null, dist: number) {
@@ -133,7 +136,7 @@ describe('weapons', () => {
   });
 
   it('armed buttons: Q is the quick strike, E the heavy one', () => {
-    for (const [w, light, heavy] of [['gladius', 'slash', 'chop'], ['bat', 'sweep', 'overhead']] as const) {
+    for (const [w, light, heavy] of [['machete', 'slash', 'chop'], ['gladius', 'thrust', 'slash'], ['bat', 'sweep', 'overhead']] as const) {
       const { sim, player } = duel(w, 3);
       player.press('lpunch');
       sim.step();
@@ -169,5 +172,70 @@ describe('weapons', () => {
     expect(createEnemy('minotaur', sim.rng).fighter.weapon?.id).toBe('axe');
     expect(createEnemy('cyclops', sim.rng).fighter.weapon?.id).toBe('club');
     expect(createEnemy('champion', sim.rng).fighter.weapon).toBeNull();
+  });
+});
+
+describe('strikes stop at the body', () => {
+  it('an edge bites in and stays put until it is wrenched free', () => {
+    const { sim, player } = duel('cleaver', 1.3);
+    player.startMove(WEAPON_MOVES.hack, false, 'head');
+    let tipAtHit: number[] | null = null;
+    let drift = 0;
+    for (let i = 0; i < 40; i++) {
+      const ev = sim.step();
+      const tip = bladePoints(player, player.weapon!).at(-1)!;
+      if (hits(ev).length) tipAtHit = tip.toArray();
+      else if (tipAtHit && player.state === 'attack' && player.stateFrame < player.stuckUntil) drift = Math.max(drift, tip.distanceTo(new Vector3(...tipAtHit)));
+    }
+    expect(tipAtHit).not.toBeNull();
+    // Held in the wound (only the body's own sway moves it).
+    expect(drift).toBeLessThan(0.04);
+    expect(player.state).not.toBe('attack');
+  });
+
+  it('a punch stops at the face instead of driving through it', () => {
+    const { sim, player, enemy } = duel(null, 1.0);
+    player.press('lpunch');
+    let reachAtHit = 0;
+    let deepest = 0;
+    for (let i = 0; i < 30; i++) {
+      const ev = sim.step();
+      const fist = fistPoint(player.rig, 'L', new Vector3());
+      const r = fist.x - player.pos.x;
+      if (hits(ev).length) reachAtHit = r;
+      else if (reachAtHit) deepest = Math.max(deepest, r - reachAtHit);
+    }
+    expect(reachAtHit).toBeGreaterThan(0);
+    expect(deepest).toBeLessThan(0.05);
+    expect(enemy.hp).toBeLessThan(enemy.stats.maxHp);
+  });
+
+  it('a miss carries all the way through', () => {
+    const { sim, player } = duel('machete', 2.8);
+    player.startMove(WEAPON_MOVES.slash);
+    let frames = 0;
+    while (player.state === 'attack' && frames < 80) {
+      sim.step();
+      frames++;
+    }
+    expect(player.attackEnd).toBe(0);
+    expect(frames).toBeGreaterThanOrEqual(moveLength(WEAPON_MOVES.slash) - 1);
+  });
+
+  it('only a blow that cuts clean through follows through', () => {
+    const { sim, player, enemy } = duel('axe', 1.8);
+    enemy.limbDamage.head = 30;
+    const [h] = hits(swing(sim, player, 'overhead', 22));
+    expect(h.sever).toBe('head');
+    expect(player.attackEnd).toBe(0);
+  });
+
+  it('too close for the edge: the haft knocks, it does not cut', () => {
+    const { sim, player, enemy } = duel('axe', 0.85);
+    const [h] = hits(swing(sim, player, 'sweep'));
+    expect(h).toBeDefined();
+    expect(h.weapon).toBeNull();
+    expect(h.wound).toBeNull();
+    expect(enemy.wounds.length).toBe(0);
   });
 });

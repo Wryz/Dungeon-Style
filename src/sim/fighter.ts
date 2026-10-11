@@ -128,6 +128,14 @@ export class Fighter {
   stunFrames = 0;
 
   move: MoveDef | null = null;
+  /**
+   * Set when a strike connects: it stops at the body (no passing through) and the
+   * attack ends here — after the weapon is held / wrenched free, or the limb rebounds.
+   */
+  attackEnd = 0;
+  /** The weapon is stuck in the opponent until this state frame. */
+  stuckUntil = 0;
+  private readonly impactPose = makePose();
   attackSerial = 0;
   hitThisAttack = false;
   /** The attack was a counter (thrown from a counter window). */
@@ -224,15 +232,56 @@ export class Fighter {
   }
 
   inActiveFrames(): boolean {
-    if (this.state !== 'attack' || !this.move) return false;
+    if (this.state !== 'attack' || !this.move || this.attackEnd) return false;
     const f = this.stateFrame;
     return f >= this.move.startup && f < this.move.startup + this.move.active;
+  }
+
+  /**
+   * A weapon is solid for the whole forward swing — from leaving the chamber until
+   * the follow-through runs out — not only in its "active" frames.
+   */
+  inWeaponContact(): boolean {
+    const m = this.move;
+    if (this.state !== 'attack' || !m?.weapon || !this.weapon || this.attackEnd) return false;
+    const f = this.stateFrame;
+    return f >= Math.floor(m.startup * 0.5) && f <= m.startup + m.active + Math.floor(m.recovery * 0.25);
+  }
+
+  /** How much of the swing's power is behind the weapon at this point of the arc (0..1). */
+  swingPower(): number {
+    const m = this.move;
+    if (!m) return 0;
+    const f = this.stateFrame;
+    const from = Math.floor(m.startup * 0.5);
+    if (f < m.startup) return 0.25 + 0.75 * ((f - from) / Math.max(1, m.startup - from)) ** 1.5;
+    if (f < m.startup + m.active) return 1;
+    return Math.max(0.15, 1 - (f - m.startup - m.active) / Math.max(1, m.recovery * 0.25));
+  }
+
+  /**
+   * The strike met the body: it stops right there. 'stick' — an edge bites in and is
+   * held, then wrenched free; 'rebound' — fists, feet and blunt weapons bounce off.
+   */
+  impact(mode: 'stick' | 'rebound', hold: number, retract: number) {
+    if (this.state !== 'attack') return;
+    const sf = this.stateFrame;
+    copyPose(this.anim.out, this.impactPose);
+    this.stuckUntil = mode === 'stick' ? sf + hold : 0;
+    this.attackEnd = sf + hold + retract;
+    const back = getPose(this.weapon ? (this.weapon.style === 'oneHand' ? 'wGuard1' : 'wGuard2') : 'guard');
+    this.anim.play([
+      { f: sf, pose: this.impactPose },
+      { f: sf + hold, pose: this.impactPose },
+      { f: this.attackEnd, pose: back, ease: mode === 'stick' ? 'in' : 'out' },
+    ]);
   }
 
   inCancelWindow(): boolean {
     const m = this.move;
     if (this.state !== 'attack' || !m?.cancel) return false;
-    return this.stateFrame >= m.cancel.from && this.stateFrame <= m.cancel.to;
+    if (this.stateFrame < this.stuckUntil) return false;
+    return this.stateFrame >= m.cancel.from && this.stateFrame <= m.cancel.to && (!this.attackEnd || this.stateFrame < this.attackEnd);
   }
 
   /** A move by id: own moves, plus weapon techniques while armed. */
@@ -271,7 +320,11 @@ export class Fighter {
   setState(s: FighterState) {
     this.state = s;
     this.stateFrame = 0;
-    if (s !== 'attack') this.move = null;
+    if (s !== 'attack') {
+      this.move = null;
+      this.attackEnd = 0;
+      this.stuckUntil = 0;
+    }
     if (s !== 'defend') this.defense = null;
   }
 
@@ -279,6 +332,8 @@ export class Fighter {
   startMove(move: MoveDef, isCounter = false, aimId?: string) {
     this.setState('attack');
     this.move = move;
+    this.attackEnd = 0;
+    this.stuckUntil = 0;
     this.attackSerial++;
     this.hitThisAttack = false;
     this.isCounterAttack = isCounter;

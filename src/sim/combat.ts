@@ -7,7 +7,7 @@ import { RectWalkable, type Walkable } from '../world/collision';
 import { angleDelta, approachAngle, DT, Rng } from './math';
 import { DEFENSES, type DefenseKind, type Height, type MoveDef, moveLength } from './moves';
 import { chooseDefense, moveContext, selectPlayerMove } from './select';
-import { bladePoints, LIMB_TOUGHNESS, limbBones, SEVER_AT, selectWeaponMove, WEAPON_MOVES, type WeaponDef, type Wound } from './weapons';
+import { bladePoints, LIMB_TOUGHNESS, limbBones, sampleOffsets, SEVER_AT, selectWeaponMove, WEAPON_MOVES, type WeaponDef, type Wound } from './weapons';
 
 /** A weapon lying on the arena floor. */
 export interface Drop {
@@ -49,6 +49,7 @@ export type CombatEvent =
   | { type: 'pickup'; f: Fighter; drop: Drop }
   | { type: 'drop'; drop: Drop }
   | { type: 'bleedout'; f: Fighter }
+  | { type: 'bump'; attacker: Fighter; defender: Fighter; point: Vector3 }
   | { type: 'dodge'; attacker: Fighter; defender: Fighter; move: MoveDef; kind: DefenseKind | 'airborne'; point: Vector3 }
   | { type: 'defend'; f: Fighter; kind: DefenseKind }
   | { type: 'getup'; f: Fighter };
@@ -59,7 +60,14 @@ interface Contact {
   point: Vector3;
   zone: HurtZone;
   bone: BoneName;
+  /** Share of the swing's power behind the weapon at contact (1 for fists/feet). */
+  power?: number;
+  /** Caught with the handle / haft rather than the striking part. */
+  haft?: boolean;
 }
+
+/** Below this much swing power a weapon just thuds against the body. */
+const MIN_POWER = 0.45;
 
 /** Hit points lost per second per unit of bleeding. */
 export const BLEED_DPS = 1.1;
@@ -210,12 +218,12 @@ export class CombatSim {
       case 'attack': {
         const m = f.move!;
         if (f.stateFrame === m.startup) this.events.push({ type: 'swing', f, move: m });
-        if (m.lunge && f.stateFrame >= m.lunge.from && f.stateFrame < m.lunge.to) {
+        if (m.lunge && !f.attackEnd && f.stateFrame >= m.lunge.from && f.stateFrame < m.lunge.to) {
           let step = (m.lunge.distance * f.scale) / (m.lunge.to - m.lunge.from);
           if (f.target && f.target.alive) step = Math.min(step, Math.max(0, f.distanceTo(f.target) - (LUNGE_STOP * (f.scale + f.target.scale)) / 2));
           f.pos.addScaledVector(f.forward, step);
         }
-        if (f.stateFrame >= moveLength(m)) f.enterLocomotion(5);
+        if (f.stateFrame >= (f.attackEnd || moveLength(m))) f.enterLocomotion(5);
         break;
       }
       case 'defend': {
@@ -457,21 +465,31 @@ export class CombatSim {
   private resolveHits() {
     const contacts: Contact[] = [];
     for (const a of this.fighters) {
-      if (!a.inActiveFrames() || a.hitThisAttack) continue;
+      if (a.hitThisAttack) continue;
+      const swinging = a.inWeaponContact();
+      if (!swinging && !a.inActiveFrames()) continue;
       const m = a.move!;
-      if (m.weapon && a.weapon) {
-        // Along the weapon, plus between this frame's and last frame's position so a
-        // fast swing can't pass through someone between two frames.
-        const pts = bladePoints(a, a.weapon);
+      if (swinging && a.weapon) {
+        // The whole weapon is solid for the whole swing: along it, and between this
+        // frame's and last frame's position so a fast swing can't skip through someone.
+        const w = a.weapon;
+        const pts = bladePoints(a, w);
+        const offs = sampleOffsets(w);
         const prev = this.prevBlade.get(a);
         const samples = [...pts];
-        if (prev && prev.length === pts.length) for (let i = 0; i < pts.length; i++) samples.push(pts[i].clone().lerp(prev[i], 0.5));
-        const r = (a.weapon.radius + a.stats.reach) * a.scale;
+        const at = [...offs];
+        if (prev && prev.length === pts.length) {
+          for (let i = 0; i < pts.length; i++) {
+            samples.push(pts[i].clone().lerp(prev[i], 0.5));
+            at.push(offs[i]);
+          }
+        }
+        const r = (w.radius + a.stats.reach) * a.scale;
         for (const d of this.opponents(a)) {
           if (!d.alive || d.state === 'knockdown' || d.state === 'getup') continue;
-          const c = overlapBody(samples, r, d);
+          const c = overlapBody(samples, r, d, at);
           if (c) {
-            contacts.push({ attacker: a, defender: d, ...c });
+            contacts.push({ attacker: a, defender: d, point: c.point, zone: c.zone, bone: c.bone, power: a.swingPower(), haft: at[c.index] < w.strikeFrom - 0.02 });
             break;
           }
         }
@@ -488,7 +506,7 @@ export class CombatSim {
       }
     }
     for (const f of this.fighters) {
-      if (f.weapon && f.state === 'attack' && f.move?.weapon) this.prevBlade.set(f, bladePoints(f, f.weapon));
+      if (f.weapon && f.inWeaponContact()) this.prevBlade.set(f, bladePoints(f, f.weapon));
       else this.prevBlade.delete(f);
     }
     // Apply after detection so simultaneous strikes trade.
@@ -496,7 +514,7 @@ export class CombatSim {
     for (const c of contacts) this.applyStrike(c);
   }
 
-  private applyStrike({ attacker: a, defender: d, point, zone, bone }: Contact) {
+  private applyStrike({ attacker: a, defender: d, point, zone, bone, power = 1, haft = false }: Contact) {
     const m = a.move!;
     const height = a.strikeHeight;
     const dir = new Vector3(d.pos.x - a.pos.x, 0, d.pos.z - a.pos.z);
@@ -526,7 +544,15 @@ export class CombatSim {
       this.block(a, d, m, point, dir);
       return;
     }
-    this.hit(a, d, m, point, dir, zone, bone);
+    // Not enough behind it (still accelerating, or the follow-through is spent): the
+    // weapon just thuds against the body and stops.
+    if (m.weapon && power < MIN_POWER) {
+      a.impact('rebound', 2, 10);
+      d.vel.addScaledVector(dir, 0.4);
+      this.events.push({ type: 'bump', attacker: a, defender: d, point: point.clone() });
+      return;
+    }
+    this.hit(a, d, m, point, dir, zone, bone, power, haft);
   }
 
   private markDodge(d: Fighter, a: Fighter | null, point?: Vector3) {
@@ -565,10 +591,14 @@ export class CombatSim {
       }
     }
     this.events.push({ type: 'block', attacker: a, defender: d, move: m, point: point.clone(), dir: dir.clone(), guardBreak, wound });
+    // Stopped by the guard: a blade bites into the forearm, anything else bounces off.
+    if (wound) a.impact('stick', 6, 11);
+    else a.impact('rebound', 2, m.weapon ? 11 : 8);
   }
 
-  private hit(a: Fighter, d: Fighter, m: MoveDef, point: Vector3, dir: Vector3, zone: HurtZone, bone: BoneName) {
-    const w = m.weapon ? a.weapon : null;
+  private hit(a: Fighter, d: Fighter, m: MoveDef, point: Vector3, dir: Vector3, zone: HurtZone, bone: BoneName, power = 1, haft = false) {
+    // Caught on the haft: a blunt knock, not a cut.
+    const w = m.weapon && !haft ? a.weapon : null;
     const caughtInStartup = d.state === 'attack' && !!d.move && d.stateFrame < d.move.startup;
     const counter = caughtInStartup || a.isCounterAttack;
     const armor = d.state === 'attack' && d.move?.armor;
@@ -577,12 +607,13 @@ export class CombatSim {
     let dmg = m.damage * a.stats.damageMul * (counter ? 1.25 : 1) * (1 - d.stats.defense);
     if (armored) dmg *= 0.5;
     if (w) dmg *= w.damageMul;
+    if (m.weapon) dmg *= Math.min(1, power) * (haft ? 0.45 : 1);
     d.hp = Math.max(d.minHp, d.hp - dmg);
     d.framesSinceHit = 0;
     a.framesSinceLanded = 0;
     const comboing = d.state === 'hitstun' || d.state === 'guardbreak';
     a.combo = comboing ? a.combo + 1 : 1;
-    d.poise -= m.poiseDamage * (1 - d.stats.staggerResist) * (counter ? 1.3 : 1) * (w?.edge === 'blunt' ? 1.35 : 1);
+    d.poise -= m.poiseDamage * (1 - d.stats.staggerResist) * (counter ? 1.3 : 1) * (w?.edge === 'blunt' ? 1.35 : 1) * (m.weapon ? Math.min(1, power) * (haft ? 0.5 : 1) : 1);
     d.buffer = null;
     d.counter = null;
 
@@ -596,7 +627,7 @@ export class CombatSim {
       d.vel.addScaledVector(dir, kb + 1.5);
     } else if (armored) {
       d.vel.addScaledVector(dir, 0.3);
-    } else if (m.knockdown || d.poise <= 0) {
+    } else if ((m.knockdown && !haft && power > 0.8) || d.poise <= 0) {
       knockdown = true;
       d.enterKnockdown();
       d.vel.addScaledVector(dir, kb);
@@ -628,6 +659,19 @@ export class CombatSim {
       }
     }
     if (ko) this.dropWeapon(d);
+    // The strike stops at the body — unless it cleaved clean through, or the blow
+    // carried them off their feet. Edges bite in and have to be wrenched free; fists,
+    // feet and blunt weapons rebound.
+    if (!sever) {
+      if (w && w.cut > 0) {
+        const hold = Math.round(w.bite * (m.kind === 'hook' ? 0.6 : 1) * (ko ? 0.6 : 1));
+        a.impact('stick', Math.max(4, hold), m.weight === 'heavy' ? 16 : 12);
+        // The blade holds them: they don't fly off it.
+        d.vel.multiplyScalar(0.4);
+      } else if (!knockdown && !ko) {
+        a.impact('rebound', m.weapon ? 3 : 2, m.weapon ? 11 : m.limb.startsWith('foot') ? 10 : 8);
+      }
+    }
     this.events.push({
       type: 'hit',
       attacker: a,
@@ -826,18 +870,26 @@ export function bodySpheres(d: Fighter): HurtSphere[] {
 }
 
 /** Deepest contact between any of `points` (radius r) and the defender's body. */
-function overlapBody(points: Vector3[], r: number, d: Fighter): { point: Vector3; zone: HurtZone; bone: BoneName } | null {
-  let best: { point: Vector3; zone: HurtZone; bone: BoneName } | null = null;
-  let bestDepth = 0;
+/**
+ * Contact between a weapon (sample points; `reach` = distance of each from the grip) and
+ * the defender's body. The part furthest out along the weapon that touches wins — in a
+ * swing or a thrust the head / point arrives first.
+ */
+function overlapBody(points: Vector3[], r: number, d: Fighter, reach?: number[]): { point: Vector3; zone: HurtZone; bone: BoneName; index: number } | null {
+  let best: { point: Vector3; zone: HurtZone; bone: BoneName; index: number } | null = null;
+  let bestKey = -Infinity;
   const spheres = bodySpheres(d);
-  for (const p of points) {
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
     for (const s of spheres) {
       const depth = r + s.r - p.distanceTo(s.center);
-      if (depth <= bestDepth) continue;
-      bestDepth = depth;
+      if (depth <= 0) continue;
+      const key = (reach?.[i] ?? 0) * 100 + depth;
+      if (key <= bestKey) continue;
+      bestKey = key;
       _c.subVectors(p, s.center);
       if (_c.lengthSq() < 1e-8) _c.set(0, 0, 1);
-      best = { point: s.center.clone().addScaledVector(_c.normalize(), s.r), zone: s.zone, bone: s.bone! };
+      best = { point: s.center.clone().addScaledVector(_c.normalize(), s.r), zone: s.zone, bone: s.bone!, index: i };
     }
   }
   return best;

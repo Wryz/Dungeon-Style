@@ -577,6 +577,60 @@ export const POSE_SPECS = {
     handR: { at: [-0.45, 1.3, 0.28], hint: [-0.2, -0.3, -1] },
     blade: [-0.85, 0.0, -0.5],
   },
+  // Thrust: sword drawn back to the hip, point on line; then the arm drives straight out
+  // behind a lunging step.
+  wThrustWind: {
+    ...GUARD,
+    root: [0, 0.86, -0.02],
+    pelvis: [0, -0.5, 0],
+    chest: [0.04, -0.35, 0],
+    head: [-0.04, 0.6, 0],
+    handL: { at: [0.16, 1.42, 0.34], hint: [0.35, -1, 0] },
+    handR: { at: [-0.22, 1.12, -0.02], hint: [-0.5, -1, -0.6] },
+    blade: [0.08, 0.12, 0.99],
+  },
+  wThrustExt: {
+    ...GUARD,
+    root: [0, 0.82, 0.18],
+    pelvis: [0, 0.05, 0],
+    chest: [0.1, 0.3, 0],
+    head: [-0.05, -0.1, 0],
+    handL: { at: [0.28, 1.3, 0.05], hint: [0.5, -1, -0.3] },
+    handR: { at: [-0.02, 1.22, 0.86], hint: [-0.4, -1, 0.2] },
+    footL: { at: [0.13, A, 0.45] },
+    footR: { at: [-0.12, A + 0.05, -0.2], hint: [0.35, 0, 1] },
+    blade: [0.02, 0.02, 1],
+  },
+  // Hack: cleaver cocked by the ear, short sharp chop down onto the target.
+  wHackWind: {
+    ...GUARD,
+    root: [0, 0.88, 0],
+    pelvis: [0, -0.4, 0],
+    chest: [0, -0.25, 0],
+    handL: { at: [0.14, 1.42, 0.34], hint: [0.35, -1, 0] },
+    handR: { at: [-0.24, 1.66, 0.12], hint: [-0.6, 0.1, -0.8] },
+    blade: [-0.05, 0.75, -0.65],
+  },
+  wHackExt: {
+    ...GUARD,
+    root: [0, 0.85, 0.1],
+    pelvis: [0, -0.05, 0],
+    abdomen: [0.18, 0, 0],
+    chest: [0.08, 0.15, 0],
+    handL: { at: [0.22, 1.3, 0.18], hint: [0.5, -1, -0.3] },
+    handR: { at: [-0.06, 1.36, 0.7], hint: [-0.4, -1, 0.1] },
+    blade: [0.03, 0.05, 1],
+  },
+  wHackFollow: {
+    ...GUARD,
+    root: [0, 0.84, 0.1],
+    pelvis: [0, -0.05, 0],
+    abdomen: [0.24, 0, 0],
+    chest: [0.08, 0.15, 0],
+    handL: { at: [0.22, 1.3, 0.18], hint: [0.5, -1, -0.3] },
+    handR: { at: [-0.04, 1.18, 0.6], hint: [-0.4, -1, 0.1] },
+    blade: [0.03, -0.45, 0.9],
+  },
   // Overhead chop: rise up and raise the weapon above the head, then drop the body
   // weight into it as it comes down.
   wChopWind: {

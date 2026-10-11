@@ -29,9 +29,17 @@ demons and giant bosses.
 - **Weapons:** every arena has weapons lying around — a folding chair in the ring, a
   bat and a machete on the street, a cleaver and a frying pan in the grocery store, a
   gladius and a battle axe in the colosseum. Walk over one and press **G** to grab it
-  (G again swaps, or drops it). Armed, the fighting style changes: one-handed weapons
-  slash (Q, chaining into a backhand) and chop overhead (E); two-handed weapons sweep
-  wide and smash down with a slow, armoured overhead. Kicks stay kicks. Edged weapons
+  (G again swaps, or drops it). Each weapon is used the way it really is: the cleaver
+  hacks in short chops from by the ear, the machete cuts diagonally (forehand into
+  backhand), the gladius stabs point-first behind a lunge, and the heavy chop / smash
+  is on E; two-handed weapons sweep wide and smash down with a slow, armoured
+  overhead. Kicks stay kicks.
+- **Strikes stop at the body:** nothing passes through anyone. A weapon is solid for its
+  whole swing; how hard it lands depends on where in the arc it meets the body (still
+  accelerating, or caught on the haft at point-blank range, it just knocks or thuds).
+  Edges bite in and stick — held, then wrenched free; draw cuts bite briefly; fists,
+  feet and blunt weapons rebound. Only a miss, a blow that cleaves clean through, or one
+  that drives the target off their feet carries through. Edged weapons
   leave lasting cuts that keep bleeding (and slowly drain health — enough of them and
   your opponent bleeds out); heavy edges take arms, legs and heads off, and the limb
   flies free as a physics body while the stump pumps blood. Your own limbs only come

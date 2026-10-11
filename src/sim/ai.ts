@@ -186,7 +186,7 @@ export class BrawlerAI {
   /** The base plan, or how this fighter uses the weapon in its hands. */
   private planFor(self: Fighter): AIPlan {
     if (!self.weapon) return this.plan;
-    const key = `${self.weapon.style}:${self.scale}`;
+    const key = `${self.weapon.id}:${self.scale}`;
     if (this.armed?.key !== key) {
       const p = weaponPlan(self.weapon);
       this.armed = { key, plan: { ...p, range: p.range * self.scale, attackRange: p.attackRange * self.scale } };

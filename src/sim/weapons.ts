@@ -30,17 +30,26 @@ export interface WeaponDef {
   cut: number;
   /** Power to sever limbs (0 = never). */
   cleave: number;
+  /** Frames an edge stays bitten into the body before it's wrenched free. */
+  bite: number;
+  /** How it's used: quick strike (Q), committed strike (E), and what Q chains into. */
+  light: string;
+  heavy: string;
+  chain: Record<string, string>;
 }
 
+const ONE_HAND_CUTS = { light: 'slash', heavy: 'chop', chain: { slash: 'backslash', backslash: 'slash' } };
+const TWO_HAND = { light: 'sweep', heavy: 'overhead', chain: { sweep: 'sweepBack' } };
+
 export const WEAPONS: Record<WeaponId, WeaponDef> = {
-  cleaver: { id: 'cleaver', name: 'Meat Cleaver', style: 'oneHand', edge: 'blade', length: 0.36, strikeFrom: 0.12, radius: 0.07, damageMul: 1.25, cut: 0.85, cleave: 0.6 },
-  machete: { id: 'machete', name: 'Machete', style: 'oneHand', edge: 'blade', length: 0.6, strikeFrom: 0.14, radius: 0.06, damageMul: 1.2, cut: 0.9, cleave: 0.45 },
-  gladius: { id: 'gladius', name: 'Gladius', style: 'oneHand', edge: 'blade', length: 0.64, strikeFrom: 0.14, radius: 0.06, damageMul: 1.3, cut: 0.85, cleave: 0.5 },
-  pan: { id: 'pan', name: 'Frying Pan', style: 'oneHand', edge: 'blunt', length: 0.46, strikeFrom: 0.24, radius: 0.11, damageMul: 1.25, cut: 0, cleave: 0 },
-  axe: { id: 'axe', name: 'Battle Axe', style: 'twoHand', edge: 'blade', length: 0.98, strikeFrom: 0.45, radius: 0.1, damageMul: 1.6, cut: 1, cleave: 1 },
-  bat: { id: 'bat', name: 'Baseball Bat', style: 'twoHand', edge: 'blunt', length: 0.88, strikeFrom: 0.3, radius: 0.07, damageMul: 1.45, cut: 0, cleave: 0 },
-  chair: { id: 'chair', name: 'Folding Chair', style: 'twoHand', edge: 'blunt', length: 0.66, strikeFrom: 0.2, radius: 0.16, damageMul: 1.35, cut: 0, cleave: 0 },
-  club: { id: 'club', name: 'Spiked Club', style: 'twoHand', edge: 'blunt', length: 1.0, strikeFrom: 0.35, radius: 0.11, damageMul: 1.6, cut: 0.3, cleave: 0 },
+  cleaver: { id: 'cleaver', name: 'Meat Cleaver', style: 'oneHand', edge: 'blade', length: 0.36, strikeFrom: 0.12, radius: 0.07, damageMul: 1.25, cut: 0.85, cleave: 0.6, bite: 12, light: 'hack', heavy: 'chop', chain: { hack: 'hack' } },
+  machete: { id: 'machete', name: 'Machete', style: 'oneHand', edge: 'blade', length: 0.6, strikeFrom: 0.14, radius: 0.06, damageMul: 1.2, cut: 0.9, cleave: 0.45, bite: 9, ...ONE_HAND_CUTS },
+  gladius: { id: 'gladius', name: 'Gladius', style: 'oneHand', edge: 'blade', length: 0.64, strikeFrom: 0.14, radius: 0.06, damageMul: 1.3, cut: 0.85, cleave: 0.5, bite: 10, light: 'thrust', heavy: 'slash', chain: { thrust: 'thrust', slash: 'backslash' } },
+  pan: { id: 'pan', name: 'Frying Pan', style: 'oneHand', edge: 'blunt', length: 0.46, strikeFrom: 0.24, radius: 0.11, damageMul: 1.25, cut: 0, cleave: 0, bite: 0, ...ONE_HAND_CUTS },
+  axe: { id: 'axe', name: 'Battle Axe', style: 'twoHand', edge: 'blade', length: 0.98, strikeFrom: 0.45, radius: 0.1, damageMul: 1.6, cut: 1, cleave: 1, bite: 18, ...TWO_HAND },
+  bat: { id: 'bat', name: 'Baseball Bat', style: 'twoHand', edge: 'blunt', length: 0.88, strikeFrom: 0.3, radius: 0.07, damageMul: 1.45, cut: 0, cleave: 0, bite: 0, ...TWO_HAND },
+  chair: { id: 'chair', name: 'Folding Chair', style: 'twoHand', edge: 'blunt', length: 0.66, strikeFrom: 0.2, radius: 0.16, damageMul: 1.35, cut: 0, cleave: 0, bite: 0, ...TWO_HAND },
+  club: { id: 'club', name: 'Spiked Club', style: 'twoHand', edge: 'blunt', length: 1.0, strikeFrom: 0.35, radius: 0.11, damageMul: 1.6, cut: 0.3, cleave: 0, bite: 6, ...TWO_HAND },
 };
 
 
@@ -76,7 +85,7 @@ export const WEAPON_MOVES: Record<string, MoveDef> = {
     damage: 8, guardDamage: 14, poiseDamage: 22, hitstun: 22, blockstun: 14,
     knockback: 1.4, impulse: 16, hitstop: 7, shake: 0.24, radius: 0, reach: 1.6,
     lunge: { from: 2, to: 10, distance: 0.2 },
-    cancel: { into: ['backslash', 'chop', 'frontKick', 'lowKick'], from: 13, to: 30 },
+    cancel: { into: ['backslash', 'chop', 'slash', 'frontKick', 'lowKick'], from: 13, to: 30 },
     aims: [HEAD, BODY],
     keys: keys('wSlashWind', 'wSlashExt', 'wSlashFollow', 'wGuard1'),
   }),
@@ -88,9 +97,36 @@ export const WEAPON_MOVES: Record<string, MoveDef> = {
     damage: 7, guardDamage: 12, poiseDamage: 20, hitstun: 22, blockstun: 12,
     knockback: 1.4, impulse: 15, hitstop: 7, shake: 0.22, radius: 0, reach: 1.55,
     lunge: { from: 1, to: 8, distance: 0.16 },
-    cancel: { into: ['chop', 'frontKick', 'lowKick'], from: 11, to: 28 },
+    cancel: { into: ['chop', 'slash', 'frontKick', 'lowKick'], from: 11, to: 28 },
     aims: [HEAD, BODY],
     keys: keys('wBackWind', 'wBackExt', 'wBackFollow', 'wGuard1', 0.4),
+  }),
+  // Point-first stab: the sword arm drives straight from the hip with a lunge, and the
+  // blade goes in and has to be drawn back out — no swing, no follow-through.
+  thrust: weaponMove({
+    id: 'thrust', name: 'Thrust',
+    layer: 'upper',
+    startup: 9, active: 4, recovery: 16,
+    height: 'mid', kind: 'straight', weight: 'medium',
+    damage: 11, guardDamage: 12, poiseDamage: 20, hitstun: 22, blockstun: 12,
+    knockback: 0.8, impulse: 14, hitstop: 7, shake: 0.22, radius: 0, reach: 1.75,
+    lunge: { from: 2, to: 9, distance: 0.3 },
+    cancel: { into: ['thrust', 'slash', 'frontKick', 'lowKick'], from: 13, to: 28 },
+    aims: [{ id: 'gut', weight: 3, offset: [0.02, -0.12, 0], height: 'mid', add: { root: [0, -0.04, 0] } }, HEAD],
+    keys: keys('wThrustWind', 'wThrustExt', 'wThrustExt', 'wGuard1', 0.5),
+  }),
+  // Short, quick chop from by the ear — how a cleaver is actually used.
+  hack: weaponMove({
+    id: 'hack', name: 'Hack',
+    layer: 'upper',
+    startup: 7, active: 4, recovery: 14,
+    height: 'high', kind: 'straight', weight: 'medium',
+    damage: 7, guardDamage: 12, poiseDamage: 18, hitstun: 20, blockstun: 12,
+    knockback: 0.9, impulse: 12, hitstop: 6, shake: 0.2, radius: 0, reach: 1.35,
+    lunge: { from: 1, to: 7, distance: 0.18 },
+    cancel: { into: ['hack', 'chop', 'frontKick', 'lowKick'], from: 10, to: 24 },
+    aims: [HEAD, BODY],
+    keys: keys('wHackWind', 'wHackExt', 'wHackFollow', 'wGuard1', 0.5),
   }),
   chop: weaponMove({
     id: 'chop', name: 'Overhead Chop',
@@ -136,28 +172,21 @@ export const WEAPON_MOVES: Record<string, MoveDef> = {
   }),
 };
 
-const ATTACKS: Record<WeaponStyle, { light: string; heavy: string; chain: Record<string, string> }> = {
-  oneHand: { light: 'slash', heavy: 'chop', chain: { slash: 'backslash', backslash: 'chop' } },
-  twoHand: { light: 'sweep', heavy: 'overhead', chain: { sweep: 'sweepBack' } },
-};
-
 /**
- * Armed button mapping: Q is the quick strike (chaining into its follow-up), E the big
- * committed one; kicks stay kicks. Returns undefined to fall back to the unarmed table.
+ * Armed button mapping: Q is the weapon's quick strike (chaining into its follow-up), E
+ * the big committed one; kicks stay kicks. Returns undefined to fall back to unarmed.
  */
 export function selectWeaponMove(button: Button, w: WeaponDef, counter: DefenseKind | null, chainFrom: string | null): string | null | undefined {
-  const A = ATTACKS[w.style];
   if (button === 'lkick' || button === 'rkick') return undefined;
-  if (counter) return button === 'lpunch' ? A.light : A.heavy;
-  if (chainFrom) return button === 'lpunch' ? (A.chain[chainFrom] ?? null) : A.heavy;
-  return button === 'lpunch' ? A.light : A.heavy;
+  if (counter) return button === 'lpunch' ? w.light : w.heavy;
+  if (chainFrom) return button === 'lpunch' ? (w.chain[chainFrom] ?? null) : w.heavy;
+  return button === 'lpunch' ? w.light : w.heavy;
 }
 
-/** How an armed enemy fights (distances scale with its size). */
+/** How an armed enemy fights: keeps the weapon's own range (scaled by its size later). */
 export function weaponPlan(w: WeaponDef): AIPlan {
-  return w.style === 'oneHand'
-    ? { moves: [['slash', 4], ['chop', 2]], range: 1.45, attackRange: 1.7, punish: 'slash', chains: { slash: 'backslash' } }
-    : { moves: [['sweep', 4], ['overhead', 2]], range: 1.6, attackRange: 1.95, punish: 'sweep', chains: { sweep: 'sweepBack' } };
+  const range = 0.85 + w.length * 0.8;
+  return { moves: [[w.light, 4], [w.heavy, 2]], range, attackRange: range + 0.25, punish: w.light, chains: { [w.light]: w.chain[w.light] ?? w.light } };
 }
 
 // ---------------------------------------------------------------------------
@@ -187,17 +216,19 @@ export function bladeFrame(f: Rigged, grip: Vector3, dir: Vector3) {
 /** How far down the haft the second hand sits on a two-handed weapon (m). */
 export const SECOND_HAND = 0.2;
 
-/** Sample points along the striking part of the weapon (world). */
+/** Distance from the grip (m) of each sample `bladePoints` takes along a weapon. */
+export function sampleOffsets(w: WeaponDef): number[] {
+  const n = Math.max(3, Math.ceil((w.length - 0.08) / 0.09) + 1);
+  return Array.from({ length: n }, (_, i) => 0.08 + ((w.length - 0.08) * i) / (n - 1));
+}
+
+/** Sample points along the whole weapon, haft included (world). */
 export function bladePoints(f: Rigged, w: WeaponDef, out: Vector3[] = []): Vector3[] {
   const grip = new Vector3();
   const dir = new Vector3();
   bladeFrame(f, grip, dir);
-  const n = Math.max(2, Math.ceil((w.length - w.strikeFrom) / 0.1) + 1);
   out.length = 0;
-  for (let i = 0; i < n; i++) {
-    const t = w.strikeFrom + ((w.length - w.strikeFrom) * i) / (n - 1);
-    out.push(grip.clone().addScaledVector(dir, t * f.scale));
-  }
+  for (const t of sampleOffsets(w)) out.push(grip.clone().addScaledVector(dir, t * f.scale));
   return out;
 }
 
