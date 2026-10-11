@@ -119,3 +119,4 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #b9d3e4; col
 .term-title { color: #7fe8ff; letter-spacing: 0.2em; text-transform: uppercase; font-size: 13px; margin-bottom: 12px; }
 .choice p { font-size: 14px; line-height: 1.5; }
 .banner.intro div { font-size: clamp(28px, 5vw, 56px); letter-spacing: 0.2em; }
+.settings-card .opt-title { margin-top: 16px; font-size: 13px; }

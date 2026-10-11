@@ -18,12 +18,14 @@ import { Sfx } from '../feel/audio';
 import { Input } from '../input/input';
 import { Arena } from '../render/arena';
 import { CAMERA_TUNING, CameraRig } from '../render/cameraRig';
+import { Blood } from '../render/blood';
 import { Coins } from '../render/coins';
 import { cutoutUniforms, updateCutout } from '../render/cutout';
 import { Effects } from '../render/particles';
 import { BRAWLER_PALETTE, ENEMY_PALETTES, FighterView, type GearLook, PLAYER_PALETTE, type Palette } from '../render/fighterView';
 import { DEFAULT_AI, type AIConfig } from '../sim/ai';
-import { type CombatEvent, CombatSim, hurtSpheres, strikePoint } from '../sim/combat';
+import { type CombatEvent, CombatSim, type HurtZone, hurtSpheres, strikePoint } from '../sim/combat';
+import type { MoveDef } from '../sim/moves';
 import { coinDrop, createEnemy } from '../sim/enemies';
 import { DEFAULT_STATS, type Fighter, type FighterStats } from '../sim/fighter';
 import { DT, Rng } from '../sim/math';
@@ -39,6 +41,7 @@ import { buildDungeon, type DungeonLayout, type EnemyKind, type Room, roomAt } f
 import { DungeonView, WALL_HEIGHT } from '../world/dungeonView';
 import type { Gate } from '../world/grid';
 import { item, loadSave, loopRewardMul, type SaveData, SLOTS, statsWithGear, writeSave } from './economy';
+import { Trauma } from './trauma';
 import { Tutorial } from './tutorial';
 
 export const GAME_TUNING = {
@@ -62,6 +65,8 @@ export class Game {
   readonly camRig = new CameraRig();
   readonly effects: Effects;
   readonly coins: Coins;
+  readonly blood: Blood;
+  private readonly trauma = new Map<Fighter, Trauma>();
   readonly sfx = new Sfx();
   readonly input: Input;
   readonly hud: Hud;
@@ -151,6 +156,7 @@ export class Game {
     this.scene.background = new Color('#b9d3e4');
     this.effects = new Effects(this.scene);
     this.coins = new Coins(this.scene);
+    this.blood = new Blood(this.scene);
     this.scene.add(this.debugGroup);
     this.mode = new URLSearchParams(location.search).get('mode') === 'arena' ? 'arena' : 'run';
     this.save = loadSave();
@@ -178,6 +184,11 @@ export class Game {
     this.hud.setBindings(this.input.bindings);
     this.settings = new SettingsMenu(document.body, this.input);
     this.settings.onChange = (b) => this.hud.setBindings(b);
+    this.blood.enabled = this.settings.prefs.blood;
+    this.settings.onPrefs = (p) => {
+      this.blood.enabled = p.blood;
+      if (!p.blood) this.blood.clear();
+    };
     this.settings.onOpenChange = (open) => this.setMenuPause(open);
     this.hud.gearButton.addEventListener('click', () => this.settings.toggle());
     this.shop = new Shop(document.body, this.save);
@@ -262,6 +273,7 @@ export class Game {
     this.enemyRoom.delete(f);
     this.telegraphed.delete(f);
     this.koAt.delete(f);
+    this.trauma.delete(f);
   }
 
   private spawn(kind: EnemyKind, x: number, z: number, room: Room | null): Fighter {
@@ -355,6 +367,9 @@ export class Game {
   startRun() {
     this.clearEnemies();
     this.coins.clear();
+    this.blood.clear();
+    this.trauma.clear();
+    this.views.get(this.player)?.setTrauma(0, false);
     this.dungeonView?.dispose();
     this.leaks?.dispose();
     if (this.envBody) this.world.removeRigidBody(this.envBody);
@@ -743,6 +758,7 @@ export class Game {
           this.sfx.knockdown();
         }
         this.views.get(e.defender)?.hitFlash();
+        this.bleed(e.defender, e.zone, m, e.damage, e.counter, e.dir);
         if (byPlayer && e.combo >= 2) this.hud.showCombo(e.combo);
         if (byPlayer && e.counter) this.hud.popup('COUNTER', e.point, this.camRig.camera, 'counter');
         if (byPlayer && e.armored) this.hud.popup('ARMORED', e.point, this.camRig.camera, 'armor');
@@ -781,6 +797,21 @@ export class Game {
       default:
         break;
     }
+  }
+
+  /** Accumulate trauma and spill blood where it makes sense (mouth, nose, brow). */
+  private bleed(f: Fighter, zone: HurtZone, m: MoveDef, damage: number, counter: boolean, dir: Vector3) {
+    let t = this.trauma.get(f);
+    if (!t) this.trauma.set(f, (t = new Trauma()));
+    const view = this.views.get(f);
+    for (const b of t.onHit(zone, m, damage, counter)) {
+      if (!view) break;
+      const at = view.facePoint(b.source);
+      // Along the blow and up; a cough spills forward (toward the attacker) and down.
+      const d = b.style === 'hit' ? dir.clone().setY(0.35) : dir.clone().negate().setY(-0.4);
+      this.blood.spray(at, d, b.amount, b.style === 'hit' ? 2.8 : 1.4);
+    }
+    view?.setTrauma(t.bruise, t.cut);
   }
 
   private onKO(f: Fighter) {
@@ -828,6 +859,14 @@ export class Game {
     }
 
     this.effects.update(simDt, realDt);
+    this.blood.update(simDt);
+    if (simDt > 0) {
+      for (const [f, t] of this.trauma) {
+        if (!t.drip(simDt, this.storyRng)) continue;
+        const view = this.views.get(f);
+        if (view) this.blood.drip(view.facePoint(t.cut && Math.random() < 0.4 ? 'brow' : 'mouth'));
+      }
+    }
     const got = this.coins.update(simDt, this.player.pos);
     if (got > 0) {
       this.save.coins += got;

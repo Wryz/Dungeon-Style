@@ -213,35 +213,65 @@ export const POSE_SPECS = {
     footR: { at: [-0.15, A, 0.25], hint: [-0.3, 0.6, 1] },
   },
 
+  // Right roundhouse / low kick. Balance comes from the hips: weight travels over the
+  // lead (support) foot, the hips turn over and the kicking hip lifts, while the torso
+  // counter-leans the other way.
   lowKickWind: {
     ...GUARD,
-    root: [0.05, 0.87, 0.05],
-    // Hips start opening as the lead foot steps out at an angle.
+    // Lead foot steps out at an angle; weight starts moving over it.
+    root: [0.09, 0.85, 0.09],
     pelvis: [0, 0.3, 0],
-    chest: [0.05, -0.1, 0],
-    head: [0.02, -0.1, 0],
-    footL: { at: [0.24, A, 0.33], hint: [0.8, 0, 0.6] },
-    footR: { at: [-0.2, 0.24, -0.1], hint: [-0.9, 0.4, 0.3] },
-    handL: { at: [0.08, 1.54, 0.27], hint: [0.35, -1, 0] },
-    handR: { at: [-0.22, 1.28, 0.02], hint: [-0.6, -1, -0.2] },
+    abdomen: [0.04, 0, 0.04],
+    chest: [0.06, -0.12, 0],
+    head: [0, 0.05, 0],
+    footL: { at: [0.24, A, 0.34], hint: [0.8, 0, 0.6] },
+    footR: { at: [-0.17, 0.18, -0.12], hint: [-0.9, 0.3, 0.4] },
+    handL: { at: [0.08, 1.52, 0.26], hint: [0.35, -1, 0] },
+    handR: { at: [-0.2, 1.3, 0.04], hint: [-0.6, -1, -0.2] },
+  },
+  lowKickTurn: {
+    ...GUARD,
+    // Hips over the support foot, turning; knee chambers across the body.
+    root: [0.15, 0.87, 0.13],
+    pelvis: [0, 0.95, -0.12],
+    abdomen: [-0.02, 0, -0.12],
+    chest: [0.04, -0.22, -0.05],
+    head: [0.02, -0.7, 0.08],
+    footL: { at: [0.23, A + 0.04, 0.32], hint: [0.95, 0, 0.35] },
+    footR: { at: [0.02, 0.42, 0.24], hint: [-0.4, 0.8, 0.5] },
+    handL: { at: [0.07, 1.54, 0.25], hint: [0.35, -1, 0] },
+    handR: { at: [-0.28, 1.12, -0.14], hint: [-0.4, -0.6, -1] },
   },
   lowKickExt: {
     ...GUARD,
-    root: [0.07, 0.88, 0.08],
-    // Full hip turnover (~100° from stance): the hips drive the shin through the target.
-    pelvis: [0, 1.45, 0],
-    // Shoulders turn with the hips; the torso counter-leans sideways, away from the kick.
-    abdomen: [0.04, 0, -0.18],
-    chest: [0.03, -0.2, -0.06],
+    // Weight fully over the support foot; ~110° of hip turnover; kicking hip hiked up.
+    root: [0.17, 0.87, 0.15],
+    pelvis: [0, 1.55, -0.2],
+    // Torso stays tall and counter-leans away from the kick; shoulders turn with the hips.
+    abdomen: [-0.04, 0, -0.2],
+    chest: [0.03, -0.25, -0.06],
     // Eyes stay on the opponent.
-    head: [0.02, -0.95, 0.12],
-    // Support foot pivots on the ball: toes turn out, heel toward the target.
-    footL: { at: [0.23, A + 0.04, 0.3], hint: [1, 0, 0.25] },
-    // Knee turns over; the shin swings round in a flat arc at thigh height.
-    footR: { at: [0.16, 0.5, 0.74], hint: [-0.35, 0.85, 0.2] },
+    head: [0.02, -1.0, 0.12],
+    // Support foot pivoted on the ball: toes out, heel toward the target.
+    footL: { at: [0.23, A + 0.05, 0.31], hint: [1, 0, 0.2] },
+    // Shin swings through in a flat arc at thigh height.
+    footR: { at: [0.18, 0.5, 0.8], hint: [-0.35, 0.85, 0.2] },
     handL: { at: [0.06, 1.54, 0.24], hint: [0.35, -1, 0] },
-    // Kicking-side arm swings down and back for counterbalance.
-    handR: { at: [-0.38, 1.05, -0.28], hint: [-0.4, -0.6, -1] },
+    // Kicking-side arm swings down and back as a counterweight.
+    handR: { at: [-0.38, 1.04, -0.28], hint: [-0.4, -0.6, -1] },
+  },
+  lowKickRecover: {
+    ...GUARD,
+    // Leg returns under the body; hips come back square to the stance.
+    root: [0.08, 0.86, 0.1],
+    pelvis: [0, 0.45, 0],
+    abdomen: [0.08, 0, -0.04],
+    chest: [0.06, -0.12, 0],
+    head: [0, 0.1, 0],
+    footL: { at: [0.2, A, 0.32], hint: [0.6, 0, 0.8] },
+    footR: { at: [-0.1, 0.16, -0.08], hint: [-0.6, 0.3, 0.7] },
+    handL: { at: [0.08, 1.52, 0.27], hint: [0.35, -1, 0] },
+    handR: { at: [-0.14, 1.36, 0.1], hint: [-0.4, -1, 0] },
   },
 
   // ---- Enemy strikes (brawler: wider, heavier) -------------------------------

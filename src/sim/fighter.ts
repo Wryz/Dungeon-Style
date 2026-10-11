@@ -403,7 +403,7 @@ export class Fighter {
     // Threats are reacted to quickly; everything else drifts in over ~a second.
     smoothProfile(this.motion, this.motionTarget, threat ? 0.25 : 0.06);
     const M = this.motion;
-    Object.assign(this.footwork.mods, { stance: M.stance, stepFrames: M.stepFrames, stepHeight: M.stepHeight, stride: M.stride });
+    Object.assign(this.footwork.mods, { stance: M.stance, stepFrames: M.stepFrames, stepHeight: M.stepHeight, stride: M.stride, gait: M.gait });
     Object.assign(this.idle.mods, { bounce: M.bounce, bounceHz: M.bounceHz, sway: M.sway, head: M.head, feints: M.feints, paws: M.paws });
 
     const info = this.motionInfo;
@@ -425,24 +425,40 @@ export class Fighter {
   private locomotionPose(dx: number, dz: number, offX: number, offZ: number) {
     const m = this.moveBlend;
     const M = this.motion;
-    const raise = this.idle.toeRaise() * (1 - m);
+    // 0 = fighting stance, 1 = walking like a person (square hips, arm swing, hands down).
+    const g = M.gait;
+    const f = 1 - g;
+    const raise = this.idle.toeRaise() * (1 - m) * f;
     const [wx, wz] = this.footwork.weightShift(this, offX, offZ);
     // Lean into forward/lateral travel; when retreating keep the head over the lead knee
     // (never lean away from the opponent) and bring the hands up a touch.
     const fwd = Math.max(0, dz);
-    const back = Math.max(0, -dz);
+    const back = Math.max(0, -dz) * f;
+    const footL = this.footwork.localTarget('L', this, raise);
+    const footR = this.footwork.localTarget('R', this, raise);
+    // Walking arm swing: each hand swings with the opposite foot.
+    const swing = Math.max(-0.35, Math.min(0.35, footR[2] - footL[2])) * g;
+    const guardL = guardHand(GUARD.handL!, M.guardY + back * 0.02 * m, M.guardZ);
+    const guardR = guardHand(GUARD.handR!, M.guardY + back * 0.02 * m, M.guardZ * 0.6);
+    const relaxedL: V3 = [0.21, 0.94 + Math.max(0, swing) * 0.15, 0.03 + swing * 0.55];
+    const relaxedR: V3 = [-0.21, 0.94 + Math.max(0, -swing) * 0.15, 0.03 - swing * 0.55];
+    const mix = (a: V3, b: V3): V3 => [a[0] * f + b[0] * g, a[1] * f + b[1] * g, a[2] * f + b[2] * g];
+    const kneeR = mix(KNEE_HINT.R, [-0.15, 0, 1]);
     const spec: PoseSpec = {
       ...GUARD,
-      // Hips ride over the support foot.
-      root: [wx * 0.6 + dx * 0.03 * m, 0.86 + M.crouch - 0.012 * m, 0.01 + wz * 0.6 + fwd * 0.03 * m],
-      abdomen: [0.1 + M.lean + fwd * 0.05 * m + back * 0.03 * m, 0, -dx * 0.05 * m],
-      chest: [0.08 + Math.sin(this.breath * 2.2) * 0.01, -0.1, 0],
-      handL: guardHand(GUARD.handL!, M.guardY + back * 0.02 * m, M.guardZ),
-      handR: guardHand(GUARD.handR!, M.guardY + back * 0.02 * m, M.guardZ * 0.6),
-      footL: { at: this.footwork.localTarget('L', this, raise), hint: KNEE_HINT.L },
-      footR: { at: this.footwork.localTarget('R', this, raise), hint: KNEE_HINT.R },
+      // Hips ride over the support foot; walking stands a little taller.
+      root: [wx * 0.6 + dx * 0.03 * m, 0.86 + M.crouch + 0.03 * g - 0.012 * m, 0.01 + wz * 0.6 + fwd * 0.03 * m],
+      // Bladed stance → square hips when walking; the chest counter-rotates with the arm swing.
+      pelvis: [0, -0.3 * f + swing * 0.25, 0],
+      abdomen: [(0.1 + M.lean) * f + 0.04 * g + fwd * 0.05 * m + back * 0.03 * m, 0, -dx * 0.05 * m * f],
+      chest: [0.08 * f + 0.02 * g + Math.sin(this.breath * 2.2) * 0.01, -0.1 * f - swing * 0.45, 0],
+      head: [-0.04 * f, 0.4 * f, 0],
+      handL: { at: mix(guardL.at, relaxedL), hint: mix(guardL.hint ?? [0.35, -1, 0], [0.2, -0.25, -1]) },
+      handR: { at: mix(guardR.at, relaxedR), hint: mix(guardR.hint ?? [-0.35, -1, 0], [-0.2, -0.25, -1]) },
+      footL: { at: footL, hint: KNEE_HINT.L },
+      footR: { at: footR, hint: kneeR },
     };
-    this.idle.apply(spec, 1 - m * 0.7);
+    this.idle.apply(spec, (1 - m * 0.7) * f);
     return resolvePose(spec, this.locoPose);
   }
 }

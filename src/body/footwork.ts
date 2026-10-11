@@ -31,6 +31,8 @@ interface Body {
 
 /** Fighter-local stance home for each ankle (orthodox: left foot leads). */
 const BASE_HOME: Record<Side, [number, number]> = { L: [0.13, 0.27], R: [-0.15, -0.24] };
+/** Normal walking: feet side by side under the hips. */
+const WALK_HOME: Record<Side, [number, number]> = { L: [0.1, 0.01], R: [-0.1, -0.01] };
 
 const MOVING_THRESHOLD = 0.045;
 const IDLE_THRESHOLD = 0.07;
@@ -79,7 +81,7 @@ export class Footwork {
   firstStepper: Side | null = null;
   private lastStepper: Side | null = null;
   /** Live multipliers from the contextual motion profile. */
-  readonly mods = { stance: 1, stepFrames: 1, stepHeight: 1, stride: 1 };
+  readonly mods = { stance: 1, stepFrames: 1, stepHeight: 1, stride: 1, gait: 0 };
   private initialized = false;
 
   constructor(public style: FootworkStyle) {}
@@ -91,8 +93,10 @@ export class Footwork {
   /** Home position (fighter-local x/z) for a foot given an extra stance offset. */
   homeLocal(side: Side, offX: number, offZ: number): [number, number] {
     const w = this.style.stanceWidth * this.mods.stance;
-    const [x, z] = BASE_HOME[side];
-    return [x * w + offX, z * w + offZ];
+    const g = this.mods.gait;
+    const [bx, bz] = BASE_HOME[side];
+    const [wx, wz] = WALK_HOME[side];
+    return [(bx * w) * (1 - g) + wx * g + offX, (bz * w) * (1 - g) + wz * g + offZ];
   }
 
   /** Plant both feet where the current pose has them (after authored-leg animations). */
@@ -152,10 +156,11 @@ export class Footwork {
       }
     }
 
+    const walking = this.mods.gait > 0.5;
     // Crossing guard: if the feet are lining up (fast turns), force a corrective step.
     const lL = toLocal(this.L.pos, body, new Vector3());
     const lR = toLocal(this.R.pos, body, new Vector3());
-    if (lL.x - lR.x < 0.12) {
+    if (lL.x - lR.x < (walking ? 0.06 : 0.12)) {
       const worse: Side = errors.L >= errors.R ? 'L' : 'R';
       errors[worse] = Math.max(errors[worse], FORCE_THRESHOLD + 0.01);
     }
@@ -169,12 +174,16 @@ export class Footwork {
       // Turning on the spot: pivot on the lead foot, swing the rear foot.
       leader = errors.R > IDLE_THRESHOLD || errors.L <= IDLE_THRESHOLD ? 'R' : 'L';
     }
+    if (walking && moving) {
+      // Normal walk: feet simply alternate and pass each other.
+      leader = this.lastStepper === 'L' ? 'R' : this.lastStepper === 'R' ? 'L' : errors.L >= errors.R ? 'L' : 'R';
+    }
     const follower: Side = leader === 'L' ? 'R' : 'L';
     // Stride grows with speed: longer planted phases instead of frantic stepping.
     // Retreating: shorter, gliding steps (never reach back with a long stride).
-    const retreat = moving && lz < -0.4;
+    const retreat = moving && lz < -0.4 && !walking;
     const stride = this.mods.stride * (retreat ? 0.75 : 1);
-    const thr = ((moving ? MOVING_THRESHOLD : IDLE_THRESHOLD) + speed * 0.06) * stride;
+    const thr = walking && moving ? 0.05 + speed * 0.1 : ((moving ? MOVING_THRESHOLD : IDLE_THRESHOLD) + speed * 0.06) * stride;
 
     const tryStep = (side: Side) => {
       const f = this.foot(side);
@@ -182,10 +191,10 @@ export class Footwork {
       if (f.stepping) return false;
       const forced = errors[side] > FORCE_THRESHOLD;
       if (errors[side] <= thr) return false;
-      if (other.stepping && other.t < 0.55 && !forced) return false;
+      if (other.stepping && other.t < (walking ? 0.85 : 0.55) && !forced) return false;
       f.from.copy(f.pos);
-      // Aim where the home will be when the foot lands.
-      f.to.copy(homes[side]).addScaledVector(body.walkVel, dur / 60);
+      // Aim where the home will be when the foot lands (walking: a full stride ahead).
+      f.to.copy(homes[side]).addScaledVector(body.walkVel, dur / 60 + (walking ? 0.12 : 0));
       f.t = 0;
       f.dur = forced ? Math.max(4, dur - 2) : dur;
       f.height = this.style.stepHeight * this.mods.stepHeight * (retreat ? 0.6 : 1) * (0.6 + 0.6 * speedFrac) * Math.min(1, errors[side] / (0.15 * stride));
@@ -198,10 +207,10 @@ export class Footwork {
 
     // Moving: if the trailing foot wants to go but the leading foot hasn't moved yet,
     // the leading foot takes a (small) step first — never lead with the wrong foot.
-    if (moving && this.lastStepper !== leader && errors[follower] > thr && errors[leader] > 0.02 && errors[leader] <= thr) {
+    if (!walking && moving && this.lastStepper !== leader && errors[follower] > thr && errors[leader] > 0.02 && errors[leader] <= thr) {
       errors[leader] = thr + 0.001;
     }
-    if (!tryStep(leader)) {
+    if (!tryStep(leader) && !(walking && moving)) {
       // The follower drags in after the leader has moved (once it has mostly landed),
       // or on its own only if it is badly out of place.
       const lead = this.foot(leader);

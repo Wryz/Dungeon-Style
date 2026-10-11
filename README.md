@@ -98,6 +98,17 @@ pawing with the lead hand, re-stancing and throwing feints (purely visual: feint
 glow red and never trigger defenses). The player is a light-footed out-fighter; the
 Brawler is a heavier plodder with shoulder rolls.
 
+**Walking vs fighting.** Out of range (no opponent within ~4.6 m) the character walks
+like a person: turns to face where it goes, feet side by side alternating and passing,
+square hips, arms swinging. As an opponent closes in it blends into the fighting stance
+and boxing footwork.
+
+**Blood.** Damage accumulates per fighter. Fresh fighters don't bleed; once the head has
+taken enough (hooks and uppercuts to the jaw count most) head shots spill blood from the
+mouth or nose, deep damage opens a cut over the brow and keeps them dripping, and heavy
+body shots — kicks above all — make a beaten fighter cough blood. Drops stain the floor
+and faces bruise. Toggle it in **Settings → Options → Blood effects**.
+
 **Automatic defense.** When the enemy winds up, the character picks a reaction from the
 attack's height, shape and timing: high straights → weave, hooks → duck, mid body blows →
 block (costs guard), low sweeps → slide. A successful dodge opens a short **counter

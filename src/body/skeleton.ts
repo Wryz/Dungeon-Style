@@ -230,7 +230,10 @@ function solveTwoBone(
   _hint.copy(hint).normalize();
   _axis.crossVectors(_d, _hint);
   if (_axis.lengthSq() < 0.12) {
-    _hint.addScaledVector(_axis.set(0, -1, 0).addScaledVector(_d, _d.y), 0.8).normalize();
+    // Prefer "down" (perpendicular to the reach); for a near-vertical reach use "back".
+    _axis.set(0, -1, 0).addScaledVector(_d, _d.y);
+    if (_axis.lengthSq() < 0.05) _axis.set(0, 0, -1).addScaledVector(_d, -_d.z);
+    _hint.addScaledVector(_axis.normalize(), 0.9).normalize();
     _axis.crossVectors(_d, _hint);
   }
   if (_axis.lengthSq() < 1e-6) {

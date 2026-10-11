@@ -50,8 +50,10 @@ export const FACING = {
   strafeLead: 0.35,
   /** Offsets smaller than this are tolerated while standing still. */
   idleDeadzone: 0.14,
-  lockRange: 9,
-  disengageRange: 3.5,
+  /** Beyond this, the fighter is not locked onto anyone and walks like a person. */
+  lockRange: 4.6,
+  /** Turn rate while walking freely (rad/frame). */
+  freeTurnRate: 0.2,
 };
 
 const _want = new Vector3();
@@ -288,7 +290,12 @@ export class CombatSim {
         const dot = (mi.x * fwd.x + mi.z * fwd.z) / raw;
         // Speed comes from the contextual motion profile (stance footwork in range,
         // full walking stride far away, slower when hurt...).
-        const sp = f.stats.walkSpeed * len * f.motion.speed * (dot < -0.3 ? 0.72 : 1) * (handStrike ? 0.6 : 1);
+        const t2 = f.target && f.target.alive ? f.target : null;
+        const locked = !!t2 && f.distanceTo(t2) < FACING.lockRange;
+        // Locked on: backpedalling is slower. Free walking: turn first, then go.
+        const turnFirst = locked ? 1 : Math.max(0.3, (1 + dot) / 2);
+        const sp =
+          f.stats.walkSpeed * len * f.motion.speed * (locked && dot < -0.3 ? 0.72 : 1) * turnFirst * (handStrike ? 0.6 : 1);
         _want.set(mi.x / raw, 0, mi.z / raw).multiplyScalar(sp);
       }
       // Accelerate rather than snap, so starts/stops have weight.
@@ -345,19 +352,16 @@ export class CombatSim {
       const toT = Math.atan2(t.pos.x - f.pos.x, t.pos.z - f.pos.z);
       desired = toT;
       if (moving && f.free) {
+        // Strafing: lead with the body, keep the head and guard roughly on target.
         const rel = angleDelta(toT, Math.atan2(mi.x, mi.z));
-        if (Math.cos(rel) < -0.3 && dist > FACING.disengageRange) {
-          // Walking away from a distant target: turn and walk.
-          desired = Math.atan2(mi.x, mi.z);
-        } else {
-          // Strafing: lead with the body, keep the head and guard roughly on target.
-          desired = toT + Math.sin(rel) * FACING.strafeLead;
-        }
+        desired = toT + Math.sin(rel) * FACING.strafeLead;
       } else if (f.free) {
         deadzone = FACING.idleDeadzone;
       }
     } else if (moving) {
+      // Not in a fight: turn to face where you're going and walk there.
       desired = Math.atan2(mi.x, mi.z);
+      if (f.free) rate = FACING.freeTurnRate;
     }
     if (desired === null) return;
     const d = angleDelta(f.yaw, desired);

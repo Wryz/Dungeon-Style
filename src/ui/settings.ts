@@ -1,5 +1,6 @@
 import { ACTIONS, type Bindings, DEFAULT_BINDINGS, keyLabel, rebind, RESERVED_KEYS } from '../input/bindings';
 import type { Input } from '../input/input';
+import { loadPrefs, type Prefs, savePrefs } from '../game/prefs';
 
 /** Settings overlay (Esc): rebind controls. Changes apply immediately and persist. */
 export class SettingsMenu {
@@ -7,6 +8,8 @@ export class SettingsMenu {
   private readonly rows: HTMLDivElement;
   private open = false;
   onChange: ((b: Bindings) => void) | null = null;
+  onPrefs: ((p: Prefs) => void) | null = null;
+  readonly prefs: Prefs = loadPrefs();
   onOpenChange: ((open: boolean) => void) | null = null;
 
   constructor(
@@ -21,6 +24,8 @@ export class SettingsMenu {
         <p class="sub">Click a key, then press the new one. Defense is automatic.</p>
         <div class="rows"></div>
         <p class="sub small">Arrow keys also move · Mouse: left / right punch · Gamepad: X/Y punch, A/B kick</p>
+        <h2 class="opt-title">Options</h2>
+        <div class="row"><span>Blood effects</span><button class="key blood-toggle"></button></div>
         <div class="actions">
           <button class="reset">Reset to defaults</button>
           <button class="close primary">Resume</button>
@@ -28,6 +33,15 @@ export class SettingsMenu {
       </div>`;
     root.appendChild(this.el);
     this.rows = this.el.querySelector('.rows')!;
+    const blood = this.el.querySelector<HTMLButtonElement>('.blood-toggle')!;
+    const showBlood = () => (blood.textContent = this.prefs.blood ? 'On' : 'Off');
+    showBlood();
+    blood.addEventListener('click', () => {
+      this.prefs.blood = !this.prefs.blood;
+      savePrefs(this.prefs);
+      showBlood();
+      this.onPrefs?.(this.prefs);
+    });
     this.el.querySelector('.reset')!.addEventListener('click', () => this.apply({ ...DEFAULT_BINDINGS }));
     this.el.querySelector('.close')!.addEventListener('click', () => this.toggle(false));
     this.el.addEventListener('mousedown', (e) => {

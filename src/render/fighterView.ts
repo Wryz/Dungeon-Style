@@ -103,7 +103,7 @@ export class FighterView {
     this.add('abdomen', box(0.33, 0.24, 0.21), 'shirt', [0, 0.1, 0]);
     this.add('chest', box(0.46, 0.3, 0.25), 'shirt', [0, 0.14, 0]);
     // Head: a cube with a hair cap and two eyes (shows facing at a glance).
-    this.add('head', box(0.25, 0.27, 0.25), 'skin', [0, 0.16, 0.01]);
+    this.headSkin = this.add('head', box(0.25, 0.27, 0.25), 'skin', [0, 0.16, 0.01]).material as MeshStandardMaterial;
     if (!P.bald) {
       this.add('head', box(0.27, 0.08, 0.27), 'hair', [0, 0.31, 0]);
       this.add('head', box(0.27, 0.16, 0.06), 'hair', [0, 0.24, -0.11]);
@@ -128,6 +128,30 @@ export class FighterView {
   }
 
   private readonly gearMeshes: Mesh[] = [];
+  private headSkin!: MeshStandardMaterial;
+  private cutMesh: Mesh | null = null;
+  private static readonly BRUISE = new Color('#7d3b4c');
+
+  /** World position of a spot on the face (mouth, nose, brow) of the current visual pose. */
+  facePoint(where: 'mouth' | 'nose' | 'brow', out = new Vector3()): Vector3 {
+    const head = this.bones.head;
+    head.updateMatrixWorld();
+    const local = where === 'mouth' ? [0, 0.075, 0.135] : where === 'nose' ? [0, 0.14, 0.145] : [0.065, 0.215, 0.135];
+    return head.localToWorld(out.set(local[0], local[1], local[2]));
+  }
+
+  /** Facial damage: bruising tint and a cut over the brow. */
+  setTrauma(bruise: number, cut: boolean) {
+    this.headSkin.color.set(this.palette.skin).lerp(FighterView.BRUISE, bruise * 0.45);
+    if (cut && !this.cutMesh) {
+      const mat = new MeshStandardMaterial({ color: '#8a0d0d', roughness: 0.3, flatShading: true });
+      this.cutMesh = new Mesh(new BoxGeometry(0.07, 0.02, 0.012), mat);
+      this.cutMesh.position.set(0.06, 0.215, 0.137);
+      this.cutMesh.rotation.z = -0.3;
+      this.bones.head.add(this.cutMesh);
+      this.mats.head.push(mat);
+    }
+  }
 
   /** Shows worn gear as blocky armour pieces on the body. */
   setGear(look: GearLook) {

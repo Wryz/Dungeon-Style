@@ -33,23 +33,25 @@ export interface MotionProfile {
   /** Feint and lead-hand paw frequency (×; 0 = none). */
   feints: number;
   paws: number;
+  /** 0 = fighting footwork and stance, 1 = normal walking (square hips, arm swing). */
+  gait: number;
 }
 
 export type Zone = 'pocket' | 'striking' | 'outside' | 'roaming';
 
 export const ZONE_PROFILES: Record<Zone, MotionProfile> = {
   // Toe to toe: sit low, tight high guard, small quick steps, lots of head movement, little bounce.
-  pocket: { speed: 0.45, stride: 0.7, stepFrames: 0.85, stepHeight: 0.6, stance: 0.92, crouch: -0.05, lean: 0.08, guardY: 0.03, guardZ: -0.05, bounce: 0.3, bounceHz: 0.85, sway: 0.7, head: 1.6, feints: 0.6, paws: 0.3 },
+  pocket: { speed: 0.45, stride: 0.7, stepFrames: 0.85, stepHeight: 0.6, stance: 0.92, crouch: -0.05, lean: 0.08, guardY: 0.03, guardZ: -0.05, bounce: 0.3, bounceHz: 0.85, sway: 0.7, head: 1.6, feints: 0.6, paws: 0.3, gait: 0 },
   // Punching range: active, balanced, feinting and pawing to create openings.
-  striking: { speed: 0.58, stride: 1, stepFrames: 1, stepHeight: 1, stance: 1, crouch: -0.01, lean: 0.03, guardY: 0, guardZ: 0, bounce: 0.75, bounceHz: 1, sway: 1, head: 1, feints: 1, paws: 1 },
+  striking: { speed: 0.58, stride: 1, stepFrames: 1, stepHeight: 1, stance: 1, crouch: -0.01, lean: 0.03, guardY: 0, guardZ: 0, bounce: 0.75, bounceHz: 1, sway: 1, head: 1, feints: 1, paws: 1, gait: 0 },
   // Kicking range / measuring distance: longer stance, lighter rhythm, pawing to find range.
-  outside: { speed: 0.78, stride: 1.45, stepFrames: 1.05, stepHeight: 1.1, stance: 1.06, crouch: 0, lean: 0, guardY: -0.03, guardZ: 0.02, bounce: 0.9, bounceHz: 1, sway: 1, head: 0.8, feints: 0.7, paws: 1.3 },
+  outside: { speed: 0.78, stride: 1.45, stepFrames: 1.05, stepHeight: 1.1, stance: 1.06, crouch: 0, lean: 0, guardY: -0.03, guardZ: 0.02, bounce: 0.9, bounceHz: 1, sway: 1, head: 0.8, feints: 0.7, paws: 1.3, gait: 0 },
   // Far away: walk with long strides, hands relaxed lower, barely any bounce.
-  roaming: { speed: 1, stride: 2.7, stepFrames: 1.35, stepHeight: 1.8, stance: 0.85, crouch: 0.03, lean: -0.02, guardY: -0.17, guardZ: -0.07, bounce: 0.12, bounceHz: 0.6, sway: 0.4, head: 0.3, feints: 0, paws: 0 },
+  roaming: { speed: 1, stride: 2.7, stepFrames: 1.35, stepHeight: 1.8, stance: 0.85, crouch: 0.03, lean: -0.02, guardY: -0.17, guardZ: -0.07, bounce: 0.12, bounceHz: 0.6, sway: 0.4, head: 0.3, feints: 0, paws: 0, gait: 1 },
 };
 
 /** Distance bands (m): [full, blend-out] for each zone boundary. */
-export const ZONE_RANGES = { pocket: 1.15, pocketBlend: 1.5, striking: 2.3, strikingBlend: 2.7, outside: 4, outsideBlend: 5.5 };
+export const ZONE_RANGES = { pocket: 1.15, pocketBlend: 1.5, striking: 2.3, strikingBlend: 2.7, outside: 3.6, outsideBlend: 4.6 };
 
 export interface MotionInputs {
   /** Distance to the opponent (Infinity when there is none). */
@@ -145,6 +147,8 @@ export function targetProfile(i: MotionInputs, out: MotionProfile): { weights: R
   out.feints *= 1 - m.opponentDown;
   out.paws *= 1 - m.opponentDown;
   out.sway *= 1 - 0.4 * m.opponentDown;
+  // A strike coming in always snaps you back into stance.
+  out.gait *= 1 - m.threat;
   return { weights, mods };
 }
 
