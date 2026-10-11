@@ -2,7 +2,7 @@ import { Vector3 } from 'three';
 import { type BoneName, bonePoint, fistPoint, footPoint, SKELETON } from '../body/skeleton';
 import type { PoseName } from '../body/poses';
 import { AIDirector, BrawlerAI, MAX_HEFT } from './ai';
-import { type Fighter } from './fighter';
+import { type Button, type Fighter } from './fighter';
 import { RectWalkable, type Walkable } from '../world/collision';
 import { bodyCapsules, overlap as capsuleOverlap, segDist as segDistance, strikingLimbs } from './bodyShapes';
 import { angleDelta, approachAngle, DT, Rng } from './math';
@@ -171,6 +171,38 @@ const _c = new Vector3();
  * Fixed-step (60 Hz) combat simulation. Deterministic and renderer-free: it owns
  * gameplay truth (who hit whom), while the ragdoll only makes it look physical.
  */
+/**
+ * What a button would throw right now, and whether it can be thrown this instant (free,
+ * in a chain's cancel window, or straight out of a successful defence).
+ */
+export function buttonMove(f: Fighter, button: Button): { move: MoveDef | null; ready: boolean; counter: boolean; chain: boolean } {
+  const ctx = moveContext(f);
+  const d = f.defense;
+  const allowed =
+    f.free ||
+    (f.state === 'attack' && ctx.chainFrom !== null) ||
+    (f.state === 'defend' && d !== null && (d.success || d.phase === 'recovery'));
+  let id: string | null | undefined;
+  if (f.weapon) {
+    id = selectWeaponMove(button, f.weapon, ctx.counter, ctx.chainFrom);
+    // Kicks out of a weapon combo.
+    if (id === undefined && ctx.chainFrom && WEAPON_MOVES[ctx.chainFrom]) id = button === 'lkick' ? 'frontKick' : 'lowKick';
+  }
+  if (id === undefined) id = selectPlayerMove(button, ctx);
+  let move = (id ? f.moveDef(id) : undefined) ?? null;
+  let ready = allowed && !!move && f.canUse(move);
+  // No follow-up from this button in the middle of a chain: it's its usual move, once
+  // the chain's done.
+  if (!move && ctx.chainFrom) {
+    const free = { ...ctx, chainFrom: null };
+    const base = (f.weapon ? selectWeaponMove(button, f.weapon, null, null) : undefined) ?? selectPlayerMove(button, free);
+    move = (base ? f.moveDef(base) : undefined) ?? null;
+    ready = false;
+  }
+  if (ready && f.state === 'attack' && ctx.chainFrom && !f.move!.cancel!.into.includes(move!.id)) ready = false;
+  return { move, ready, counter: ctx.counter !== null, chain: f.state === 'attack' && ctx.chainFrom !== null };
+}
+
 export class CombatSim {
   readonly fighters: Fighter[] = [];
   readonly events: CombatEvent[] = [];
@@ -477,24 +509,10 @@ export class CombatSim {
       f.buffer = null;
       return;
     }
-    const ctx = moveContext(f);
-    const d = f.defense;
-    const allowed =
-      f.free ||
-      (f.state === 'attack' && ctx.chainFrom !== null) ||
-      (f.state === 'defend' && d !== null && (d.success || d.phase === 'recovery'));
-    if (!allowed) return;
-    let id: string | null | undefined;
-    if (f.weapon) {
-      id = selectWeaponMove(b.button, f.weapon, ctx.counter, ctx.chainFrom);
-      // Kicks out of a weapon combo.
-      if (id === undefined && ctx.chainFrom && WEAPON_MOVES[ctx.chainFrom]) id = b.button === 'lkick' ? 'frontKick' : 'lowKick';
-    }
-    if (id === undefined) id = selectPlayerMove(b.button, ctx);
-    const move = id ? f.moveDef(id) : undefined;
-    if (!move || !f.canUse(move)) return;
-    if (f.state === 'attack' && ctx.chainFrom && !f.move!.cancel!.into.includes(move.id)) return;
-    f.startMove(move, ctx.counter !== null);
+    const pick = buttonMove(f, b.button);
+    if (!pick.move || !pick.ready) return;
+    const move = pick.move;
+    f.startMove(move, pick.counter);
     this.events.push({ type: 'attackStart', f, move });
   }
 

@@ -20,6 +20,9 @@ export class Hud {
   private readonly coinsEl: HTMLDivElement;
   private readonly promptEl: HTMLDivElement;
   private readonly flashEl: HTMLDivElement;
+  private readonly movesEl: HTMLDivElement;
+  private readonly incomingEl: HTMLDivElement;
+  private slotEls: { root: HTMLDivElement; name: HTMLSpanElement; cd: HTMLElement; key: HTMLElement }[] = [];
   private shownCoins = 0;
   private comboTimer = 0;
   private lagP = 1;
@@ -44,6 +47,8 @@ export class Hud {
       <div class="prompt"></div>
       <div class="flash"></div>
       <div class="combo"></div>
+      <div class="moves"></div>
+      <div class="incoming">!</div>
       <div class="banner"></div>
       <div class="hint"></div>
       <div class="vignette"></div>
@@ -67,6 +72,51 @@ export class Hud {
     this.coinsEl = q('.coins');
     this.promptEl = q('.prompt');
     this.flashEl = q('.flash');
+    this.movesEl = q('.moves');
+    this.incomingEl = q('.incoming');
+  }
+
+  /**
+   * The four attack buttons, bottom left: what each one throws right now, and whether
+   * it can — ready, still recovering (the dark sweep is how much is left), a chain
+   * follow-up, a counter, or gone (that limb is).
+   */
+  moves(slots: { key: string; name: string; state: 'ready' | 'busy' | 'chain' | 'counter' | 'locked'; left: number }[]) {
+    if (this.slotEls.length !== slots.length) {
+      this.movesEl.innerHTML = '';
+      this.slotEls = slots.map(() => {
+        const root = document.createElement('div');
+        root.className = 'slot';
+        root.innerHTML = '<i class="cd"></i><b class="key"></b><span class="name"></span>';
+        this.movesEl.appendChild(root);
+        return { root, name: root.querySelector('.name')!, cd: root.querySelector('.cd')!, key: root.querySelector('.key')! };
+      });
+    }
+    slots.forEach((s, i) => {
+      const el = this.slotEls[i];
+      if (el.key.textContent !== s.key) el.key.textContent = s.key;
+      if (el.name.textContent !== s.name) el.name.textContent = s.name;
+      const cls = `slot ${s.state}`;
+      if (el.root.className !== cls) el.root.className = cls;
+      el.cd.style.height = `${Math.round(Math.max(0, Math.min(1, s.left)) * 100)}%`;
+    });
+  }
+
+  /** A red '!' over whoever's winding up a strike at you (orange: it can't be stopped with a jab). */
+  incoming(world: Vector3 | null, camera: Camera | null, armored = false) {
+    if (!world || !camera) {
+      this.incomingEl.classList.remove('show');
+      return;
+    }
+    const p = world.clone().project(camera);
+    if (p.z > 1) {
+      this.incomingEl.classList.remove('show');
+      return;
+    }
+    this.incomingEl.classList.add('show');
+    this.incomingEl.classList.toggle('armor', armored);
+    this.incomingEl.style.left = `${(p.x * 0.5 + 0.5) * 100}%`;
+    this.incomingEl.style.top = `${(-p.y * 0.5 + 0.5) * 100}%`;
   }
 
   /** Letterbox bars in, gameplay HUD out (camera cuts). */

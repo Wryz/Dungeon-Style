@@ -25,17 +25,10 @@ import type { ThemeDef } from './themes';
 const _o = new Object3D();
 const _c = new Color();
 
-interface Crowd {
-  mesh: InstancedMesh;
-  heads: InstancedMesh;
-  base: { x: number; y: number; z: number; ry: number; seed: number }[];
-}
-
-/** Visuals for an arena theme: floor, boundary, props, lights, crowd. */
+/** Visuals for an arena theme: floor, boundary, props, lights. */
 export class ThemeView {
   readonly group = new Group();
   readonly background: Color;
-  private readonly crowds: Crowd[] = [];
   private readonly flicker: { light: PointLight | SpotLight; base: number; seed: number }[] = [];
   private readonly sun: DirectionalLight;
 
@@ -137,64 +130,11 @@ export class ThemeView {
     this.group.add(g);
   }
 
-  /** Rows of spectators along a ring or rectangle, rising with distance. */
-  private crowd(rng: Rng, spots: { x: number; y: number; z: number; ry: number }[], palette: string[]) {
-    const n = spots.length;
-    const body = new InstancedMesh(new BoxGeometry(0.42, 0.6, 0.3), new MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.9 }), n);
-    const heads = new InstancedMesh(new BoxGeometry(0.22, 0.24, 0.22), new MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.8 }), n);
-    const skins = ['#f0c49a', '#d6a27c', '#a8705a', '#7a4e36', '#e2b08a'];
-    const base = spots.map((s, i) => {
-      body.setColorAt(i, _c.set(palette[Math.floor(rng.next() * palette.length)]));
-      heads.setColorAt(i, _c.set(skins[Math.floor(rng.next() * skins.length)]));
-      return { ...s, seed: rng.range(0, 10) };
-    });
-    body.castShadow = false;
-    this.group.add(body, heads);
-    const crowd = { mesh: body, heads, base };
-    this.crowds.push(crowd);
-    this.updateCrowd(crowd, 0);
-  }
-
-  private updateCrowd(c: Crowd, time: number) {
-    c.base.forEach((b, i) => {
-      // Cheering bob, some jumping.
-      const hop = Math.max(0, Math.sin(time * (3 + (b.seed % 2)) + b.seed)) * 0.08;
-      _o.position.set(b.x, b.y + 0.3 + hop, b.z);
-      _o.rotation.set(0, b.ry, 0);
-      _o.scale.set(1, 1, 1);
-      _o.updateMatrix();
-      c.mesh.setMatrixAt(i, _o.matrix);
-      _o.position.y = b.y + 0.72 + hop;
-      _o.updateMatrix();
-      c.heads.setMatrixAt(i, _o.matrix);
-    });
-    c.mesh.instanceMatrix.needsUpdate = true;
-    c.heads.instanceMatrix.needsUpdate = true;
-  }
-
-  private rectSeats(hx: number, hz: number, rows: number, gap: number, rise: number, density = 0.75, rng: Rng, skipSouth = true) {
-    const out: { x: number; y: number; z: number; ry: number }[] = [];
-    for (let r = 0; r < rows; r++) {
-      const ex = hx + 1 + r * gap;
-      const ez = hz + 1 + r * gap;
-      const y = r * rise;
-      for (let x = -ex; x <= ex; x += 0.55) {
-        if (rng.chance(density)) out.push({ x: x + rng.range(-0.1, 0.1), y, z: -ez, ry: 0 });
-        if (!skipSouth && rng.chance(density)) out.push({ x, y, z: ez, ry: Math.PI });
-      }
-      for (let z = -ez; z <= ez; z += 0.55) {
-        if (rng.chance(density)) out.push({ x: -ex, y, z, ry: Math.PI / 2 });
-        if (rng.chance(density)) out.push({ x: ex, y, z, ry: -Math.PI / 2 });
-      }
-    }
-    return out;
-  }
-
   // ---------------------------------------------------------------------------
   // Themes
   // ---------------------------------------------------------------------------
 
-  private buildRing(rng: Rng) {
+  private buildRing(_rng: Rng) {
     this.background.set('#16171d');
     this.light(0x8d95b3, 0x2a2730, 0.7, 0xfff4e6, 1.2, [-3, 16, 5]);
     this.ground(0x24242c, 120, -0.9);
@@ -256,7 +196,6 @@ export class ThemeView {
       beam.rotateX(Math.PI / 2);
       this.group.add(beam);
     }
-    this.crowd(rng, this.rectSeats(4.5, 4.5, 6, 0.7, 0.45, 0.7, rng).map((s) => ({ ...s, y: s.y - 0.9 })), ['#3b3f4c', '#5a2e2e', '#2e4a5a', '#4a4a2e', '#2a2a2a', '#6b6b6b']);
   }
 
   private buildStreet(rng: Rng) {
@@ -321,11 +260,6 @@ export class ThemeView {
       m.castShadow = true;
       this.group.add(m);
     }
-    // Onlookers on the sidewalks.
-    const spots: { x: number; y: number; z: number; ry: number }[] = [];
-    for (let i = 0; i < 26; i++) spots.push({ x: rng.range(-hx - 2, hx + 2), y: 0.13, z: -hz - rng.range(0.6, 1.8), ry: 0 });
-    for (const s of [-1, 1]) for (let i = 0; i < 8; i++) spots.push({ x: s * (hx + rng.range(0.8, 2)), y: 0, z: rng.range(-hz, hz), ry: -s * Math.PI / 2 });
-    this.crowd(rng, spots, ['#3b3f4c', '#7a3a3a', '#2e5a3a', '#c9a227', '#222222', '#5a4a6a']);
   }
 
   private buildGrocery(rng: Rng) {
@@ -385,10 +319,6 @@ export class ThemeView {
     }
     // Hanging sale signs.
     for (const sx of [-3, 3]) this.box(1.2, 0.45, 0.05, this.mat(0xe8402b, { emissive: 0x5a1000 }), sx, 2.8, -hz + 0.3, 0, false);
-    // A few shoppers watching from the ends of the aisles.
-    const spots: { x: number; y: number; z: number; ry: number }[] = [];
-    for (let i = 0; i < 6; i++) spots.push({ x: rng.range(-hx + 0.5, hx - 0.5), y: 0, z: -hz + 0.4, ry: 0 });
-    this.crowd(rng, spots, ['#3a7d44', '#d9533d', '#3d7bd9', '#e8b53a']);
   }
 
   private buildColosseum(rng: Rng) {
@@ -421,24 +351,14 @@ export class ThemeView {
       this.box(w, 2.6, 0.6, stone, x, 1.3, z, -a + Math.PI / 2);
       if (i % 2 === 0) this.box(w * 0.55, 1.5, 0.05, dark, Math.cos(a) * (R + 0.58), 0.75, Math.sin(a) * (R + 0.58), -a + Math.PI / 2, false);
     }
-    // Tiered stands and crowd behind the wall.
-    const spots: { x: number; y: number; z: number; ry: number }[] = [];
+    // Tiered stands behind the wall.
     for (let row = 0; row < 6; row++) {
       const rr = R + 1.8 + row * 0.8;
       const y = 2.6 + row * 0.55;
-      const n = Math.floor((Math.PI * 2 * rr) / 0.55);
       const tier = new Mesh(new CylinderGeometry(rr + 0.4, rr + 0.4, 0.55, 48, 1, true), this.mat(0xbfa983, { cut: false }));
       tier.position.y = y - 0.3;
       this.group.add(tier);
-      for (let k2 = 0; k2 < n; k2++) {
-        const a = (k2 / n) * Math.PI * 2;
-        // Leave the near (camera) side empty so the view stays open.
-        if (Math.sin(a) > 0.55) continue;
-        if (!rng.chance(0.75)) continue;
-        spots.push({ x: Math.cos(a) * rr, y, z: Math.sin(a) * rr, ry: -a - Math.PI / 2 });
-      }
     }
-    this.crowd(rng, spots, ['#f2e6d0', '#c0392b', '#e8d6a0', '#8a5a3a', '#ffffff', '#6a4a8a']);
     // Banners and the emperor's box.
     for (const a of [-2.2, -1.6, -1.0]) {
       const x = Math.cos(a) * (R + 0.95);
@@ -539,11 +459,6 @@ export class ThemeView {
     }
     // Bare bulbs over the fight.
     for (const [x, z] of [[-2.5, -0.5], [2.5, 0.6], [0, -2.5], [0, 2.4]]) this.bulb(x, 3.1, z, 0xffc77a, 5, rng);
-    // The fight club, packed in tight around the edges.
-    const spots: { x: number; y: number; z: number; ry: number }[] = [];
-    for (let x = -hx; x <= hx; x += 0.55) if (rng.chance(0.8)) spots.push({ x: x + rng.range(-0.1, 0.1), y: 0, z: -hz - rng.range(0.5, 1.1), ry: 0 });
-    for (const s of [-1, 1]) for (let z = -hz; z <= hz; z += 0.6) if (rng.chance(0.7)) spots.push({ x: s * (hx + rng.range(0.5, 1.2)), y: 0, z, ry: -s * Math.PI / 2 });
-    this.crowd(rng, spots, ['#e8d6c0', '#3b3f4c', '#5a2e2e', '#2a2a2a', '#6b6b6b', '#d9b89a']);
   }
 
   private buildBar(rng: Rng) {
@@ -600,11 +515,6 @@ export class ThemeView {
     this.box(1.4, 0.3, 0.04, this.mat(0xff4fa3, { emissive: 0xff2a8a }), -2.6, 2.8, -hz - 1.18, 0, false);
     this.box(1.0, 0.25, 0.04, this.mat(0x4fd9ff, { emissive: 0x2ab8ff }), 2.8, 2.9, -hz - 1.18, 0, false);
     for (const [x, z] of [[-2.2, 0.4], [1.4, -0.6]]) this.bulb(x, 2.6, z, 0xffb070, 3, rng);
-    // Regulars along the walls.
-    const spots: { x: number; y: number; z: number; ry: number }[] = [];
-    for (let x = -hx + 0.5; x < hx; x += 0.7) if (rng.chance(0.5)) spots.push({ x, y: 0, z: -hz - 0.6, ry: 0 });
-    for (const s of [-1, 1]) for (let z = -hz + 0.5; z < hz; z += 0.8) if (rng.chance(0.55)) spots.push({ x: s * (hx + 0.7), y: 0, z, ry: -s * Math.PI / 2 });
-    this.crowd(rng, spots, ['#2a1f1a', '#4a3a2a', '#33415e', '#5a2e2e', '#1a1a1a']);
   }
 
   private buildDojo(rng: Rng) {
@@ -631,11 +541,6 @@ export class ThemeView {
     this.box(0.6, 1.3, 0.02, this.mat(0xf2ead6), 1.8, 1.7, -hz - 1.02, 0, false);
     this.box(0.12, 0.7, 0.025, this.mat(0x1a1a1a), 1.8, 1.75, -hz - 1.0, 0, false);
     this.box(0.9, 0.5, 0.4, this.mat(0x7a2418), 3.4, 1.4, -hz - 0.9);
-    // Students kneeling along the edges, watching.
-    const spots: { x: number; y: number; z: number; ry: number }[] = [];
-    for (let x = -hx + 0.4; x < hx; x += 0.75) spots.push({ x, y: -0.3, z: -hz - 0.5, ry: 0 });
-    for (const s of [-1, 1]) for (let z = -hz + 0.6; z < hz - 0.3; z += 0.9) if (rng.chance(0.6)) spots.push({ x: s * (hx + 0.5), y: -0.3, z, ry: -s * Math.PI / 2 });
-    this.crowd(rng, spots, ['#f2efe6', '#f2efe6', '#f2efe6', '#2a3a6a']);
   }
 
   private buildRooftop(rng: Rng) {
@@ -697,14 +602,9 @@ export class ThemeView {
       l.position.set(x, 1.1, -hz - 0.9);
       this.group.add(l);
     }
-    // A few onlookers by the stairwell.
-    const spots: { x: number; y: number; z: number; ry: number }[] = [];
-    for (let i = 0; i < 6; i++) spots.push({ x: rng.range(hx - 1.6, hx + 0.6), y: 0, z: rng.range(-hz - 0.9, -hz + 0.2), ry: rng.range(-0.4, 0.4) });
-    this.crowd(rng, spots, ['#1f2a3a', '#6a2b8c', '#2a2a2a', '#c9a227']);
   }
 
   update(time: number) {
-    for (const c of this.crowds) this.updateCrowd(c, time);
     for (const f of this.flicker) f.light.intensity = f.base * (0.9 + 0.1 * Math.sin(time * 9 + f.seed));
   }
 }

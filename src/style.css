@@ -136,3 +136,31 @@ canvas { transition: filter 0.6s; }
 .bar.stamina { height: 4px; margin-top: 3px; width: 55%; }
 .bar.stamina .fill { background: #e8c35a; }
 .bar.stamina.low .fill { background: #ff9a4a; }
+
+/* ---- Combat markers ---------------------------------------------------- */
+.popup.dmg { color: #fff; font-size: 18px; letter-spacing: 0.04em; }
+.popup.dmg.big { color: #ffd36b; font-size: 22px; }
+.popup.hurt { color: #ff5a4a; font-size: 18px; letter-spacing: 0.04em; }
+.popup.block { color: #9ec8ff; }
+.popup.parry { color: var(--gold); font-size: 19px; }
+.popup.miss { color: #c9c9c9; font-size: 14px; }
+.incoming { position: absolute; transform: translate(-50%, -100%); font: 900 26px/1 system-ui, sans-serif; color: #ff4030; text-shadow: 0 0 4px #000, 0 2px 6px #000; opacity: 0; transition: opacity 0.08s; pointer-events: none; }
+.incoming.show { opacity: 1; animation: incoming 0.25s ease-in-out infinite alternate; }
+.incoming.armor { color: #ff9a3c; }
+@keyframes incoming { from { transform: translate(-50%, -100%) scale(1); } to { transform: translate(-50%, -100%) scale(1.25); } }
+.hud.cine > .incoming, .hud.cine > .moves { opacity: 0 !important; }
+
+/* ---- Attack buttons (bottom left) -------------------------------------- */
+.moves { position: absolute; left: 16px; bottom: 58px; display: grid; grid-template-columns: repeat(2, 132px); gap: 6px; pointer-events: none; transition: opacity 0.25s; }
+.moves .slot { position: relative; overflow: hidden; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px 0 6px; border-radius: 6px; background: rgba(12, 14, 20, 0.62); border: 1px solid rgba(255, 255, 255, 0.14); color: #e9edf3; font: 600 12px/1.1 system-ui, sans-serif; }
+.moves .slot .key { position: relative; z-index: 1; min-width: 22px; height: 22px; display: grid; place-items: center; border-radius: 4px; background: rgba(255, 255, 255, 0.9); color: #111; font-weight: 900; font-size: 12px; }
+.moves .slot .name { position: relative; z-index: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.moves .slot .cd { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: rgba(0, 0, 0, 0.55); z-index: 0; }
+.moves .slot.ready { border-color: rgba(255, 255, 255, 0.35); }
+.moves .slot.busy { color: rgba(233, 237, 243, 0.55); }
+.moves .slot.busy .key { background: rgba(255, 255, 255, 0.45); }
+.moves .slot.chain { border-color: #7fe0a0; box-shadow: 0 0 10px rgba(127, 224, 160, 0.35); }
+.moves .slot.counter { border-color: var(--gold); box-shadow: 0 0 12px rgba(255, 211, 107, 0.6); color: var(--gold); }
+.moves .slot.locked { opacity: 0.35; }
+.moves .slot.locked .name { text-decoration: line-through; }
+@media (max-width: 700px) { .moves { grid-template-columns: repeat(2, 110px); bottom: 150px; } }

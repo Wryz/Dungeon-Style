@@ -16,7 +16,7 @@ demons and giant bosses.
   opponent; every 4th round is a **boss** in the colosseum. Regular rounds cycle
   through seven arenas: the boxing ring, the street, a grocery store, an underground
   warehouse fight club, a biker bar, a dojo and a city rooftop at night — each with its
-  own props, floor sound, ambience and locals.
+  own props, floor sound and ambience.
   Falling sends you back to round 1 — coins and gear stay. Your best round is saved.
 - **Opponents, each with a fighting style of its own** (see *Fighting styles* below):
   Rookie, Brawler, Kicker, Bruiser, **Samurai** (katana) and **Ninja** (ninjato and
@@ -70,9 +70,8 @@ demons and giant bosses.
 - **Sound:** footsteps that match the floor (canvas, asphalt, tile, sand; giants thud),
   fighters exhale on every strike and grunt when a big one lands, punches slap the face
   and thud into the body, a bat knocks, a pan rings, a chair clatters, an axe chops.
-  The crowd gasps and roars at knockdowns and severed limbs; the bar's jukebox, the
-  store's fridges and the warehouse's lights hum. No continuous background hiss. All
-  procedural.
+  The bar's jukebox, the store's fridges and the warehouse's lights hum. No crowd, no
+  continuous background hiss. All procedural.
 - **Presentation:** no game-style sparks on flesh — sweat flies off a face that gets
   hit. Hit flashes, telegraph rings, glowing limbs and popups are optional
   (Settings → Combat cues, off by default).
@@ -334,7 +333,7 @@ src/
     motion.ts   contextual movement profile (distance zones + fight-state modifiers)
     ragdoll.ts  Rapier powered ragdoll: joint "muscles" chase the animated pose;
                 hits relax muscles near the impact + add impulses, then recover
-  arena/      arena themes (shape, props, spawns) and their visuals (crowds, lights)
+  arena/      arena themes (shape, props, spawns) and their visuals (props, lights)
   world/      walkable areas and obstacle collision
   render/     blocky low-poly fighters + gear + creature parts, looks per venue, camera,
               wall cutout, blood, coins, particles

@@ -93,15 +93,6 @@ export class Sfx {
     }
   }
 
-  /** The crowd reacts: 0..1 (a gasp for a big hit, a roar for a knockout). */
-  crowd(intensity: number) {
-    if (!this.ctx || !this.wantAmbience) return;
-    const scale = this.wantAmbience === 'colosseum' ? 1.4 : this.wantAmbience === 'ring' || this.wantAmbience === 'warehouse' ? 1 : this.wantAmbience === 'bar' ? 0.6 : 0.3;
-    const g = intensity * scale;
-    this.noiseBurst('bandpass', 850, 0.5, 0.25 * g, 0.12, 1.2 + intensity, 1300);
-    this.noiseBurst('bandpass', 1700, 0.9, 0.12 * g, 0.18, 1.0 + intensity, 2400);
-  }
-
   // -------------------------------------------------------------------------
   // Bodies: feet, breath, flesh.
   // -------------------------------------------------------------------------

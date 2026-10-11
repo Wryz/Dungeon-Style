@@ -25,8 +25,8 @@ import { Effects } from '../render/particles';
 import { FighterView, type GearLook, PLAYER_PALETTE, type Palette } from '../render/fighterView';
 import { lookFor } from '../render/looks';
 import { DEFAULT_AI, type AIConfig } from '../sim/ai';
-import { type CombatEvent, CombatSim, type HurtZone, hurtSpheres, strikePoint } from '../sim/combat';
-import type { MoveDef } from '../sim/moves';
+import { buttonMove, type CombatEvent, CombatSim, type HurtZone, hurtSpheres, strikePoint } from '../sim/combat';
+import { type MoveDef, moveLength } from '../sim/moves';
 import { ARCHETYPES, coinDrop, createEnemy, type EnemyKind, type EnemyMods } from '../sim/enemies';
 import { DEFAULT_STATS, type Fighter, type FighterStats } from '../sim/fighter';
 import { DT, Rng } from '../sim/math';
@@ -914,6 +914,10 @@ export class Game {
         const m = e.move;
         const heavy = m.weight === 'heavy';
         const byPlayer = e.attacker.team === 'player';
+        // Markers: what that blow did, where it landed.
+        const dmg = Math.max(1, Math.round(e.damage));
+        if (byPlayer) this.marker(e.counter ? `COUNTER ${dmg}` : String(dmg), e.point, e.counter || e.damage >= 12 ? 'dmg big' : 'dmg');
+        else if (e.defender === this.player) this.marker(`-${dmg}`, e.point, 'hurt');
         const big = e.attacker.scale > 1.3;
         // A heavy weapon lands like one: a longer catch on impact, a bigger jolt.
         const weight = e.weapon ? Math.min(1.4, 0.8 + 0.1 * e.weapon.mass) : 1;
@@ -940,7 +944,6 @@ export class Game {
         else if (m.weapon) this.sfx.impact('wood', false); // caught with the haft
         else this.sfx.flesh(e.zone === 'head', m.weight);
         if (e.damage >= 9) this.sfx.grunt(e.defender.scale);
-        this.sfx.crowd(e.ko ? 1 : e.sever ? 0.9 : e.knockdown ? 0.6 : e.damage >= 12 ? 0.35 : 0);
         const col = e.armored ? '#ff9a3c' : e.counter ? '#ffd36b' : '#fff0c8';
         if (this.cues) {
           this.effects.flash(e.point, heavy ? 0.42 : 0.26, e.counter ? '#ffd36b' : '#fff3d6');
@@ -990,11 +993,16 @@ export class Game {
           this.effects.flash(e.point, 0.2, '#9fd8ff');
         } else this.effects.sparks(e.point, e.dir, e.guardBreak ? 8 : 4, '#dbe6ee', 1.5, 0.014);
         this.ragdolls.get(e.defender)?.applyBlock(e.dir, e.move);
-        if (e.guardBreak && this.cues) this.hud.popup('GUARD BREAK', e.point, this.viewCamera, 'armor');
+        if (e.guardBreak) this.marker('GUARD BREAK', e.point, 'armor');
+        // Your guard took it and you've got the opening back: a parry.
+        else if (e.defender === this.player) this.marker(this.player.counter ? 'PARRY' : 'BLOCK', e.point, this.player.counter ? 'parry' : 'block');
+        else this.marker('BLOCKED', e.point, 'block');
         break;
       }
       case 'dodge': {
         this.sfx.dodge();
+        if (e.defender === this.player) this.marker(e.kind === 'airborne' ? 'EVADED' : 'DODGE', e.point, 'parry');
+        else this.marker('MISS', e.point, 'miss');
         if (e.defender === this.player && e.kind !== 'airborne') {
           this.sfx.counterReady();
           if (this.cues) this.effects.ring(this.player.pos, 0.9, '#ffd36b', 0.45, () => this.player.pos);
@@ -1080,6 +1088,38 @@ export class Game {
     this.breathOut = !this.breathOut;
     this.sfx.pant(this.breathOut, 0.5 + tired);
     this.breathT = this.breathOut ? 0.42 - tired * 0.12 : 0.3 - tired * 0.08;
+  }
+
+  /** A combat marker over the action (always on, unlike the optional combat cues). */
+  private marker(text: string, at: Vector3, cls: string) {
+    if (this.cine.active) return;
+    this.hud.popup(text, at.clone().setY(at.y + 0.25), this.viewCamera, cls);
+  }
+
+  /** The attack buttons, bottom left: what each throws right now and when it's ready. */
+  private updateMovePanel() {
+    const p = this.player;
+    const b = this.input.bindings;
+    const total = p.state === 'attack' && p.move ? p.attackEnd || moveLength(p.move) : 1;
+    const busyLeft = p.state === 'attack' ? 1 - p.stateFrame / Math.max(1, total) : p.free ? 0 : 1;
+    const slots = (['lpunch', 'rpunch', 'lkick', 'rkick'] as const).map((btn) => {
+      const pick = buttonMove(p, btn);
+      const limb = btn === 'lpunch' ? 'foreArmL' : btn === 'rpunch' ? 'foreArmR' : btn === 'lkick' ? 'shinL' : 'shinR';
+      const state: 'ready' | 'busy' | 'chain' | 'counter' | 'locked' = !p.alive || p.isSevered(limb) || !pick.move
+        ? 'locked'
+        : pick.ready
+          ? pick.counter
+            ? 'counter'
+            : pick.chain
+              ? 'chain'
+              : 'ready'
+          : 'busy';
+      return { key: keyLabel(b[btn]), name: pick.move?.name ?? '—', state, left: state === 'busy' ? busyLeft : 0 };
+    });
+    this.hud.moves(slots);
+    // Something on its way in at you.
+    const threat = this.enemies.find((e) => e.alive && e.state === 'attack' && e.move && !e.move.noHit && e.target === p && e.stateFrame < e.move.startup);
+    this.hud.incoming(threat ? new Vector3(threat.pos.x, threat.rig.head.pos.y + 0.45 * threat.scale, threat.pos.z) : null, this.cine.active ? null : this.viewCamera, !!threat?.move?.armor);
   }
 
   /** Coming down from a jump or a flip: both feet hit the floor at once, with weight. */
@@ -1340,6 +1380,7 @@ export class Game {
     this.updateDebug();
     const shown = t ?? (this.phase === 'play' ? this.enemies.find((e) => e.alive) ?? null : null);
     this.hud.update(realDt, p, shown, this.label());
+    this.updateMovePanel();
     this.renderer.render(this.scene, this.viewCamera);
   }
 
