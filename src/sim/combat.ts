@@ -939,9 +939,9 @@ export class CombatSim {
     d.counter = null;
 
     // The haft carries the weapon's mass too, just less of the swing's speed.
-    const push = thrown ? m.knockback : pushScale(a, d, m.weapon ? held : null, power * (haft ? 0.6 : 1));
-    // (A thrown weapon's push is its own momentum against the body's mass.)
-    const kb = thrown ? push : m.knockback * a.stats.knockbackMul * push;
+    // (A thrown weapon's push is already its own momentum against the body's mass.)
+    const push = thrown ? 1 : pushScale(a, d, m.weapon ? held : null, power * (haft ? 0.6 : 1));
+    const kb = thrown ? m.knockback : m.knockback * a.stats.knockbackMul * push;
     let ko = false;
     let knockdown = false;
     if (d.hp <= 0) {
@@ -1271,7 +1271,8 @@ export class CombatSim {
       id: 'thrown', name: 'Thrown ' + w.name, startup: 1, active: 1, recovery: 1,
       limb: 'handR', height, kind: 'straight', weight: dmg > 12 ? 'heavy' : dmg > 5 ? 'medium' : 'light',
       damage: dmg, guardDamage: dmg * 1.6, poiseDamage: dmg * 3.2, hitstun: Math.round(12 + dmg * 0.9), blockstun: Math.round(8 + dmg * 0.5),
-      knockback: (mass * speed) / (75 * d.scale ** 3) * 1.6, impulse: mass * speed * 0.8, lift: 0.05,
+      // All its momentum goes into the body (it doesn't fly on through): Δv = p / (M + m).
+      knockback: (mass * speed) / (75 * d.scale ** 3 + mass), impulse: Math.min(60, mass * speed * 0.25), lift: 0.05,
       hitstop: Math.round(4 + Math.min(8, dmg / 3)), shake: Math.min(0.5, 0.08 + dmg / 50), radius: 0, reach: 0,
       blockable: true, weapon: true, keys: [],
     };

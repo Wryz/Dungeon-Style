@@ -18,11 +18,12 @@ demons and giant bosses.
   warehouse fight club, a biker bar, a dojo and a city rooftop at night — each with its
   own props, floor sound, ambience and locals.
   Falling sends you back to round 1 — coins and gear stay. Your best round is saved.
-- **Opponents:** Rookie (quick jabs), Brawler (haymakers), Kicker (teep / low kick /
-  body roundhouse), Bruiser (slow, armored, heavy), and from round 6 mythical creatures:
-  **Imps** (small, fast swarmers) and **Demons** (horned heavy hitters). Humans dress for
-  the venue — trunks and gloves in the ring, hoodies on the street, aprons in the store,
-  helmets in the colosseum.
+- **Opponents, each with a fighting style of its own** (see *Fighting styles* below):
+  Rookie, Brawler, Kicker, Bruiser, **Samurai** (katana) and **Ninja** (ninjato and
+  throwing knives), and from round 6 mythical creatures: **Imps** (small acrobats) and
+  **Demons** (horned stalkers that pounce). Humans dress for the venue — trunks and
+  gloves in the ring, hoodies on the street, aprons in the store, helmets in the
+  colosseum; the samurai wears hakama and a topknot, the ninja black with a mask.
 - **Bosses (giants):** The Champion (1.6×), The Minotaur (1.75×, horns and snout) and
   The Cyclops (1.85×). Size scales reach, step length, mass and hit weight.
 - **Economy:** KOs burst into coins and each cleared round pays a bonus; between rounds
@@ -255,6 +256,38 @@ each other or the scenery.
   in guard sags, more as the arms tire. Carrying a heavy two-hander, the body leans
   back against it. Heavy weapons land with a longer impact pause and a bigger jolt.
   `tests/gravity.test.ts` covers the sim side.
+
+**Fighting styles.** Every opponent fights its own way: its own techniques, a
+temperament, and particular ways with particular weapons.
+
+| Opponent | Temperament | Signature techniques |
+|---|---|---|
+| Rookie | sloppy: backs off flinching after every hit | pawing jabs, a wild looping **haymaker** when hurt |
+| Brawler | pressure | hooks and body shots, grabs what's lying around and **throws** it |
+| Kicker | pressure | teeps and low kicks, **spinning back kick** in close, **jumping kick** to close in |
+| Bruiser | pressure | **shoulder charge** at a run, **stomp** |
+| Samurai | patient: waits just out of reach | katana: **kesa-giri**, **men**, **tsuki**; a **draw cut** when you step in or whiff |
+| Ninja | skirmish: in, cut, sprint back out | **kunai** off the belt from range, **dash slash**, **flip slash**, **back flip** away |
+| Imp | skirmish | **back flip** out of trouble, **front flip heel drop** |
+| Demon | skirmish (stalks) | hooks and straights, **pounce** from out of reach, spinning back kick |
+| Champion | pressure | combinations, **superman punch** |
+| Minotaur | berserk: angrier the more it's hurt | axe sweeps, overheads, **spinning cleave**, **axe throw** — then a head-down **charge** while he goes to get it back |
+| Cyclops | pressure | huge sweeps, pounding overheads, **stomp**, the odd **club throw** |
+
+All of it is physical:
+- **Jumps and flips** follow a real ballistic arc: how high is set by how long they
+  are in the air (h = g·t²/8). The take-off speed is fixed and there's no steering in
+  the air. A flip turns the body about its centre of mass at a steady rate. Hit in
+  mid-air, a fighter goes down. A body flying into someone stops against them.
+- **Spins** turn the whole body under the weapon. A spinning back kick stops turning
+  while the leg drives out, then finishes the turn.
+- **Thrown weapons** are rigid bodies: gravity, end-over-end spin, sub-stepped
+  collisions. An axe cuts only if the edge is leading when it arrives. A practised
+  thrower judges the spin for the distance, so it does from where they stood. Step in
+  or out and it may arrive handle-first. Knives fly point first. Damage comes from
+  kinetic energy and the push from momentum. Automatic defence reads things thrown at
+  you (a big axe more readily than a small knife). Anything thrown ends up on the
+  floor for whoever gets to it first.
 
 **Fighting logic.**
 - **Steering:** enemies walk round props instead of pressing into them.

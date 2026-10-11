@@ -1,4 +1,5 @@
 import {
+  Matrix4,
   Quaternion,
   Vector3,
   BoxGeometry,
@@ -271,3 +272,45 @@ export class DropView {
 
 const G = 9.81;
 const _q = new Quaternion();
+
+/**
+ * A weapon in flight: the same model, placed every frame from the sim's rigid body —
+ * grip where it is, pointing the way it points, the edge on the side it turns toward.
+ */
+export class ProjectileView {
+  readonly root = new Group();
+  private readonly model: Group;
+  private readonly m = new Matrix4();
+  private readonly x = new Vector3();
+  private readonly y = new Vector3();
+  private readonly z = new Vector3();
+
+  constructor(def: WeaponDef, scale: number) {
+    this.model = buildWeapon(def);
+    this.model.scale.setScalar(scale);
+    this.root.add(this.model);
+  }
+
+  /** @param grip world grip point; `dir` grip-to-tip; `edge` the way the edge faces (both unit). */
+  place(grip: Vector3, dir: Vector3, edge: Vector3) {
+    this.y.copy(dir).normalize();
+    this.z.copy(edge).addScaledVector(this.y, -edge.dot(this.y));
+    if (this.z.lengthSq() < 1e-6) this.z.set(0, 1, 0).addScaledVector(this.y, -this.y.y);
+    this.z.normalize();
+    this.x.crossVectors(this.y, this.z).normalize();
+    this.m.makeBasis(this.x, this.y, this.z);
+    this.model.quaternion.setFromRotationMatrix(this.m);
+    this.model.position.copy(grip);
+  }
+
+  dispose() {
+    this.root.removeFromParent();
+    this.root.traverse((o) => {
+      if (o instanceof Mesh) {
+        o.geometry.dispose();
+        (o.material as MeshStandardMaterial).dispose();
+      }
+    });
+  }
+}
+

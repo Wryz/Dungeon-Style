@@ -38,7 +38,8 @@ import { Shop } from '../ui/shop';
 import { ArenaWalkable } from '../world/collision';
 import type { Drop } from '../sim/combat';
 import { limbBones, WEAPONS, type Wound } from '../sim/weapons';
-import { DropView } from '../render/weaponView';
+import { DropView, ProjectileView } from '../render/weaponView';
+import { projectileDir, projectileGrip } from '../sim/projectiles';
 import { Cinematics, type Shot } from '../render/cinematics';
 import { item, loadSave, type SaveData, SLOTS, statsWithGear, writeSave } from './economy';
 import { type RoundSpec, roundSpec } from './gauntlet';
@@ -69,6 +70,8 @@ type Mode = 'gauntlet' | 'training';
 type Phase = 'play' | 'clear' | 'shop' | 'down';
 
 const TORSO = ['chest', 'abdomen', 'head'] as const;
+const _edge = new Vector3();
+const _grip = new Vector3();
 
 export class Game {
   readonly renderer: WebGLRenderer;
@@ -123,6 +126,10 @@ export class Game {
   private readonly fxRng = new Rng(99);
   private readonly views = new Map<Fighter, FighterView>();
   private readonly dropViews = new Map<number, DropView>();
+  /** Weapons in the air. */
+  private readonly projViews = new Map<number, ProjectileView>();
+  /** Who was in the air last step (to hear them land). */
+  private readonly airborne = new Set<Fighter>();
   private readonly shownWounds = new WeakSet<Wound>();
   /** How sweaty each fighter has got this round (0..1). */
   private readonly sweat = new Map<Fighter, number>();
@@ -300,6 +307,7 @@ export class Game {
     this.koAt.delete(f);
     this.trauma.delete(f);
     this.falls.delete(f);
+    this.airborne.delete(f);
   }
 
   private spawn(kind: EnemyKind, x: number, z: number, mods: EnemyMods = {}, fx = true): Fighter {
@@ -372,7 +380,31 @@ export class Game {
 
   private clearDrops() {
     this.sim.drops.length = 0;
+    this.sim.projectiles.length = 0;
     this.syncDropViews();
+    this.syncProjectiles();
+  }
+
+  /** One model per weapon in flight, placed from its rigid body. */
+  private syncProjectiles() {
+    const live = new Set(this.sim.projectiles.map((p) => p.id));
+    for (const [id, v] of this.projViews) {
+      if (live.has(id)) continue;
+      v.dispose();
+      this.projViews.delete(id);
+    }
+    for (const p of this.sim.projectiles) {
+      let v = this.projViews.get(p.id);
+      if (!v) {
+        v = new ProjectileView(p.weapon, p.scale);
+        this.scene.add(v.root);
+        this.projViews.set(p.id, v);
+      }
+      const dir = projectileDir(p).clone();
+      // The edge faces the way the head turns (end over end); a knife's is just up.
+      const edge = p.omega > 0 ? _edge.crossVectors(p.axis, dir) : _edge.set(0, 1, 0);
+      v.place(projectileGrip(p, _grip), dir, edge);
+    }
   }
 
   /** Keeps one floor model per weapon lying around. */
@@ -901,6 +933,7 @@ export class Game {
     const events = this.sim.step();
     for (const e of events) this.handleEvent(e);
     this.footsteps();
+    this.landings();
     if (this.mode === 'gauntlet') this.updateGauntlet();
 
     const isDown = (f: Fighter) => f.state === 'knockdown' || f.state === 'ko' || !f.alive;
@@ -1031,6 +1064,19 @@ export class Game {
       case 'getup':
         this.effects.dust(e.f.pos, 10, 0.5 * e.f.scale);
         break;
+      case 'throw': {
+        const w = e.projectile.weapon;
+        this.sfx.whoosh(w.mass > 1.5 ? 'heavy' : w.mass > 0.5 ? 'medium' : 'light');
+        this.sfx.exhale(true, e.f.scale);
+        break;
+      }
+      case 'thud': {
+        const w = e.projectile.weapon;
+        const hard = Math.min(1, e.speed / 12);
+        this.sfx.landing(w.mass, !WOODEN.has(w.id), hard);
+        this.effects.dust(e.point, Math.round(2 + 4 * hard), 0.06 + 0.04 * w.mass);
+        break;
+      }
       case 'pickup':
         this.sfx.clank(true);
         if (this.cues) {
@@ -1086,6 +1132,21 @@ export class Game {
     this.breathOut = !this.breathOut;
     this.sfx.pant(this.breathOut, 0.5 + tired);
     this.breathT = this.breathOut ? 0.42 - tired * 0.12 : 0.3 - tired * 0.08;
+  }
+
+  /** Coming down from a jump or a flip: both feet hit the floor at once, with weight. */
+  private landings() {
+    const surface = FLOOR[this.theme.id];
+    for (const f of this.sim.fighters) {
+      const up = f.isAirborne();
+      if (up) this.airborne.add(f);
+      else if (this.airborne.delete(f) && f.state === 'attack') {
+        this.sfx.footstep(surface, 1, f.scale * 1.15);
+        this.sfx.footstep(surface, 0.9, f.scale * 1.15);
+        this.effects.dust(f.pos, 6, 0.3 * f.scale);
+        if (f.scale > 1.3) this.camRig.addTrauma(0.08 * f.scale);
+      }
+    }
   }
 
   /** Feet that landed this step, on whatever the floor is made of. */
@@ -1326,6 +1387,7 @@ export class Game {
     const near = p.alive ? this.dropInReach() : null;
     // (A weapon falls at the same speed as everything else, slowed in a slow-motion.)
     for (const [id, v] of this.dropViews) v.update(this.simClock, near?.id === id);
+    this.syncProjectiles();
     if (this.tutorial) {
       this.hud.prompt(this.tutorial.prompt(this.input.bindings), head, this.camRig.camera);
     } else if (near && this.phase === 'play') {
