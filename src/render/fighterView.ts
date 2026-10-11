@@ -27,6 +27,10 @@ export interface Palette {
     cyclops?: boolean;
     snout?: boolean;
     tail?: boolean;
+    /** Cloth over the lower face (and the hood, in the hair colour). */
+    mask?: string;
+    /** Hair tied up on top. */
+    topknot?: boolean;
   };
 }
 
@@ -203,6 +207,12 @@ export class FighterView {
     if (A.cyclops) this.eyes.push(addMesh('head', box(0.1, 0.08, 0.02), eyeMat('head'), [0, 0.19, 0.136]));
     else for (const s of [1, -1]) this.eyes.push(addMesh('head', box(0.045, 0.05, 0.02), eyeMat('head'), [s * 0.06, 0.18, 0.135]));
     if (A.snout) this.add('head', box(0.16, 0.1, 0.1), 'skin', [0, 0.1, 0.16]);
+    if (A.mask) {
+      const cloth = new MeshStandardMaterial({ color: A.mask, flatShading: true, roughness: 0.95 });
+      addMesh('head', box(0.265, 0.13, 0.03), cloth, [0, 0.08, 0.13]);
+      addMesh('head', box(0.27, 0.06, 0.27), cloth, [0, 0.0, 0]);
+    }
+    if (A.topknot) this.add('head', box(0.07, 0.1, 0.12), 'hair', [0, 0.37, -0.02]);
     if (A.horns) {
       const hm = new MeshStandardMaterial({ color: A.horns === 'bull' ? '#e8dcc0' : '#1c1414', flatShading: true, roughness: 0.5 });
       this.mats.head.push(hm);

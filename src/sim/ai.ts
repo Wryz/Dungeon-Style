@@ -3,7 +3,7 @@ import type { Walkable } from '../world/collision';
 import type { Drop } from './combat';
 import type { Fighter } from './fighter';
 import type { Rng } from './math';
-import { heft, weaponPlan } from './weapons';
+import { heft, type WeaponId, weaponPlan } from './weapons';
 
 export interface AIConfig {
   /** Scales attack frequency. 1 = baseline. */
@@ -17,6 +17,37 @@ export interface AIConfig {
 }
 
 export const DEFAULT_AI: AIConfig = { aggression: 1, blockChance: 0.3, stringChance: 0.35, passive: false };
+
+/**
+ * A fighter's own technique, saved for the moment it's made for: a distance band (m,
+ * scaled with the fighter's size, measured to the target's surface), a situation, and
+ * how keen they are on it.
+ */
+export interface Special {
+  move: string;
+  min: number;
+  max: number;
+  /** Chance per frame while it's on (× aggression). */
+  rate: number;
+  /** Frames before trying it again. */
+  cooldown: number;
+  /**
+   * 'crowded' — too close; 'afterHit' — just took one; 'targetAttacking' — something's
+   * on its way in; 'targetWhiffed' — they're stuck recovering from a miss;
+   * 'targetEntered' — they just stepped into reach; 'armed'/'unarmed'; 'hasAmmo'.
+   */
+  when?: 'crowded' | 'afterHit' | 'targetAttacking' | 'targetWhiffed' | 'targetEntered' | 'armed' | 'unarmed' | 'hasAmmo';
+  /** Only with one of these in hand. */
+  weapons?: WeaponId[];
+}
+
+/**
+ * How a fighter carries a fight: 'pressure' walks you down; 'patient' waits just out of
+ * reach for you to commit, then answers; 'skirmish' darts in and straight back out;
+ * 'berserk' keeps coming, angrier the more it's hurt, and fights its way out of a crowd;
+ * 'sloppy' backs off flinching after every hit it takes.
+ */
+export type Temper = 'pressure' | 'patient' | 'skirmish' | 'berserk' | 'sloppy';
 
 /** What an enemy archetype throws and how it manages distance. */
 export interface AIPlan {
@@ -32,6 +63,10 @@ export interface AIPlan {
   punish: string;
   /** Follow-ups: after `from`, cancel into `next` (chance scaled by stringChance). */
   chains: Record<string, string>;
+  temper?: Temper;
+  specials?: Special[];
+  /** How this fighter uses particular weapons (first match wins; no `weapons` = any). */
+  armed?: { weapons?: WeaponId[]; moves: [string, number][]; punish?: string }[];
 }
 
 export const BRAWLER_PLAN: AIPlan = {
@@ -93,6 +128,11 @@ export class BrawlerAI {
   private circleFrames = 0;
   /** Out of breath: backing off until it comes back. */
   private winded = false;
+  /** Frames until each special can be tried again. */
+  private readonly specialCool: Record<string, number> = {};
+  private sinceOwnAttack = 999;
+  private retreatFor = 0;
+  private prevDist = Infinity;
   private pinned = 0;
   private readonly lastPos = new Vector3();
 
@@ -114,6 +154,11 @@ export class BrawlerAI {
     // its centre (and a giant can't be stood as close to), a smaller one's nearer.
     const dist = raw - Math.max(-0.15, (target.scale - 1) * 0.5);
     const plan = this.planFor(self);
+    const temper = plan.temper ?? 'pressure';
+    this.sinceOwnAttack = self.state === 'attack' ? 0 : this.sinceOwnAttack + 1;
+    for (const k in this.specialCool) this.specialCool[k]--;
+    const entered = dist < plan.attackRange && this.prevDist >= plan.attackRange;
+    this.prevDist = dist;
 
     // Attack strings: cancel straight -> haymaker.
     if (self.state === 'attack' && this.chain && self.inCancelWindow()) {
@@ -148,6 +193,9 @@ export class BrawlerAI {
     }
     if (!self.free) return;
 
+    // Their own techniques, when the moment is right for one.
+    if (this.trySpecial(self, target, plan, dist, entered)) return;
+
     // Unarmed with a weapon lying nearby: go and grab it (unless already toe to toe).
     if (this.seekWeapon(self, raw, target)) return;
 
@@ -173,14 +221,31 @@ export class BrawlerAI {
     // Gassed: give ground and get the breath back before going again.
     if (self.stamina < 0.2) this.winded = true;
     else if (self.stamina > 0.45) this.winded = false;
-    const want = downed ? 1.7 : plan.range + (this.winded ? 0.7 * self.scale : 0);
+    let want = downed ? 1.7 : plan.range + (this.winded ? 0.7 * self.scale : 0);
+    if (!downed) {
+      // Waiting just outside reach for them to commit.
+      if (temper === 'patient' && !(target.state === 'attack' && target.stateFrame > (target.move?.startup ?? 0))) want = Math.max(want, plan.attackRange + 0.15 * self.scale);
+      // In and straight back out again.
+      // (Further, with knives left to throw.) Out until there, or until they've closed in
+      // on you anyway.
+      if (temper === 'skirmish') {
+        const out = plan.range + (self.ammo && self.ammo.count > 0 ? 2.2 : 1.3) * self.scale;
+        if (this.sinceOwnAttack === 1) this.retreatFor = 110;
+        if (this.retreatFor > 0) {
+          this.retreatFor = dist >= out - 0.2 ? 0 : this.retreatFor - 1;
+          want = out;
+        }
+      }
+      // Rattled: backing off from the one that just landed.
+      if (temper === 'sloppy' && self.framesSinceHit < 45) want = plan.range + 0.9 * self.scale;
+    }
     let mx = 0;
     let mz = 0;
     if (dist > want + 0.1) {
       mx += fx;
       mz += fz;
     } else if (dist < want - 0.25) {
-      this.giveGround(self, fx, fz, 0.8);
+      this.giveGround(self, fx, fz, this.retreatFor > 0 ? 1 : 0.8);
       mx = self.moveInput.x;
       mz = self.moveInput.z;
     }
@@ -199,7 +264,8 @@ export class BrawlerAI {
       mx /= ml;
       mz /= ml;
     }
-    self.moveInput.set(mx, 0, mz).multiplyScalar(0.75);
+    // (Getting out to range, a skirmisher goes at full speed rather than easing back.)
+    self.moveInput.set(mx, 0, mz).multiplyScalar(this.retreatFor > 0 ? 1 : 0.75);
     this.steer(self);
 
     if (downed) return;
@@ -212,8 +278,10 @@ export class BrawlerAI {
       }
     }
 
-    // Tired fighters throw less.
-    this.cooldown -= this.cfg.aggression * (0.45 + 0.55 * self.stamina);
+    // Tired fighters throw less; a patient one hardly throws first at all, and a berserker
+    // gets wilder the more it's hurt.
+    const keen = temper === 'patient' ? 0.5 : temper === 'berserk' ? 1 + Math.max(0, 0.6 - self.hp / self.stats.maxHp) : 1;
+    this.cooldown -= this.cfg.aggression * keen * (0.45 + 0.55 * self.stamina);
     // With a weapon, crowded is bad: only the haft can land. Make room first — back out
     // to where the head reaches (going round whatever's behind), or push them off with a
     // teep. Pinned there (a wall, a corner, someone who keeps following), stop backing
@@ -233,7 +301,9 @@ export class BrawlerAI {
       if (this.winded && !cornered) return;
       const teep = self.moves.teep;
       const canTeep = !!teep && self.canUse(teep);
-      if (cornered ? this.rng.chance(0.08 * this.cfg.aggression) : this.rng.chance(0.02 * this.cfg.aggression)) {
+      // (A berserker shoves its way out far sooner than it backs off.)
+      const shove = (cornered ? 0.08 : 0.02) * (temper === 'berserk' ? 2.5 : 1);
+      if (this.rng.chance(shove * this.cfg.aggression)) {
         if (canTeep && (!cornered || this.rng.chance(0.5))) {
           self.startMove(teep);
           this.director?.claim();
@@ -246,10 +316,60 @@ export class BrawlerAI {
     }
     this.pinned = 0;
     this.lastPos.copy(self.pos);
-    if (this.winded) return;
+    // Getting out, not trading.
+    if (this.winded || this.retreatFor > 0) return;
     if (this.cooldown <= 0 && dist < plan.attackRange && (!this.director || this.director.canAttack())) {
       this.start(self, this.rng.pickWeighted<string>(this.choices(self, target, plan, dist)));
     }
+  }
+
+  private trySpecial(self: Fighter, target: Fighter, plan: AIPlan, dist: number, entered: boolean): boolean {
+    if (!plan.specials || this.winded) return false;
+    if (target.state === 'knockdown' || target.state === 'getup' || target.state === 'ko') return false;
+    for (const sp of plan.specials) {
+      if ((this.specialCool[sp.move] ?? 0) > 0) continue;
+      if (dist < sp.min * self.scale || dist > sp.max * self.scale) continue;
+      if (sp.weapons && (!self.weapon || !sp.weapons.includes(self.weapon.id))) continue;
+      const m = self.moveDef(sp.move);
+      if (!m || !self.canUse(m) || !self.canReach(m)) continue;
+      if (m.throw && (m.throw.ammo ? !self.ammo || self.ammo.count <= 0 : !self.weapon)) continue;
+      const tm = target.state === 'attack' ? target.move : null;
+      switch (sp.when) {
+        case 'crowded':
+          if (dist > Math.max(plan.crowded ?? 0, 0.85 * self.scale)) continue;
+          break;
+        case 'afterHit':
+          if (self.framesSinceHit > 30) continue;
+          break;
+        case 'targetAttacking':
+          if (!tm || tm.noHit || target.framesToActive < 3 || target.framesToActive > 14) continue;
+          break;
+        case 'targetWhiffed':
+          if (!tm || target.stateFrame <= tm.startup + tm.active) continue;
+          break;
+        case 'targetEntered':
+          if (!entered) continue;
+          break;
+        case 'armed':
+          if (!self.weapon) continue;
+          break;
+        case 'unarmed':
+          if (self.weapon) continue;
+          break;
+        case 'hasAmmo':
+          if (!self.ammo || self.ammo.count <= 0) continue;
+          break;
+      }
+      // Evasions and counters go when they're needed; anything else waits its turn.
+      // (Throwing from range isn't crowding in on anyone's turn.)
+      const urgent = sp.when === 'targetAttacking' || sp.when === 'afterHit' || sp.when === 'targetWhiffed' || sp.when === 'targetEntered' || !!m.throw;
+      if (!urgent && this.director && !this.director.canAttack()) continue;
+      if (!this.rng.chance(sp.rate * this.cfg.aggression)) continue;
+      this.specialCool[sp.move] = sp.cooldown;
+      this.start(self, sp.move);
+      return true;
+    }
+    return false;
   }
 
   /** What's worth throwing from here, at this target. */
@@ -274,7 +394,23 @@ export class BrawlerAI {
     const key = `${self.weapon.id}:${self.scale}`;
     if (this.armed?.key !== key) {
       const p = weaponPlan(self.weapon);
-      this.armed = { key, plan: { ...p, range: p.range * self.scale, attackRange: p.attackRange * self.scale, crowded: (p.crowded ?? 0) * self.scale } };
+      // This fighter's own way with this kind of weapon (a samurai with a katana...).
+      const id = self.weapon.id;
+      const own = this.plan.armed?.find((a) => !a.weapons || a.weapons.includes(id));
+      const moves = own?.moves.filter(([m]) => !!self.moveDef(m)) ?? [];
+      this.armed = {
+        key,
+        plan: {
+          ...p,
+          moves: moves.length ? moves : p.moves,
+          punish: own?.punish ?? p.punish,
+          range: p.range * self.scale,
+          attackRange: p.attackRange * self.scale,
+          crowded: (p.crowded ?? 0) * self.scale,
+          temper: this.plan.temper,
+          specials: this.plan.specials,
+        },
+      };
     }
     return this.armed.plan;
   }

@@ -5,7 +5,7 @@ import type { Rng } from './math';
 import { ENEMY_MOVES } from './moves';
 import { BRAWLER_STYLE } from './roster';
 
-export type EnemyKind = 'rookie' | 'brawler' | 'kicker' | 'bruiser' | 'imp' | 'demon' | 'champion' | 'minotaur' | 'cyclops';
+export type EnemyKind = 'rookie' | 'brawler' | 'kicker' | 'bruiser' | 'samurai' | 'ninja' | 'imp' | 'demon' | 'champion' | 'minotaur' | 'cyclops';
 
 export const BOSSES: EnemyKind[] = ['champion', 'minotaur', 'cyclops'];
 
@@ -23,6 +23,8 @@ export interface Archetype {
   boss?: boolean;
   /** Comes armed. */
   weapon?: WeaponId;
+  /** Carries throwing weapons on the belt. */
+  ammo?: { weapon: WeaponId; count: number };
 }
 
 const LIGHT_STYLE: FighterStyle = {
@@ -68,22 +70,42 @@ const HEAVY_STYLE: FighterStyle = {
   },
 };
 
+const SAMURAI_STYLE: FighterStyle = {
+  // Settled and still: low, steady, no bouncing, sliding steps.
+  footwork: { stanceWidth: 1.1, stepFrames: 13, stepHeight: 0.02 },
+  idle: {
+    bounceHz: 0.5,
+    bounceAmp: 0.006,
+    swayAmp: 0.015,
+    feintEvery: [3.5, 6],
+    feintWeights: { jab: 0, shoulder: 1, level: 2, step: 3 },
+    shuffleEvery: [1.2, 2.4],
+    pawEvery: [6, 9],
+    shoulderRoll: 0,
+  },
+};
+
 export const ARCHETYPES = {
   rookie: {
     kind: 'rookie',
     name: 'Rookie',
     stats: { maxHp: 45, walkSpeed: 2.1 },
     style: LIGHT_STYLE,
+    // Sloppy: pawing jabs, a wild haymaker when he's been hurt, and he backs off
+    // flinching after every one he takes.
     plan: {
       moves: [
         ['rookieJab', 40],
         ['straight', 25],
-        ['body', 20],
+        ['body', 15],
+        ['haymaker', 12],
       ],
       range: 1.05,
       attackRange: 1.35,
       punish: 'rookieJab',
       chains: { rookieJab: 'straight' },
+      temper: 'sloppy',
+      specials: [{ move: 'haymaker', min: 0.6, max: 1.4, rate: 0.05, cooldown: 200, when: 'afterHit' }],
     },
     ai: { blockChance: 0.15, aggression: 1.1 },
     coins: [4, 7],
@@ -93,7 +115,14 @@ export const ARCHETYPES = {
     name: 'Brawler',
     stats: { maxHp: 70, walkSpeed: 1.9, staggerResist: 0.1 },
     style: BRAWLER_STYLE,
-    plan: BRAWLER_PLAN,
+    // Street fighter: walks you down, picks up whatever's lying around — and throws it.
+    plan: {
+      ...BRAWLER_PLAN,
+      temper: 'pressure',
+      specials: [
+        { move: 'throwOne', min: 2.5, max: 9, rate: 0.05, cooldown: 420, weapons: ['bottle', 'pan', 'cleaver', 'crowbar', 'pipe', 'machete', 'kunai'] },
+      ],
+    },
     ai: {},
     coins: [7, 11],
   },
@@ -113,6 +142,13 @@ export const ARCHETYPES = {
       attackRange: 1.45,
       punish: 'teep',
       chains: { kLowKick: 'straight' },
+      temper: 'pressure',
+      // Taekwondo off the back foot: a spinning back kick in close, a jumping kick to
+      // close the distance.
+      specials: [
+        { move: 'spinBackKick', min: 0.6, max: 1.2, rate: 0.02, cooldown: 240 },
+        { move: 'jumpKick', min: 1.5, max: 2.3, rate: 0.02, cooldown: 300 },
+      ],
     },
     ai: { blockChance: 0.25 },
     coins: [8, 12],
@@ -132,9 +168,72 @@ export const ARCHETYPES = {
       attackRange: 1.25,
       punish: 'bruiserBody',
       chains: {},
+      temper: 'pressure',
+      // A wall of a man: runs you over with his shoulder, stamps on your feet.
+      specials: [
+        { move: 'shoulderCharge', min: 1.9, max: 3.6, rate: 0.025, cooldown: 360 },
+        { move: 'stomp', min: 0.5, max: 1.1, rate: 0.012, cooldown: 300 },
+      ],
     },
     ai: { blockChance: 0.4, aggression: 0.8, stringChance: 0 },
     coins: [16, 24],
+  },
+  samurai: {
+    kind: 'samurai',
+    name: 'Samurai',
+    weapon: 'katana',
+    stats: { maxHp: 90, walkSpeed: 1.9, staggerResist: 0.3 },
+    style: SAMURAI_STYLE,
+    // Waits just out of reach, sword up. Step in and he's already cutting; miss and the
+    // draw cut answers before you've recovered.
+    plan: {
+      moves: [['straight', 30], ['body', 25], ['teep', 25]],
+      range: 1.05,
+      attackRange: 1.35,
+      punish: 'straight',
+      chains: {},
+      temper: 'patient',
+      armed: [
+        { weapons: ['katana', 'bokken'], moves: [['kesa', 3], ['menCut', 2], ['tsuki', 2], ['iai', 1]], punish: 'tsuki' },
+        { weapons: ['machete', 'gladius', 'ninjato', 'pipe', 'crowbar'], moves: [['slash', 3], ['thrust', 2], ['chop', 1]], punish: 'thrust' },
+      ],
+      specials: [
+        { move: 'iai', min: 0, max: 1.8, rate: 0.12, cooldown: 160, when: 'targetWhiffed', weapons: ['katana', 'bokken'] },
+        { move: 'kesa', min: 0, max: 1.7, rate: 0.3, cooldown: 120, when: 'targetEntered', weapons: ['katana', 'bokken'] },
+        { move: 'tsuki', min: 1.5, max: 2.2, rate: 0.012, cooldown: 220, weapons: ['katana', 'bokken'] },
+      ],
+    },
+    ai: { blockChance: 0.5, aggression: 1, stringChance: 0 },
+    coins: [14, 20],
+  },
+  ninja: {
+    kind: 'ninja',
+    name: 'Ninja',
+    weapon: 'ninjato',
+    ammo: { weapon: 'kunai', count: 5 },
+    stats: { maxHp: 62, walkSpeed: 2.6 },
+    style: LIGHT_STYLE,
+    // Never where you want him: knives from range, a dash or a flip to get in, a cut, and
+    // gone again — flipping away from anything that comes his way.
+    plan: {
+      moves: [['rookieJab', 30], ['teep', 30], ['kLowKick', 25]],
+      range: 1.1,
+      attackRange: 1.4,
+      punish: 'rookieJab',
+      chains: {},
+      temper: 'skirmish',
+      armed: [{ weapons: ['ninjato', 'katana', 'machete', 'gladius', 'cleaver', 'kunai'], moves: [['slash', 3], ['thrust', 2], ['dashSlash', 1]] }],
+      specials: [
+        { move: 'backflip', min: 0, max: 1.4, rate: 0.3, cooldown: 140, when: 'targetAttacking' },
+        { move: 'backflip', min: 0, max: 1.3, rate: 0.2, cooldown: 140, when: 'afterHit' },
+        { move: 'kunaiThrow', min: 2.2, max: 9, rate: 0.09, cooldown: 70, when: 'hasAmmo' },
+        { move: 'dashSlash', min: 2.2, max: 3.1, rate: 0.03, cooldown: 200, when: 'armed' },
+        { move: 'flipSlash', min: 1.9, max: 2.6, rate: 0.02, cooldown: 280, when: 'armed' },
+        { move: 'frontFlipKick', min: 1.9, max: 2.6, rate: 0.015, cooldown: 300, when: 'unarmed' },
+      ],
+    },
+    ai: { blockChance: 0.2, aggression: 1.15 },
+    coins: [14, 20],
   },
 } as unknown as Record<EnemyKind, Archetype>; // creatures and bosses are added below
 
@@ -158,7 +257,20 @@ Object.assign(ARCHETYPES, {
     name: 'Imp',
     stats: { maxHp: 34, walkSpeed: 2.7 },
     style: LIGHT_STYLE,
-    plan: { moves: [['rookieJab', 40], ['body', 25], ['teep', 20]], range: 1.05, attackRange: 1.35, punish: 'rookieJab', chains: { rookieJab: 'body' } },
+    // An acrobat: darts in and out, flips away from trouble and comes over the top with a
+    // heel.
+    plan: {
+      moves: [['rookieJab', 40], ['body', 25], ['teep', 20]],
+      range: 1.05,
+      attackRange: 1.35,
+      punish: 'rookieJab',
+      chains: { rookieJab: 'body' },
+      temper: 'skirmish',
+      specials: [
+        { move: 'backflip', min: 0, max: 1.4, rate: 0.15, cooldown: 180, when: 'targetAttacking' },
+        { move: 'frontFlipKick', min: 1.8, max: 2.6, rate: 0.025, cooldown: 260 },
+      ],
+    },
     ai: { blockChance: 0.1, aggression: 1.35 },
     coins: [5, 8],
     scale: 0.72,
@@ -168,7 +280,19 @@ Object.assign(ARCHETYPES, {
     name: 'Demon',
     stats: { maxHp: 95, walkSpeed: 2.2, staggerResist: 0.25 },
     style: KICKER_STYLE,
-    plan: { moves: [['hook', 30], ['straight', 20], ['roundhouse', 25], ['bruiserBody', 20]], range: 1.1, attackRange: 1.4, punish: 'straight', chains: { straight: 'hookChain' } },
+    // A predator: in for a flurry, back out to circle, then leaps on you from out of reach.
+    plan: {
+      moves: [['hook', 30], ['straight', 20], ['roundhouse', 25], ['bruiserBody', 20]],
+      range: 1.1,
+      attackRange: 1.4,
+      punish: 'straight',
+      chains: { straight: 'hookChain' },
+      temper: 'skirmish',
+      specials: [
+        { move: 'pounce', min: 1.8, max: 3.6, rate: 0.08, cooldown: 280 },
+        { move: 'spinBackKick', min: 0.6, max: 1.2, rate: 0.012, cooldown: 300 },
+      ],
+    },
     ai: { blockChance: 0.3, aggression: 1.15 },
     coins: [14, 20],
     scale: 1.12,
@@ -178,7 +302,16 @@ Object.assign(ARCHETYPES, {
     name: 'The Champion',
     stats: { maxHp: 260, walkSpeed: 1.7, staggerResist: 0.6, defense: 0.15 },
     style: BRAWLER_STYLE,
-    plan: { moves: [['straight', 30], ['hook', 30], ['body', 25], ['bruiserHook', 15]], range: 1.05, attackRange: 1.3, punish: 'straight', chains: { straight: 'hookChain' } },
+    // A pro: combinations, and the superman punch to cover distance.
+    plan: {
+      moves: [['straight', 30], ['hook', 30], ['body', 25], ['bruiserHook', 15]],
+      range: 1.05,
+      attackRange: 1.3,
+      punish: 'straight',
+      chains: { straight: 'hookChain' },
+      temper: 'pressure',
+      specials: [{ move: 'superman', min: 0.8, max: 2.0, rate: 0.04, cooldown: 260 }],
+    },
     ai: { blockChance: 0.45, aggression: 1 },
     coins: [60, 80],
     scale: 1.6,
@@ -190,7 +323,22 @@ Object.assign(ARCHETYPES, {
     weapon: 'axe',
     stats: { maxHp: 320, walkSpeed: 1.6, staggerResist: 0.7, defense: 0.2 },
     style: BOSS_STYLE,
-    plan: { moves: [['bruiserHook', 30], ['bruiserBody', 30], ['sweep', 20], ['teep', 20]], range: 1.0, attackRange: 1.3, punish: 'bruiserBody', chains: {} },
+    // A berserker: the axe goes round in full circles, gets hurled at you from across
+    // the arena (then he charges in after it, head down), and he never backs off.
+    plan: {
+      moves: [['bruiserHook', 30], ['bruiserBody', 30], ['sweep', 20], ['teep', 20]],
+      range: 1.0,
+      attackRange: 1.3,
+      punish: 'bruiserBody',
+      chains: {},
+      temper: 'berserk',
+      armed: [{ weapons: ['axe', 'fireaxe', 'club', 'sledgehammer', 'bat'], moves: [['sweep', 3], ['overhead', 2], ['sweepBack', 1]] }],
+      specials: [
+        { move: 'spinCleave', min: 0.9, max: 1.35, rate: 0.02, cooldown: 240, weapons: ['axe', 'fireaxe', 'club', 'sledgehammer'] },
+        { move: 'throwHeavy', min: 2.1, max: 5, rate: 0.04, cooldown: 900, weapons: ['axe', 'fireaxe'] },
+        { move: 'shoulderCharge', min: 1.6, max: 3.4, rate: 0.03, cooldown: 280, when: 'unarmed' },
+      ],
+    },
     ai: { blockChance: 0.25, aggression: 1.05, stringChance: 0 },
     coins: [80, 110],
     scale: 1.75,
@@ -202,7 +350,21 @@ Object.assign(ARCHETYPES, {
     weapon: 'club',
     stats: { maxHp: 380, walkSpeed: 1.35, staggerResist: 0.75, defense: 0.25 },
     style: BOSS_STYLE,
-    plan: { moves: [['bruiserHook', 35], ['sweep', 25], ['bruiserBody', 25], ['roundhouse', 15]], range: 1.0, attackRange: 1.3, punish: 'bruiserBody', chains: {} },
+    // A giant: slow, huge sweeps and pounding overheads with the club, and that foot.
+    plan: {
+      moves: [['bruiserHook', 35], ['sweep', 25], ['bruiserBody', 25], ['roundhouse', 15]],
+      range: 1.0,
+      attackRange: 1.3,
+      punish: 'bruiserBody',
+      chains: {},
+      temper: 'pressure',
+      armed: [{ moves: [['sweep', 3], ['overhead', 3]] }],
+      specials: [
+        { move: 'stomp', min: 0.3, max: 0.9, rate: 0.03, cooldown: 220 },
+        { move: 'spinCleave', min: 0.9, max: 1.3, rate: 0.01, cooldown: 420, weapons: ['club', 'axe', 'fireaxe', 'sledgehammer'] },
+        { move: 'throwHeavy', min: 2.1, max: 5, rate: 0.006, cooldown: 1200, weapons: ['club'] },
+      ],
+    },
     ai: { blockChance: 0.2, aggression: 0.95, stringChance: 0 },
     coins: [100, 140],
     scale: 1.85,
@@ -227,6 +389,7 @@ export function createEnemy(kind: EnemyKind, rng: Rng, mods: EnemyMods = {}, bas
   const fighter = new Fighter('enemy', a.name, ENEMY_MOVES, stats, a.style);
   fighter.scale = sc;
   if (a.weapon) fighter.weapon = WEAPONS[a.weapon];
+  if (a.ammo) fighter.ammo = { weapon: WEAPONS[a.ammo.weapon], count: a.ammo.count };
   const cfg = { ...DEFAULT_AI, ...baseAi, ...a.ai };
   cfg.aggression *= mods.aggression ?? 1;
   // Spacing scales with size.

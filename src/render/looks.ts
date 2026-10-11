@@ -5,6 +5,11 @@ import { BRAWLER_PALETTE, ENEMY_PALETTES, type GearLook, type Palette } from './
 /** What each opponent wears depends on where you fight them. */
 export function lookFor(kind: EnemyKind, theme: ThemeId | null): { palette: Palette; gear?: GearLook } {
   switch (kind) {
+    case 'samurai':
+      // Indigo kimono top, dark hakama, white tabi, hair tied up.
+      return { palette: { skin: '#e0b68e', shirt: '#2c3a5c', pants: '#1d1d24', gloves: '#e0b68e', boots: '#e6e0d0', hair: '#141414', sleeves: 'shirt', shins: '#1d1d24', addons: { topknot: true } } };
+    case 'ninja':
+      return { palette: { skin: '#d1a37c', shirt: '#17171d', pants: '#17171d', gloves: '#17171d', boots: '#101014', hair: '#101014', sleeves: 'shirt', shins: '#17171d', addons: { mask: '#17171d' } } };
     case 'imp':
       return { palette: { skin: '#7a3a8c', shirt: '#7a3a8c', pants: '#2a1830', gloves: '#3a1a40', boots: '#2a1830', hair: '#140a18', sleeves: 'skin', bald: true, addons: { horns: 'small', eyes: '#ffd23a', tail: true } } };
     case 'demon':

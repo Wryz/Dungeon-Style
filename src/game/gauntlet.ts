@@ -32,6 +32,8 @@ function pool(round: number): [EnemyKind, number][] {
   if (round >= 2) p.push(['brawler', 3]);
   if (round >= 3) p.push(['kicker', 3]);
   if (round >= 5) p.push(['bruiser', 2]);
+  if (round >= 5) p.push(['samurai', 2.5]);
+  if (round >= 6) p.push(['ninja', 2.5]);
   if (round >= 6) p.push(['imp', 3]);
   if (round >= 7) p.push(['demon', 2 + Math.min(3, (round - 7) * 0.5)]);
   // The rookies fade out as the gauntlet goes on.

@@ -1109,7 +1109,16 @@ export class CombatSim {
       if (t && d > 0) d = Math.min(d, Math.max(0, f.distanceTo(t) - (LUNGE_STOP * (f.scale + t.scale)) / 2));
       f.airStep.copy(f.forward).multiplyScalar(d / (a.to - a.from));
     }
-    if (f.stateFrame >= a.from && f.stateFrame < a.to) f.pos.add(f.airStep);
+    if (f.stateFrame >= a.from && f.stateFrame < a.to) {
+      // Flying into someone, you stop against them: bodies don't pass through each other.
+      const t = f.target && f.target.alive ? f.target : null;
+      if (t && f.airStep.dot(_v.set(t.pos.x - f.pos.x, 0, t.pos.z - f.pos.z)) > 0) {
+        const room = f.distanceTo(t) - (LUNGE_STOP * (f.scale + t.scale)) / 2;
+        if (room <= 0) f.airStep.set(0, 0, 0);
+        else if (f.airStep.length() > room) f.airStep.setLength(room);
+      }
+      f.pos.add(f.airStep);
+    }
   }
 
   /**

@@ -217,7 +217,8 @@ Object.assign(WEAPON_MOVES, {
   spinCleave: weaponMove({
     id: 'spinCleave', name: 'Spinning Cleave',
     startup: 16, active: 20, recovery: 30,
-    height: 'high', kind: 'hook', weight: 'heavy',
+    // Round at chest height: nothing to duck under, only a guard to take it on.
+    height: 'mid', kind: 'hook', weight: 'heavy',
     damage: 13, guardDamage: 30, poiseDamage: 55, hitstun: 30, blockstun: 20,
     knockback: 3.0, impulse: 36, lift: 0.05, hitstop: 11, shake: 0.5, radius: 0, reach: 2.3,
     spin: { from: 6, to: 40, turns: 1 },

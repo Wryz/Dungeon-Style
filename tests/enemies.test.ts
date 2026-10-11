@@ -20,7 +20,9 @@ describe('enemy archetypes', () => {
         if (fighter.state === 'attack' && fighter.move) used.add(fighter.move.id);
         if (!player.alive) break;
       }
-      const plan = new Set(ARCHETYPES[kind].plan.moves.map(([m]) => m));
+      // Its own moves: what it throws bare-handed, with its weapon, and its specials.
+      const a = ARCHETYPES[kind].plan;
+      const plan = new Set([...a.moves, ...(a.armed ?? []).flatMap((x) => x.moves)].map(([m]) => m).concat((a.specials ?? []).map((x) => x.move)));
       expect([...used].some((m) => plan.has(m))).toBe(true);
       expect(Number.isFinite(fighter.pos.x)).toBe(true);
     });

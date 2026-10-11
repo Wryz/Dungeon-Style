@@ -917,7 +917,8 @@ export const POSE_SPECS = {
     head: [-0.06, 0.5, 0],
     handL: { at: [0.15, 1.48, 0.35], hint: [0.35, -1, 0] },
     handR: { at: [-0.2, 1.5, -0.12], hint: [-0.6, -0.6, -1] },
-    footL: { at: [0.1, 0.42, 0.25], hint: [0, 0.4, 1] },
+    // (The lead leg stays under the body, reaching for the landing.)
+    footL: { at: [0.1, 0.32, 0.06], hint: [0, 0.2, 1] },
     footR: { at: [-0.15, 0.35, -0.45], hint: [0, -0.3, 1] },
   },
   smExt: {
@@ -929,7 +930,7 @@ export const POSE_SPECS = {
     head: [-0.08, -0.35, 0],
     handL: { at: [0.13, 1.46, 0.2], hint: [0.35, -1, 0] },
     handR: { at: [-0.01, 1.52, 1.0], hint: [-0.6, -0.6, 0] },
-    footL: { at: [0.15, 0.3, 0.38], hint: [0, 0.3, 1] },
+    footL: { at: [0.13, 0.22, 0.14], hint: [0, 0.2, 1] },
     footR: { at: [-0.15, 0.42, -0.42], hint: [0, -0.3, 1] },
   },
   // Jumping front kick: both knees come up off the ground, the lead leg snaps out.
