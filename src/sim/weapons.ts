@@ -10,7 +10,9 @@ import type { Aim, DefenseKind, Key, MoveDef } from './moves';
  * hand with the lead hand free; two-handed weapons are gripped with both hands. Edged
  * weapons leave lasting, bleeding cuts and heavy ones can take limbs off.
  */
-export type WeaponId = 'cleaver' | 'machete' | 'gladius' | 'pan' | 'axe' | 'bat' | 'chair' | 'club';
+export type WeaponId =
+  | 'cleaver' | 'machete' | 'gladius' | 'pan' | 'axe' | 'bat' | 'chair' | 'club'
+  | 'crowbar' | 'sledgehammer' | 'cue' | 'bottle' | 'katana' | 'bokken' | 'pipe' | 'fireaxe';
 export type WeaponStyle = 'oneHand' | 'twoHand';
 
 export interface WeaponDef {
@@ -52,6 +54,15 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   bat: { id: 'bat', name: 'Baseball Bat', style: 'twoHand', edge: 'blunt', length: 0.88, strikeFrom: 0.3, radius: 0.07, damageMul: 1.45, cut: 0, cleave: 0, bite: 0, tempo: 1, ...TWO_HAND },
   chair: { id: 'chair', name: 'Folding Chair', style: 'twoHand', edge: 'blunt', length: 0.66, strikeFrom: 0.2, radius: 0.16, damageMul: 1.35, cut: 0, cleave: 0, bite: 0, tempo: 1.1, ...TWO_HAND },
   club: { id: 'club', name: 'Spiked Club', style: 'twoHand', edge: 'blunt', length: 1.0, strikeFrom: 0.35, radius: 0.11, damageMul: 1.6, cut: 0.3, cleave: 0, bite: 6, tempo: 1.2, ...TWO_HAND },
+  crowbar: { id: 'crowbar', name: 'Crowbar', style: 'oneHand', edge: 'blunt', length: 0.62, strikeFrom: 0.3, radius: 0.05, damageMul: 1.3, cut: 0.2, cleave: 0, bite: 5, tempo: 1, ...ONE_HAND_CUTS },
+  sledgehammer: { id: 'sledgehammer', name: 'Sledgehammer', style: 'twoHand', edge: 'blunt', length: 0.95, strikeFrom: 0.72, radius: 0.11, damageMul: 1.8, cut: 0, cleave: 0, bite: 0, tempo: 1.3, ...TWO_HAND },
+  cue: { id: 'cue', name: 'Pool Cue', style: 'twoHand', edge: 'blunt', length: 1.25, strikeFrom: 0.55, radius: 0.04, damageMul: 1.1, cut: 0, cleave: 0, bite: 0, tempo: 0.9, ...TWO_HAND },
+  bottle: { id: 'bottle', name: 'Beer Bottle', style: 'oneHand', edge: 'blunt', length: 0.3, strikeFrom: 0.12, radius: 0.06, damageMul: 1.1, cut: 0, cleave: 0, bite: 0, tempo: 0.85, light: 'hack', heavy: 'chop', chain: { hack: 'hack' } },
+  // A katana slices: deep, long cuts that pass through rather than lodge.
+  katana: { id: 'katana', name: 'Katana', style: 'twoHand', edge: 'blade', length: 0.98, strikeFrom: 0.22, radius: 0.05, damageMul: 1.5, cut: 1, cleave: 0.85, bite: 5, tempo: 0.95, ...TWO_HAND },
+  bokken: { id: 'bokken', name: 'Bokken', style: 'twoHand', edge: 'blunt', length: 0.95, strikeFrom: 0.3, radius: 0.05, damageMul: 1.3, cut: 0, cleave: 0, bite: 0, tempo: 0.9, ...TWO_HAND },
+  pipe: { id: 'pipe', name: 'Lead Pipe', style: 'oneHand', edge: 'blunt', length: 0.72, strikeFrom: 0.25, radius: 0.045, damageMul: 1.3, cut: 0, cleave: 0, bite: 0, tempo: 1, ...ONE_HAND_CUTS },
+  fireaxe: { id: 'fireaxe', name: 'Fire Axe', style: 'twoHand', edge: 'blade', length: 0.9, strikeFrom: 0.42, radius: 0.09, damageMul: 1.5, cut: 1, cleave: 0.95, bite: 16, tempo: 1.1, ...TWO_HAND },
 };
 
 

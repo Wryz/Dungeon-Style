@@ -2,7 +2,15 @@ import type { ThemeId } from '../arena/themes';
 import type { EnemyKind, EnemyMods } from '../sim/enemies';
 import type { Rng } from '../sim/math';
 
-export const THEME_ORDER: ThemeId[] = ['ring', 'street', 'grocery', 'colosseum'];
+/** Regular rounds cycle through these; every boss is fought in the colosseum. */
+export const ARENA_ORDER: ThemeId[] = ['ring', 'street', 'grocery', 'warehouse', 'bar', 'dojo', 'rooftop'];
+
+/** The arena for round n. */
+export function themeFor(round: number): ThemeId {
+  if (round % 4 === 0) return 'colosseum';
+  const regular = round - Math.floor(round / 4) - 1;
+  return ARENA_ORDER[regular % ARENA_ORDER.length];
+}
 const BOSS_ORDER: EnemyKind[] = ['champion', 'minotaur', 'cyclops'];
 
 export interface Spawn extends EnemyMods {
@@ -37,7 +45,7 @@ function pool(round: number): [EnemyKind, number][] {
  * round 6, and everyone gets tougher as the rounds go on.
  */
 export function roundSpec(round: number, rng: Rng): RoundSpec {
-  const theme = THEME_ORDER[(round - 1) % THEME_ORDER.length];
+  const theme = themeFor(round);
   const tier = round - 1;
   const mods: EnemyMods = {
     hpMul: 1 + 0.1 * tier,

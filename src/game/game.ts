@@ -15,7 +15,7 @@ import { THEMES, type ThemeDef, type ThemeId } from '../arena/themes';
 import { ThemeView } from '../arena/themeView';
 import { GROUP_ENV, groups, Ragdoll } from '../body/ragdoll';
 import { BONES } from '../body/skeleton';
-import { Sfx, type Surface } from '../feel/audio';
+import { type Material, Sfx, type Surface } from '../feel/audio';
 import { Input } from '../input/input';
 import { CAMERA_TUNING, CameraRig } from '../render/cameraRig';
 import { Blood } from '../render/blood';
@@ -54,8 +54,10 @@ export const GAME_TUNING = {
 };
 
 const TIME_SCALES = [1, 0.5, 0.25, 0.1];
+/** What a blunt weapon sounds like when it lands. */
+const IMPACT: Partial<Record<string, Material>> = { pan: 'pan', chair: 'metal', crowbar: 'metal', pipe: 'metal', sledgehammer: 'metal', bottle: 'glass' };
 /** What each arena's floor is, for footsteps. */
-const FLOOR: Record<ThemeId, Surface> = { ring: 'canvas', street: 'asphalt', grocery: 'tile', colosseum: 'sand' };
+const FLOOR: Record<ThemeId, Surface> = { ring: 'canvas', street: 'asphalt', grocery: 'tile', colosseum: 'sand', warehouse: 'concrete', bar: 'wood', dojo: 'wood', rooftop: 'gravel' };
 const PLAYER_BASE: FighterStats = { ...DEFAULT_STATS, maxHp: 100, walkSpeed: 2.6 };
 /** Enemies stand still for this long while the round is announced (real seconds). */
 const INTRO_HOLD = 1.6;
@@ -917,7 +919,7 @@ export class Game {
         if (w?.edge === 'blade') {
           if (w.id === 'axe') this.sfx.impact('axe', heavy);
         }
-        else if (w) this.sfx.impact(w.id === 'pan' ? 'pan' : w.id === 'chair' ? 'metal' : 'wood', heavy);
+        else if (w) this.sfx.impact(IMPACT[w.id] ?? 'wood', heavy);
         else if (m.weapon) this.sfx.impact('wood', false); // caught with the haft
         else this.sfx.flesh(e.zone === 'head', m.weight);
         if (e.damage >= 9) this.sfx.grunt(e.defender.scale);

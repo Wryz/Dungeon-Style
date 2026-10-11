@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { roundSpec, THEME_ORDER } from '../src/game/gauntlet';
+import { ARENA_ORDER, roundSpec } from '../src/game/gauntlet';
 import { ARCHETYPES, BOSSES } from '../src/sim/enemies';
 import { Rng } from '../src/sim/math';
 
@@ -7,8 +7,15 @@ const totalHp = (round: number) =>
   roundSpec(round, new Rng(round)).spawns.reduce((n, s) => n + (ARCHETYPES[s.kind].stats.maxHp ?? 70) * (s.hpMul ?? 1), 0);
 
 describe('gauntlet rounds', () => {
-  it('rotates arena themes every round', () => {
-    for (let r = 1; r <= 8; r++) expect(roundSpec(r, new Rng(1)).theme).toBe(THEME_ORDER[(r - 1) % 4]);
+  it('changes arena every round and visits every arena', () => {
+    const seen = new Set<string>();
+    for (let r = 1; r <= 12; r++) {
+      const t = roundSpec(r, new Rng(1)).theme;
+      if (r > 1) expect(t).not.toBe(roundSpec(r - 1, new Rng(1)).theme);
+      seen.add(t);
+    }
+    for (const a of ARENA_ORDER) expect(seen.has(a)).toBe(true);
+    expect(seen.has('colosseum')).toBe(true);
   });
 
   it('one opponent at a time, getting tougher every round', () => {

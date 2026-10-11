@@ -31,6 +31,18 @@ export function lookFor(kind: EnemyKind, theme: ThemeId | null): { palette: Pale
     case 'grocery':
       // Store staff in green aprons.
       return { palette: { ...base, shirt: '#2f7d4a', sleeves: 'skin', pants: '#2b2d36', shins: undefined, gloves: base.skin, boots: '#1a1a1a' } };
+    case 'warehouse':
+      // Fight club: shirtless, jeans, taped hands.
+      return { palette: { ...base, shirt: base.skin, sleeves: 'skin', pants: '#2f3e5c', shins: undefined, gloves: '#e8e2d4', boots: '#2a2018' } };
+    case 'bar':
+      // Bikers: leather vests over bare arms.
+      return { palette: { ...base, shirt: '#2a1f1a', sleeves: 'skin', pants: '#33415e', shins: undefined, gloves: base.skin, boots: '#1a1410' } };
+    case 'dojo':
+      // Martial artists in white gis (a black belt for the dangerous ones).
+      return { palette: { ...base, shirt: '#f2efe6', sleeves: 'shirt', pants: '#f2efe6', shins: '#f2efe6', gloves: base.skin, boots: base.skin } };
+    case 'rooftop':
+      // Thugs in tracksuits.
+      return { palette: { ...base, shirt: kind === 'kicker' ? '#6a2b8c' : '#1f2a3a', sleeves: 'shirt', pants: '#1f2a3a', shins: undefined, gloves: base.skin, boots: '#f2f2f2' } };
     case 'colosseum':
       return {
         palette: { ...base, shirt: base.skin, sleeves: 'skin', pants: '#7a4e2e', shins: base.skin, gloves: '#5a4632', boots: '#7a4e2e' },

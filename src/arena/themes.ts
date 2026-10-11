@@ -1,7 +1,7 @@
 import type { WeaponId } from '../sim/weapons';
 import type { ArenaShape, Obstacle } from '../world/collision';
 
-export type ThemeId = 'ring' | 'street' | 'grocery' | 'colosseum';
+export type ThemeId = 'ring' | 'street' | 'grocery' | 'colosseum' | 'warehouse' | 'bar' | 'dojo' | 'rooftop';
 
 export interface ThemeDef {
   id: ThemeId;
@@ -89,5 +89,59 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
     ],
     weapons: ['gladius', 'axe'],
     weaponSpots: [[-1.6, 3.4], [0.6, -4.2], [-5.6, -1.6], [2.4, 5.4]],
+  },
+  warehouse: {
+    id: 'warehouse',
+    name: 'The Warehouse',
+    shape: { kind: 'rect', hx: 6.2, hz: 4.2 },
+    obstacles: [
+      { kind: 'circle', x: -2.6, z: -1.6, r: 0.28 }, // steel pillar
+      { kind: 'circle', x: 2.8, z: 1.7, r: 0.28 },
+      { kind: 'box', x: 4.9, z: -3.1, hx: 0.6, hz: 0.6 }, // crate stack
+      { kind: 'box', x: -5, z: 3, hx: 0.55, hz: 0.45 },
+    ],
+    playerSpawn: [-3.8, 0.8],
+    enemySpawns: [[3.6, -0.6], [3.2, 2.6], [1.6, -3]],
+    weapons: ['crowbar', 'sledgehammer'],
+    weaponSpots: [[-0.6, -3.2], [0.8, 3.3], [-4.8, -2.6], [5.2, 0.8]],
+  },
+  bar: {
+    id: 'bar',
+    name: 'The Bar',
+    shape: { kind: 'rect', hx: 5.8, hz: 3.9 },
+    obstacles: [
+      { kind: 'box', x: 0, z: -3.35, hx: 3.6, hz: 0.45 }, // bar counter
+      { kind: 'box', x: 3.7, z: 1.9, hx: 1.1, hz: 0.6 }, // pool table
+      { kind: 'circle', x: -3.3, z: 1.9, r: 0.42 }, // table
+      { kind: 'circle', x: -1.2, z: 2.9, r: 0.42 },
+    ],
+    playerSpawn: [-3.6, -0.6],
+    enemySpawns: [[3.2, -0.8], [1.4, 1.6], [4.6, -1.6]],
+    weapons: ['cue', 'bottle'],
+    weaponSpots: [[2.4, 0.9], [-1.6, -2.4], [-4.6, 0.2], [0.9, -2.3]],
+  },
+  dojo: {
+    id: 'dojo',
+    name: 'The Dojo',
+    shape: { kind: 'rect', hx: 4.6, hz: 4.2 },
+    obstacles: [],
+    playerSpawn: [-2.8, 0.4],
+    enemySpawns: [[2.8, -0.4], [2.6, 2.4], [2.2, -2.6]],
+    weapons: ['katana', 'bokken'],
+    weaponSpots: [[0, -3.5], [-3.6, -3.2], [3.6, 3.3], [-3.4, 3.2]],
+  },
+  rooftop: {
+    id: 'rooftop',
+    name: 'The Rooftop',
+    shape: { kind: 'rect', hx: 6.6, hz: 4.3 },
+    obstacles: [
+      { kind: 'box', x: -4.4, z: -3.1, hx: 0.9, hz: 0.65 }, // AC unit
+      { kind: 'box', x: 4.6, z: 2.6, hx: 0.7, hz: 0.7 }, // stairwell hut corner
+      { kind: 'circle', x: 1.6, z: -2.9, r: 0.22 }, // vent stack
+    ],
+    playerSpawn: [-3.8, 0.9],
+    enemySpawns: [[3.6, -0.4], [2.8, -2.2], [5.4, -0.4]],
+    weapons: ['pipe', 'fireaxe'],
+    weaponSpots: [[-1.2, -3.3], [0.6, 3.3], [-5.2, 2.8], [3.4, 3.4]],
   },
 };

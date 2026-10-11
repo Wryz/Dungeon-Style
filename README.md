@@ -12,9 +12,11 @@ demons and giant bosses.
   counters, powered-ragdoll hit reactions, boxer footwork and contextual movement
   (distance zones + fight state), hit-pause, shake, procedural audio, blood and facial
   damage that build up with punishment.
-- **The gauntlet:** one opponent at a time; each round swaps the arena theme (ring →
-  street → grocery store → colosseum) and the opponents get tougher; every 4th round is
-  a **boss** in the colosseum.
+- **The gauntlet:** one opponent at a time; every round is a new arena and a tougher
+  opponent; every 4th round is a **boss** in the colosseum. Regular rounds cycle
+  through seven arenas: the boxing ring, the street, a grocery store, an underground
+  warehouse fight club, a biker bar, a dojo and a city rooftop at night — each with its
+  own props, floor sound, ambience and locals.
   Falling sends you back to round 1 — coins and gear stay. Your best round is saved.
 - **Opponents:** Rookie (quick jabs), Brawler (haymakers), Kicker (teep / low kick /
   body roundhouse), Bruiser (slow, armored, heavy), and from round 6 mythical creatures:
@@ -28,6 +30,8 @@ demons and giant bosses.
   change your stats and show on your character. Progress is saved in the browser.
 - **Weapons:** every arena has weapons lying around — a folding chair in the ring, a
   bat and a machete on the street, a cleaver and a frying pan in the grocery store, a
+  crowbar and a sledgehammer in the warehouse, a pool cue and a beer bottle in the bar,
+  a katana and a bokken in the dojo, a lead pipe and a fire axe on the rooftop, a
   gladius and a battle axe in the colosseum. Walk over one and press **G** to grab it
   (G again swaps, or drops it). Each weapon is used the way it really is: the cleaver
   hacks in short chops from by the ear, the machete cuts diagonally (forehand into

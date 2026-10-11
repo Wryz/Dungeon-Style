@@ -74,6 +74,18 @@ export class ThemeView {
       case 'colosseum':
         this.buildColosseum(rng);
         break;
+      case 'warehouse':
+        this.buildWarehouse(rng);
+        break;
+      case 'bar':
+        this.buildBar(rng);
+        break;
+      case 'dojo':
+        this.buildDojo(rng);
+        break;
+      case 'rooftop':
+        this.buildRooftop(rng);
+        break;
     }
   }
 
@@ -443,6 +455,252 @@ export class ThemeView {
       col.castShadow = true;
       this.group.add(col);
     }
+  }
+
+  /** Wooden planks (instanced) over a rectangle. */
+  private planks(hx: number, hz: number, w: number, colors: string[], rng: Rng, y = -0.02) {
+    const nx = Math.ceil((hx * 2 + 4) / w);
+    const nz = Math.ceil((hz * 2 + 4) / 1.2);
+    const mesh = new InstancedMesh(new BoxGeometry(w * 0.97, 0.04, 1.18), new MeshStandardMaterial({ color: 0xffffff, roughness: 0.45 }), nx * nz);
+    let k = 0;
+    for (let i = 0; i < nx; i++) {
+      for (let j = 0; j < nz; j++) {
+        const stagger = (i % 2) * 0.6;
+        _o.position.set(-hx - 2 + i * w + w / 2, y, -hz - 2 + j * 1.2 + stagger);
+        _o.rotation.set(0, 0, 0);
+        _o.scale.set(1, 1, 1);
+        _o.updateMatrix();
+        mesh.setMatrixAt(k, _o.matrix);
+        mesh.setColorAt(k, _c.set(colors[Math.floor(rng.next() * colors.length)]));
+        k++;
+      }
+    }
+    mesh.receiveShadow = true;
+    this.group.add(mesh);
+  }
+
+  /** A hanging bulb or lamp with a little sway in its light. */
+  private bulb(x: number, y: number, z: number, color: number, intensity: number, rng: Rng, shade = 0x2b2b2e) {
+    this.box(0.012, 1.2, 0.012, this.mat(0x111111, { cut: false }), x, y + 0.6, z, 0, false);
+    this.box(0.32, 0.12, 0.32, this.mat(shade, { metal: 0.4, cut: false }), x, y + 0.06, z, 0, false);
+    this.box(0.1, 0.1, 0.1, this.mat(0xfff2c8, { emissive: color, cut: false }), x, y - 0.03, z, 0, false);
+    const l = new PointLight(color, intensity, 10, 1.6);
+    l.position.set(x, y - 0.15, z);
+    l.castShadow = false;
+    this.group.add(l);
+    this.flicker.push({ light: l, base: intensity, seed: rng.range(0, 9) });
+  }
+
+  private buildWarehouse(rng: Rng) {
+    this.background.set('#121216');
+    this.light(0x6a7080, 0x231f1c, 0.55, 0xd8e0ff, 0.6, [-6, 14, 4]);
+    this.ground(0x2a2a2c);
+    const { hx, hz } = this.def.shape as { hx: number; hz: number };
+    // Stained concrete slab.
+    this.box(hx * 2 + 6, 0.04, hz * 2 + 6, this.mat(0x6d6c69, { cut: false, rough: 0.95 }), 0, -0.02, 0, 0, false);
+    for (let i = 0; i < 9; i++) {
+      const st = new Mesh(new CylinderGeometry(rng.range(0.3, 1), rng.range(0.3, 1), 0.005, 9), new MeshStandardMaterial({ color: 0x4c4a46, roughness: 1 }));
+      st.position.set(rng.range(-hx, hx), 0.003, rng.range(-hz, hz));
+      st.receiveShadow = true;
+      this.group.add(st);
+    }
+    // Corrugated walls on the far side and ends.
+    const wall = this.mat(0x5a6168, { metal: 0.4, rough: 0.6 });
+    this.box(hx * 2 + 4, 4, 0.2, wall, 0, 2, -hz - 1.6);
+    for (let x = -hx - 2; x < hx + 2; x += 0.35) this.box(0.08, 4, 0.08, this.mat(0x4a5056, { metal: 0.4 }), x, 2, -hz - 1.48, 0, false);
+    for (const s of [-1, 1]) this.box(0.2, 4, hz * 2 + 3, wall, s * (hx + 1.8), 2, 0);
+    // Roller door, glowing exit sign.
+    this.box(3, 3, 0.06, this.mat(0x7a7f85, { metal: 0.5 }), 2.5, 1.5, -hz - 1.45, 0, false);
+    this.box(0.5, 0.18, 0.05, this.mat(0x2a8a3a, { emissive: 0x1a8a2a }), -3, 3.2, -hz - 1.45, 0, false);
+    // Pillars with hazard bands, and crate stacks.
+    for (const o of this.def.obstacles) {
+      if (o.kind === 'circle') {
+        const col = new Mesh(new CylinderGeometry(o.r, o.r, 4.5, 10), this.mat(0x7c858d, { metal: 0.5, rough: 0.4 }));
+        col.position.set(o.x, 2.25, o.z);
+        col.castShadow = true;
+        this.group.add(col);
+        for (let b = 0; b < 4; b++) {
+          const band = new Mesh(new CylinderGeometry(o.r + 0.01, o.r + 0.01, 0.12, 10), this.mat(b % 2 ? 0x1a1a1a : 0xe8b52a));
+          band.position.set(o.x, 0.3 + b * 0.12, o.z);
+          this.group.add(band);
+        }
+      } else {
+        const wood = this.mat(0x9a7448);
+        this.box(o.hx * 2, 0.9, o.hz * 2, wood, o.x, 0.45, o.z);
+        this.box(o.hx * 1.6, 0.8, o.hz * 1.6, this.mat(0x8a6a40), o.x + 0.05, 1.3, o.z - 0.05, 0.2);
+      }
+    }
+    // Oil drums and pallets around the edge.
+    for (const [x, z] of [[-hx - 0.9, -hz + 0.4], [hx + 1, hz - 1], [hx + 0.9, -1.4]]) {
+      const d = new Mesh(new CylinderGeometry(0.28, 0.28, 0.85, 10), this.mat(rng.chance(0.5) ? 0x2a5a8a : 0x8a2a2a, { metal: 0.4 }));
+      d.position.set(x, 0.43, z);
+      d.castShadow = true;
+      this.group.add(d);
+    }
+    // Bare bulbs over the fight.
+    for (const [x, z] of [[-2.5, -0.5], [2.5, 0.6], [0, -2.5], [0, 2.4]]) this.bulb(x, 3.1, z, 0xffc77a, 5, rng);
+    // The fight club, packed in tight around the edges.
+    const spots: { x: number; y: number; z: number; ry: number }[] = [];
+    for (let x = -hx; x <= hx; x += 0.55) if (rng.chance(0.8)) spots.push({ x: x + rng.range(-0.1, 0.1), y: 0, z: -hz - rng.range(0.5, 1.1), ry: 0 });
+    for (const s of [-1, 1]) for (let z = -hz; z <= hz; z += 0.6) if (rng.chance(0.7)) spots.push({ x: s * (hx + rng.range(0.5, 1.2)), y: 0, z, ry: -s * Math.PI / 2 });
+    this.crowd(rng, spots, ['#e8d6c0', '#3b3f4c', '#5a2e2e', '#2a2a2a', '#6b6b6b', '#d9b89a']);
+  }
+
+  private buildBar(rng: Rng) {
+    this.background.set('#20140e');
+    this.light(0xffc89a, 0x2a1a12, 0.65, 0xffd9a8, 0.7, [-5, 14, 6]);
+    this.ground(0x2a1c14);
+    const { hx, hz } = this.def.shape as { hx: number; hz: number };
+    this.planks(hx, hz, 0.28, ['#6b4426', '#5e3b20', '#74492a', '#553519'], rng);
+    // Walls: dark wood panelling, back bar with lit bottles.
+    const panel = this.mat(0x3d2414);
+    this.box(hx * 2 + 4, 3.6, 0.2, panel, 0, 1.8, -hz - 1.3);
+    for (const s of [-1, 1]) this.box(0.2, 3.6, hz * 2 + 3, panel, s * (hx + 1.5), 1.8, 0);
+    const counter = this.def.obstacles[0];
+    if (counter.kind === 'box') {
+      this.box(counter.hx * 2, 1.05, counter.hz * 2, this.mat(0x5a3418, { rough: 0.4 }), counter.x, 0.52, counter.z);
+      this.box(counter.hx * 2 + 0.1, 0.06, counter.hz * 2 + 0.1, this.mat(0x2a1a10, { rough: 0.25 }), counter.x, 1.07, counter.z, 0, false);
+      // Back shelves of bottles glowing in the bar light.
+      const glass = ['#3a8a4a', '#8a5a1a', '#c9a227', '#7a2a2a', '#d9d9d9', '#2a5a8a'];
+      for (const shelfY of [1.3, 1.75, 2.2]) {
+        this.box(counter.hx * 2, 0.04, 0.3, this.mat(0x4a2a14), counter.x, shelfY, -hz - 1.05, 0, false);
+        for (let x = -counter.hx + 0.1; x < counter.hx; x += rng.range(0.1, 0.18)) {
+          const c = glass[Math.floor(rng.next() * glass.length)];
+          const h = rng.range(0.22, 0.34);
+          this.box(0.07, h, 0.07, this.mat(c, { emissive: c, rough: 0.15 }), counter.x + x, shelfY + h / 2 + 0.02, -hz - 1.05, 0, false);
+        }
+      }
+    }
+    // Pool table under its lamp.
+    const pool = this.def.obstacles[1];
+    if (pool.kind === 'box') {
+      this.box(pool.hx * 2, 0.75, pool.hz * 2, this.mat(0x4a2a14), pool.x, 0.37, pool.z);
+      this.box(pool.hx * 2 - 0.16, 0.04, pool.hz * 2 - 0.16, this.mat(0x1f6b3a, { rough: 0.95 }), pool.x, 0.77, pool.z, 0, false);
+      for (let i = 0; i < 6; i++) {
+        const b = new Mesh(new CylinderGeometry(0.03, 0.03, 0.06, 8), this.mat(['#f2f2f2', '#c9a227', '#2a5a8a', '#c0392b', '#1a1a1a', '#6a2b8c'][i]));
+        b.position.set(pool.x + rng.range(-pool.hx + 0.2, pool.hx - 0.2), 0.81, pool.z + rng.range(-pool.hz + 0.15, pool.hz - 0.15));
+        this.group.add(b);
+      }
+      this.bulb(pool.x, 2.4, pool.z, 0xfff0c8, 4, rng, 0x1f4a2a);
+    }
+    // Round tables with chairs.
+    for (const o of this.def.obstacles.slice(2)) {
+      if (o.kind !== 'circle') continue;
+      const top = new Mesh(new CylinderGeometry(o.r, o.r, 0.05, 14), this.mat(0x5a3418, { rough: 0.4 }));
+      top.position.set(o.x, 0.75, o.z);
+      top.castShadow = true;
+      this.group.add(top);
+      this.box(0.08, 0.72, 0.08, this.mat(0x2a1a10), o.x, 0.36, o.z);
+      for (let a = 0; a < 3; a++) {
+        const ang = a * 2.1 + rng.range(-0.2, 0.2);
+        this.box(0.32, 0.45, 0.32, this.mat(0x4a2a14), o.x + Math.cos(ang) * (o.r + 0.25), 0.22, o.z + Math.sin(ang) * (o.r + 0.25), ang);
+      }
+    }
+    // Neon signs.
+    this.box(1.4, 0.3, 0.04, this.mat(0xff4fa3, { emissive: 0xff2a8a }), -2.6, 2.8, -hz - 1.18, 0, false);
+    this.box(1.0, 0.25, 0.04, this.mat(0x4fd9ff, { emissive: 0x2ab8ff }), 2.8, 2.9, -hz - 1.18, 0, false);
+    for (const [x, z] of [[-2.2, 0.4], [1.4, -0.6]]) this.bulb(x, 2.6, z, 0xffb070, 3, rng);
+    // Regulars along the walls.
+    const spots: { x: number; y: number; z: number; ry: number }[] = [];
+    for (let x = -hx + 0.5; x < hx; x += 0.7) if (rng.chance(0.5)) spots.push({ x, y: 0, z: -hz - 0.6, ry: 0 });
+    for (const s of [-1, 1]) for (let z = -hz + 0.5; z < hz; z += 0.8) if (rng.chance(0.55)) spots.push({ x: s * (hx + 0.7), y: 0, z, ry: -s * Math.PI / 2 });
+    this.crowd(rng, spots, ['#2a1f1a', '#4a3a2a', '#33415e', '#5a2e2e', '#1a1a1a']);
+  }
+
+  private buildDojo(rng: Rng) {
+    this.background.set('#e6d8bc');
+    this.light(0xfff6e4, 0xb89a72, 1.4, 0xfff0d6, 1.6, [-6, 15, 5]);
+    this.ground(0x8a6a48);
+    const { hx, hz } = this.def.shape as { hx: number; hz: number };
+    this.planks(hx, hz, 0.24, ['#c9a06a', '#c29862', '#d0a972', '#bb9058'], rng);
+    // Tatami border where the students sit.
+    for (const s of [-1, 1]) this.box(hx * 2 + 2, 0.05, 0.9, this.mat(0xb8b07a, { cut: false }), 0, 0.005, s * (hz + 0.55), 0, false);
+    // Shoji screens: paper panels in dark wooden frames.
+    const frame = this.mat(0x3a2414);
+    const paper = this.mat(0xf6f0e0, { emissive: 0x2a2620 });
+    const screen = (x: number, z: number, len: number, alongX: boolean) => {
+      this.box(alongX ? len : 0.06, 2.6, alongX ? 0.06 : len, paper, x, 1.3, z);
+      for (let t = -len / 2; t <= len / 2 + 0.01; t += 0.5) this.box(alongX ? 0.05 : 0.08, 2.6, alongX ? 0.08 : 0.05, frame, alongX ? x + t : x, 1.3, alongX ? z : z + t, 0, false);
+      for (const y of [0.05, 0.9, 1.75, 2.6]) this.box(alongX ? len : 0.08, 0.05, alongX ? 0.08 : len, frame, x, y, z, 0, false);
+    };
+    screen(0, -hz - 1.1, hx * 2 + 2, true);
+    for (const s of [-1, 1]) screen(s * (hx + 1.1), 0, hz * 2 + 2, false);
+    // Weapon rack, a hanging scroll, a small shrine.
+    this.box(2.2, 0.08, 0.2, frame, -1.8, 1.6, -hz - 0.95, 0, false);
+    for (let i = 0; i < 5; i++) this.box(0.04, 0.95, 0.04, this.mat(i % 2 ? 0x8a5a2a : 0x1a1a1a), -2.6 + i * 0.4, 1.15, -hz - 0.9, 0.15, false);
+    this.box(0.6, 1.3, 0.02, this.mat(0xf2ead6), 1.8, 1.7, -hz - 1.02, 0, false);
+    this.box(0.12, 0.7, 0.025, this.mat(0x1a1a1a), 1.8, 1.75, -hz - 1.0, 0, false);
+    this.box(0.9, 0.5, 0.4, this.mat(0x7a2418), 3.4, 1.4, -hz - 0.9);
+    // Students kneeling along the edges, watching.
+    const spots: { x: number; y: number; z: number; ry: number }[] = [];
+    for (let x = -hx + 0.4; x < hx; x += 0.75) spots.push({ x, y: -0.3, z: -hz - 0.5, ry: 0 });
+    for (const s of [-1, 1]) for (let z = -hz + 0.6; z < hz - 0.3; z += 0.9) if (rng.chance(0.6)) spots.push({ x: s * (hx + 0.5), y: -0.3, z, ry: -s * Math.PI / 2 });
+    this.crowd(rng, spots, ['#f2efe6', '#f2efe6', '#f2efe6', '#2a3a6a']);
+  }
+
+  private buildRooftop(rng: Rng) {
+    this.background.set('#141b2c');
+    this.light(0x8a9cd0, 0x2a2a36, 1.0, 0xc8d4ff, 1.5, [6, 14, -4]);
+    this.ground(0x0c0f18, 120, -14);
+    const { hx, hz } = this.def.shape as { hx: number; hz: number };
+    // Tar-and-gravel roof slab with a low parapet.
+    this.box(hx * 2 + 3, 0.3, hz * 2 + 3, this.mat(0x3a3a3e, { cut: false, rough: 1 }), 0, -0.15, 0, 0, false);
+    for (let i = 0; i < 160; i++) this.box(0.05, 0.02, 0.05, this.mat(rng.chance(0.5) ? 0x5a5a5e : 0x2a2a2e, { cut: false }), rng.range(-hx - 1, hx + 1), 0.005, rng.range(-hz - 1, hz + 1), rng.range(0, 3), false);
+    const ledge = this.mat(0x6a6660);
+    this.box(hx * 2 + 3, 0.6, 0.3, ledge, 0, 0.3, -hz - 1.35);
+    this.box(hx * 2 + 3, 0.6, 0.3, ledge, 0, 0.3, hz + 1.35);
+    for (const s of [-1, 1]) this.box(0.3, 0.6, hz * 2 + 3, ledge, s * (hx + 1.35), 0.3, 0);
+    // The building's side dropping away below the parapet.
+    this.box(hx * 2 + 3, 14, hz * 2 + 3, this.mat(0x2a2c34, { cut: false }), 0, -7.3, 0, 0, false);
+    // AC unit, stairwell hut, vent stack.
+    for (const o of this.def.obstacles) {
+      if (o.kind === 'box' && o.hx > 0.8) {
+        this.box(o.hx * 2, 1.1, o.hz * 2, this.mat(0xa8adb2, { metal: 0.4, rough: 0.5 }), o.x, 0.55, o.z);
+        const fan = new Mesh(new CylinderGeometry(0.42, 0.42, 0.04, 14), this.mat(0x2a2a2e));
+        fan.position.set(o.x, 1.12, o.z);
+        this.group.add(fan);
+      } else if (o.kind === 'box') {
+        this.box(o.hx * 2, 2.6, o.hz * 2, this.mat(0x8a7a6a), o.x, 1.3, o.z);
+        this.box(0.7, 1.9, 0.05, this.mat(0x4a3a2a), o.x - o.hx - 0.01, 0.95, o.z, Math.PI / 2, false);
+        this.bulb(o.x - o.hx - 0.3, 2.3, o.z, 0xffd28a, 3, rng);
+      } else {
+        const v = new Mesh(new CylinderGeometry(o.r, o.r, 1.4, 10), this.mat(0x9aa0a6, { metal: 0.6, rough: 0.3 }));
+        v.position.set(o.x, 0.7, o.z);
+        v.castShadow = true;
+        this.group.add(v);
+      }
+    }
+    // Water tower behind, and the skyline all around.
+    const tank = new Mesh(new CylinderGeometry(1.1, 1.1, 1.8, 14), this.mat(0x6a4a32, { cut: false }));
+    tank.position.set(-hx + 1, 4.2, -hz - 3.2);
+    this.group.add(tank);
+    for (const dx of [-0.8, 0.8]) this.box(0.08, 3.2, 0.08, this.mat(0x3a3a3e, { cut: false }), -hx + 1 + dx, 1.6, -hz - 3.2, 0, false);
+    for (let i = 0; i < 46; i++) {
+      const a = (i / 46) * Math.PI * 2;
+      if (Math.sin(a) > 0.6) continue; // keep the camera side clear
+      const d = rng.range(14, 26);
+      const w = rng.range(2, 5);
+      const h = rng.range(6, 22);
+      const x = Math.cos(a) * d;
+      const z = Math.sin(a) * d;
+      this.box(w, h, w, this.mat(rng.chance(0.5) ? 0x232838 : 0x1c2030, { cut: false }), x, h / 2 - 14 + rng.range(4, 14), z, a, false);
+      for (let k = 0; k < 6; k++) {
+        if (!rng.chance(0.6)) continue;
+        const wy = rng.range(0, h) - h / 2;
+        this.box(w * 0.2, 0.3, 0.05, this.mat(0xffe2a0, { emissive: 0xc9a050, cut: false }), x - Math.cos(a) * (w / 2 + 0.03), h / 2 - 14 + rng.range(4, 14) + wy, z - Math.sin(a) * (w / 2 + 0.03), a + Math.PI / 2, false);
+      }
+    }
+    // Work lights on the parapet.
+    for (const x of [-hx + 0.5, hx - 2]) {
+      this.box(0.25, 0.18, 0.15, this.mat(0xfff2c8, { emissive: 0xffd28a }), x, 0.72, -hz - 1.2, 0, false);
+      const l = new PointLight(0xffd8a0, 5, 11, 1.4);
+      l.position.set(x, 1.1, -hz - 0.9);
+      this.group.add(l);
+    }
+    // A few onlookers by the stairwell.
+    const spots: { x: number; y: number; z: number; ry: number }[] = [];
+    for (let i = 0; i < 6; i++) spots.push({ x: rng.range(hx - 1.6, hx + 0.6), y: 0, z: rng.range(-hz - 0.9, -hz + 0.2), ry: rng.range(-0.4, 0.4) });
+    this.crowd(rng, spots, ['#1f2a3a', '#6a2b8c', '#2a2a2a', '#c9a227']);
   }
 
   update(time: number) {

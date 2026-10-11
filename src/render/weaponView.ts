@@ -20,6 +20,12 @@ const MATS: Record<string, { color: string; metalness?: number; roughness?: numb
   ash: { color: '#d7b98a', roughness: 0.8 },
   grey: { color: '#9aa0a8', metalness: 0.4, roughness: 0.5 },
   bone: { color: '#e6dcc4', roughness: 0.7 },
+  glass: { color: '#2f6b3a', metalness: 0.1, roughness: 0.12 },
+  red: { color: '#b3261e', roughness: 0.5 },
+  cue: { color: '#c89a5c', roughness: 0.55 },
+  white: { color: '#f2f2f2', roughness: 0.5 },
+  darkSteel: { color: '#5d6166', metalness: 0.6, roughness: 0.4 },
+  wrap: { color: '#2a2230', roughness: 0.9 },
 };
 
 const mat = (k: string) => {
@@ -36,7 +42,7 @@ export function buildWeapon(def: WeaponDef): Group {
   const part = (geo: BufferGeometry, m: string, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0) => {
     const mesh = new Mesh(geo, mat(m));
     // Metal and bare-wood striking surfaces take blood.
-    mesh.userData.bloodies = m === 'steel' || m === 'iron' || m === 'ash' || m === 'bone';
+    mesh.userData.bloodies = ['steel', 'iron', 'ash', 'bone', 'darkSteel', 'cue', 'glass'].includes(m);
     mesh.position.set(x, y, z);
     mesh.rotation.set(rx, ry, rz);
     mesh.castShadow = true;
@@ -86,6 +92,49 @@ export function buildWeapon(def: WeaponDef): Group {
         const y = L * (0.55 + 0.4 * ((i * 0.37) % 1));
         part(box(0.025, 0.025, 0.06), 'bone', Math.sin(a) * 0.07, y, Math.cos(a) * 0.07, 0, a, 0);
       }
+      break;
+    case 'crowbar':
+      // Hex bar with a hooked claw at the business end.
+      part(box(0.03, L, 0.03), 'darkSteel', 0, L / 2 - 0.08, 0);
+      part(box(0.03, 0.12, 0.03), 'darkSteel', 0, L - 0.06, 0.05, 0.9, 0, 0);
+      part(box(0.03, 0.05, 0.03), 'red', 0, -0.04, 0);
+      break;
+    case 'pipe':
+      part(new CylinderGeometry(0.026, 0.026, L + 0.08, 8), 'darkSteel', 0, L / 2 - 0.04, 0);
+      part(new CylinderGeometry(0.034, 0.034, 0.05, 8), 'darkSteel', 0, L - 0.02, 0);
+      break;
+    case 'sledgehammer':
+      part(box(0.04, L + 0.15, 0.04), 'wood', 0, (L - 0.15) / 2, 0);
+      part(box(0.12, 0.12, 0.26), 'darkSteel', 0, L - 0.05, 0);
+      break;
+    case 'cue':
+      // Tapered: thick butt in the hands, thin tip out front.
+      part(new CylinderGeometry(0.009, 0.02, L + 0.2, 8), 'cue', 0, (L - 0.2) / 2, 0);
+      part(new CylinderGeometry(0.022, 0.024, 0.3, 8), 'black', 0, -0.12, 0);
+      part(new CylinderGeometry(0.009, 0.009, 0.02, 8), 'white', 0, L - 0.1, 0);
+      break;
+    case 'bottle':
+      // Held by the neck, the heavy body out front.
+      part(new CylinderGeometry(0.014, 0.016, 0.12, 8), 'glass', 0, 0.02, 0);
+      part(new CylinderGeometry(0.035, 0.035, 0.16, 8), 'glass', 0, 0.17, 0);
+      part(new CylinderGeometry(0.036, 0.036, 0.06, 8), 'white', 0, 0.17, 0);
+      break;
+    case 'katana':
+      part(box(0.035, 0.26, 0.032), 'wrap', 0, -0.06, 0);
+      part(new CylinderGeometry(0.05, 0.05, 0.012, 10), 'brass', 0, 0.075, 0);
+      part(box(0.008, L - 0.1, 0.034), 'steel', 0, 0.08 + (L - 0.1) / 2, 0.004, 0.02, 0, 0);
+      part(box(0.008, 0.06, 0.022), 'steel', 0, L - 0.01, 0.012, 0.5, 0, 0);
+      break;
+    case 'bokken':
+      part(box(0.035, 0.26, 0.032), 'wood', 0, -0.06, 0);
+      part(box(0.02, L - 0.1, 0.034), 'wood', 0, 0.08 + (L - 0.1) / 2, 0, 0.02, 0, 0);
+      break;
+    case 'fireaxe':
+      part(box(0.035, L + 0.12, 0.035), 'red', 0, (L - 0.12) / 2, 0);
+      part(box(0.03, 0.1, 0.05), 'darkSteel', 0, L - 0.1, 0);
+      part(box(0.016, 0.16, 0.16), 'red', 0, L - 0.1, 0.1);
+      part(box(0.016, 0.2, 0.025), 'steel', 0, L - 0.1, 0.19);
+      part(box(0.02, 0.04, 0.12), 'darkSteel', 0, L - 0.1, -0.09, 0, 0, 0.2);
       break;
     case 'chair': {
       // Held by the back legs: legs, seat and backrest of a folding chair.

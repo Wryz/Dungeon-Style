@@ -1,8 +1,8 @@
 import type { Weight } from '../sim/moves';
 
-export type Surface = 'canvas' | 'asphalt' | 'tile' | 'sand';
-export type Ambience = 'ring' | 'street' | 'grocery' | 'colosseum';
-export type Material = 'wood' | 'metal' | 'pan' | 'axe';
+export type Surface = 'canvas' | 'asphalt' | 'tile' | 'sand' | 'wood' | 'concrete' | 'gravel';
+export type Ambience = 'ring' | 'street' | 'grocery' | 'colosseum' | 'warehouse' | 'bar' | 'dojo' | 'rooftop';
+export type Material = 'wood' | 'metal' | 'pan' | 'axe' | 'glass';
 
 /** Procedural impact sounds (no assets): noise bursts + pitched thumps through a compressor. */
 export class Sfx {
@@ -118,6 +118,32 @@ export class Sfx {
         this.bed('highpass', 3500, 0.5, 0.008);
         this.crowdGain = this.bed('bandpass', 1000, 0.8, 0.012, 0.3, 0.6);
         break;
+      case 'warehouse':
+        // An underground fight: a tight ring of people shouting, all of it bouncing off
+        // concrete, and the building's hum.
+        this.crowdGain = this.bed('bandpass', 1100, 0.7, 0.06, 0.19, 0.7);
+        this.bed('bandpass', 400, 0.6, 0.03, 0.07, 0.5);
+        this.hum(50, 0.01);
+        break;
+      case 'bar':
+        // Chatter, glasses, and a jukebox thumping somewhere.
+        this.crowdGain = this.bed('bandpass', 1300, 0.9, 0.035, 0.31, 0.6);
+        this.hum(55, 0.012);
+        this.hum(82.4, 0.008);
+        this.bed('lowpass', 250, 0.7, 0.02);
+        break;
+      case 'dojo':
+        // Near silence: a soft breeze through paper screens.
+        this.bed('bandpass', 500, 0.5, 0.012, 0.05, 0.8);
+        this.crowdGain = this.bed('bandpass', 900, 0.8, 0.004, 0.2, 0.4);
+        break;
+      case 'rooftop':
+        // Wind gusting over the edge, the city far below.
+        this.bed('bandpass', 350, 0.4, 0.05, 0.11, 0.9);
+        this.bed('lowpass', 120, 0.8, 0.04, 0.04, 0.4);
+        this.bed('highpass', 2500, 0.4, 0.006, 0.17, 0.8);
+        this.crowdGain = this.bed('bandpass', 1000, 0.8, 0.008, 0.3, 0.5);
+        break;
       case 'grocery':
         // Fridges and air-conditioning, fluorescent buzz.
         this.hum(60, 0.012);
@@ -131,7 +157,7 @@ export class Sfx {
   /** The crowd reacts: 0..1 (a gasp for a big hit, a roar for a knockout). */
   crowd(intensity: number) {
     if (!this.ctx || !this.crowdGain) return;
-    const scale = this.wantAmbience === 'colosseum' ? 1.4 : this.wantAmbience === 'ring' ? 1 : 0.3;
+    const scale = this.wantAmbience === 'colosseum' ? 1.4 : this.wantAmbience === 'ring' || this.wantAmbience === 'warehouse' ? 1 : this.wantAmbience === 'bar' ? 0.6 : 0.3;
     const g = intensity * scale;
     this.noiseBurst('bandpass', 850, 0.5, 0.25 * g, 0.12, 1.2 + intensity, 1300);
     this.noiseBurst('bandpass', 1700, 0.9, 0.12 * g, 0.18, 1.0 + intensity, 2400);
@@ -163,6 +189,20 @@ export class Sfx {
       case 'sand':
         this.noiseBurst('lowpass', 1100, 0.6, 0.11 * w, 0.01, 0.12, 500);
         this.thump(90 * low, 50 * low, 0.08 * w * scale, 0.06);
+        break;
+      case 'wood':
+        // Hollow boards: a resonant knock.
+        this.thump(160 * low, 95 * low, 0.16 * w * scale, 0.09, 'triangle');
+        this.noiseBurst('bandpass', 700, 1.5, 0.06 * w, 0.002, 0.06);
+        break;
+      case 'concrete':
+        this.thump(120 * low, 65 * low, 0.13 * w * scale, 0.05);
+        this.noiseBurst('bandpass', 2200, 1, 0.08 * w, 0.001, 0.05, 1200);
+        break;
+      case 'gravel':
+        this.noiseBurst('bandpass', 1800, 0.8, 0.12 * w, 0.004, 0.11, 900);
+        this.noiseBurst('highpass', 4000, 0.6, 0.04 * w, 0.002, 0.06);
+        this.thump(100 * low, 55 * low, 0.08 * w * scale, 0.05);
         break;
     }
   }
@@ -227,6 +267,12 @@ export class Sfx {
         for (let i = 0; i < 3; i++) this.thump(700 + Math.random() * 900, 400, 0.08, 0.12 + i * 0.05, 'square');
         this.noiseBurst('bandpass', 2400, 2, 0.4, 0.001, 0.14);
         this.thump(120, 50, 0.6, 0.14);
+        break;
+      case 'glass':
+        // A heavy bottle: a hard clink and a dull knock.
+        this.thump(2100, 1900, 0.1, 0.08, 'sine');
+        this.noiseBurst('highpass', 3500, 1.2, 0.3, 0.001, 0.05);
+        this.thump(130, 55, 0.55, 0.12);
         break;
       case 'axe':
         // Heavy blade biting in: a deep chop.
