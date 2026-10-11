@@ -4,7 +4,6 @@ import { type BoneName, BONES, SKELETON } from '../body/skeleton';
 import type { Fighter } from '../sim/fighter';
 import type { WeaponDef, Wound } from '../sim/weapons';
 import { buildWeapon } from './weaponView';
-import { bladeFrame } from '../sim/weapons';
 import { FIST_OFFSET } from '../body/skeleton';
 
 export interface Palette {
@@ -280,44 +279,56 @@ export class FighterView {
     this.root.add(holder);
     this.weaponMesh = holder;
     this.edge.set(0, 0, 0);
+    this.prevBlade.set(0, 0, 0);
   }
 
+  /** Edge direction in the fighter's own frame (stable whatever the body does). */
   private readonly edge = new Vector3();
-  private readonly prevTip = new Vector3();
+  private readonly prevBlade = new Vector3();
 
   /**
-   * Places the weapon in the (rendered) rear fist, pointing where the pose says, with
-   * the edge turned to lead the swing.
+   * Places the weapon in the (rendered) rear fist, pointing where the pose says. The
+   * edge leads the swing while the weapon is being swung; at rest it faces the
+   * opponent. Worked out in the fighter's frame from the posed weapon direction, so
+   * body sway, footwork or size never twist it around the haft.
    */
-  updateWeapon(f: Fighter, length: number) {
+  updateWeapon(f: Fighter, _length: number) {
     const w = this.weaponMesh;
     if (!w) return;
-    bladeFrame(f, _grip, _dir);
     const fore = this.bones.foreArmR;
     fore.updateMatrixWorld();
     fore.localToWorld(_grip.set(0, -(SKELETON.foreArmR.length + FIST_OFFSET), 0));
     w.position.copy(_grip);
     w.scale.setScalar(f.scale);
-    // Edge leads the motion of the tip; at rest it faces the way the fighter faces.
-    const tip = _tip.copy(_grip).addScaledVector(_dir, length * f.scale);
-    const move = _mv.subVectors(tip, this.prevTip);
-    this.prevTip.copy(tip);
-    move.addScaledVector(_dir, -move.dot(_dir));
+
+    const b = _lb.copy(f.pose.blade);
+    const turn = _mv.subVectors(b, this.prevBlade);
+    const fresh = this.prevBlade.lengthSq() === 0;
+    this.prevBlade.copy(b);
+    turn.addScaledVector(b, -turn.dot(b));
+    const swinging = !fresh && turn.length() > 0.03;
     let want: Vector3;
-    if (move.lengthSq() > 0.004 * 0.004 && this.edge.lengthSq() > 0) want = move.normalize();
+    if (swinging) want = turn.normalize();
     else {
-      want = _fw.set(Math.sin(f.yaw), 0, Math.cos(f.yaw));
-      want.addScaledVector(_dir, -want.dot(_dir));
-      if (want.lengthSq() < 1e-4) want.set(0, 1, 0).addScaledVector(_dir, -_dir.y);
+      // Edge toward the opponent (or down, when the weapon itself points at them).
+      want = _fw.set(0, 0, 1).addScaledVector(b, -b.z);
+      if (want.lengthSq() < 0.05) want.set(0, -1, 0).addScaledVector(b, b.y);
       want.normalize();
     }
-    if (this.edge.lengthSq() === 0) this.edge.copy(want);
-    else this.edge.lerp(want, 0.35);
-    this.edge.addScaledVector(_dir, -this.edge.dot(_dir));
+    if (this.edge.lengthSq() === 0 || fresh) this.edge.copy(want);
+    else this.edge.lerp(want, swinging ? 0.35 : 0.12);
+    this.edge.addScaledVector(b, -this.edge.dot(b));
     if (this.edge.lengthSq() < 1e-6) this.edge.copy(want);
     this.edge.normalize();
-    _x.crossVectors(_dir, this.edge).normalize();
-    _mat.makeBasis(_x, _dir, this.edge);
+
+    // Fighter frame -> world (yaw about Y).
+    const c = Math.cos(f.yaw);
+    const sn = Math.sin(f.yaw);
+    const toW = (v: Vector3, out: Vector3) => out.set(v.x * c + v.z * sn, v.y, -v.x * sn + v.z * c);
+    toW(b, _dir);
+    toW(this.edge, _ew);
+    _x.crossVectors(_dir, _ew).normalize();
+    _mat.makeBasis(_x, _dir, _ew);
     w.quaternion.setFromRotationMatrix(_mat);
   }
 
@@ -482,7 +493,8 @@ function surfacePoint(bone: BoneName, local: [number, number, number]): { p: [nu
 
 const _grip = new Vector3();
 const _dir = new Vector3();
-const _tip = new Vector3();
+const _lb = new Vector3();
+const _ew = new Vector3();
 const _mv = new Vector3();
 const _fw = new Vector3();
 const _x = new Vector3();

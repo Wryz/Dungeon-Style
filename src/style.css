@@ -120,3 +120,15 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #b9d3e4; col
 .choice p { font-size: 14px; line-height: 1.5; }
 .banner.intro div { font-size: clamp(28px, 5vw, 56px); letter-spacing: 0.2em; }
 .settings-card .opt-title { margin-top: 16px; font-size: 13px; }
+
+/* Cinematic cuts */
+.letterbox { position: absolute; left: 0; right: 0; height: 0; background: #000; z-index: 6; pointer-events: none; transition: height 0.28s cubic-bezier(0.3, 0.8, 0.3, 1); }
+.letterbox.top { top: 0; }
+.letterbox.bottom { bottom: 0; }
+.hud.cine .letterbox { height: 11vh; }
+.hud > .bars, .hud > .wave, .hud > .coins, .hud > .hint, .hud > .gear, .hud > .combo { transition: opacity 0.25s; }
+.hud.cine > .bars, .hud.cine > .wave, .hud.cine > .coins, .hud.cine > .hint, .hud.cine > .gear, .hud.cine > .combo, .hud.cine > .prompt { opacity: 0 !important; }
+.vignette { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.8s; background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 45%, rgba(90, 0, 0, 0.55) 80%, rgba(20, 0, 0, 0.9) 100%); }
+.hud.dying .vignette { opacity: 1; }
+body.dying canvas { filter: saturate(0.35) contrast(1.1); transition: filter 1.2s; }
+canvas { transition: filter 0.6s; }

@@ -255,6 +255,7 @@ export class CombatSim {
         }
         break;
       case 'getup':
+      case 'celebrate':
         if (f.stateFrame >= f.stunFrames) f.enterLocomotion(4);
         break;
       default:

@@ -44,6 +44,9 @@ export class Hud {
       <div class="combo"></div>
       <div class="banner"></div>
       <div class="hint"></div>
+      <div class="vignette"></div>
+      <div class="letterbox top"></div>
+      <div class="letterbox bottom"></div>
       <button class="gear" title="Settings (Esc)">⚙</button>`;
     root.appendChild(this.el);
     const q = <T extends HTMLElement>(s: string) => this.el.querySelector<T>(s)!;
@@ -61,6 +64,17 @@ export class Hud {
     this.coinsEl = q('.coins');
     this.promptEl = q('.prompt');
     this.flashEl = q('.flash');
+  }
+
+  /** Letterbox bars in, gameplay HUD out (camera cuts). */
+  cinematic(on: boolean) {
+    this.el.classList.toggle('cine', on);
+  }
+
+  /** Screen mood: '' normal, 'death' dark red edges and drained colour. */
+  mood(kind: '' | 'death') {
+    this.el.classList.toggle('dying', kind === 'death');
+    document.body.classList.toggle('dying', kind === 'death');
   }
 
   setCoins(n: number, animate = true) {

@@ -45,6 +45,17 @@ demons and giant bosses.
   flies free as a physics body while the stump pumps blood. Your own limbs only come
   off with the blow that finishes you. Enemies pick weapons up too; the Minotaur
   carries an axe and the Cyclops a spiked club. Blocking a blade costs a forearm cut.
+- **Size-aware fighting:** every strike is fitted to the opponent actually in front of
+  you — aimed at where their head, body and legs really are, shortened to the
+  distance between you, with the body rising and looking up at a giant or sinking,
+  leaning in and looking down at something small. Out-of-reach targets (a giant's
+  head) are passed over for ones you can hit; giants strike down at you. Your eyes
+  stay on your opponent's face.
+- **Camera cuts:** big moments cut to a cinematic camera with slow motion and letterbox
+  bars — limbs and heads coming off (close, near-frozen), the finishing blow (low and
+  from the side, following them down), huge hits (a quick punch-in), your death (from
+  above, colour draining, red vignette), the win (you, arms up, from just below) and
+  each boss's entrance (a low angle looking up at the giant).
 - **Movement:** in a fight, boxer footwork; out of range, a real run (~3.8 m/s) with a
   clocked stride, flight phase, forward lean and pumping arms.
 - **Tutorial:** the first visit is a warm-up in the ring against a sparring partner —

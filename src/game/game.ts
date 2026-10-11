@@ -39,6 +39,7 @@ import { ArenaWalkable } from '../world/collision';
 import type { Drop } from '../sim/combat';
 import { limbBones, WEAPONS, type Wound } from '../sim/weapons';
 import { DropView } from '../render/weaponView';
+import { Cinematics, type Shot } from '../render/cinematics';
 import { item, loadSave, type SaveData, SLOTS, statsWithGear, writeSave } from './economy';
 import { type RoundSpec, roundSpec } from './gauntlet';
 import { Trauma } from './trauma';
@@ -64,6 +65,9 @@ export class Game {
   readonly renderer: WebGLRenderer;
   readonly scene = new Scene();
   readonly camRig = new CameraRig();
+  /** Camera cuts for the big moments. */
+  readonly cine = new Cinematics();
+  private readonly lastHitBy = new Map<Fighter, Fighter>();
   readonly effects: Effects;
   readonly coins: Coins;
   readonly blood: Blood;
@@ -212,6 +216,7 @@ export class Game {
     this.hud.setCoins(this.save.coins, false);
     this.hud.showCoins(this.mode === 'gauntlet');
 
+    this.cine.onChange = (on) => this.hud.cinematic(on);
     window.addEventListener('resize', () => this.resize());
     this.resize();
   }
@@ -428,6 +433,9 @@ export class Game {
 
   /** Clears the floor of the last fight. */
   private resetArena() {
+    this.cine.stop();
+    this.hud.mood('');
+    this.lastHitBy.clear();
     this.clearEnemies();
     this.clearDrops();
     this.coins.clear();
@@ -478,7 +486,24 @@ export class Game {
     });
     this.scatterWeapons();
     this.holdIn = INTRO_HOLD;
+    this.hud.mood('');
     if (spec.boss) {
+      // The giant steps in: low angle, looking up at it.
+      const boss = this.enemies[0];
+      this.holdIn = INTRO_HOLD + 0.9;
+      const toPlayer = new Vector3().subVectors(this.player.pos, boss.pos).setY(0).normalize();
+      this.cut({
+        focus: () => new Vector3(boss.pos.x, boss.rig.chest.pos.y + 0.15 * boss.scale, boss.pos.z),
+        side: toPlayer.applyAxisAngle(new Vector3(0, 1, 0), 0.55),
+        distance: 3.3 * boss.scale,
+        height: -0.75 * boss.scale,
+        orbit: -0.12,
+        dolly: -0.35,
+        fov: 42,
+        duration: 2.4,
+        slow: 1,
+        priority: 2,
+      });
       this.banner(`BOSS · ${ARCHETYPES[spec.boss].name.toUpperCase()}`, `round ${n} · ${this.theme.name}`, 'down', 2.6);
       this.camRig.addTrauma(0.35);
       this.sfx.knockdown();
@@ -529,7 +554,7 @@ export class Game {
       return;
     }
     if (this.phase !== 'play' || !this.spec || this.clearIn >= 0) return;
-    if (this.enemies.length > 0 && this.enemies.every((e) => !e.alive)) this.clearIn = 1.4;
+    if (this.enemies.length > 0 && this.enemies.every((e) => !e.alive)) this.clearIn = 2.3;
   }
 
   private roundCleared() {
@@ -542,6 +567,26 @@ export class Game {
     this.sfx.chime();
     this.banner(spec.boss ? 'BOSS DOWN' : 'ROUND CLEAR', `+${spec.reward} coins`, 'intro', 2.4);
     this.shopIn = 2.6;
+    this.victoryShot();
+  }
+
+  /** The winner, arms up, from just below — heroic. */
+  private victoryShot() {
+    const p = this.player;
+    if (!p.alive) return;
+    if (p.free) p.celebrate();
+    const front = new Vector3(Math.sin(p.yaw), 0, Math.cos(p.yaw)).applyAxisAngle(new Vector3(0, 1, 0), 0.6);
+    this.cut({
+      focus: () => new Vector3(p.pos.x, p.rig.chest.pos.y + 0.1, p.pos.z),
+      side: front,
+      distance: 2.6,
+      height: -0.25,
+      orbit: -0.22,
+      fov: 40,
+      duration: 2.4,
+      slow: 1,
+      priority: 4,
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -580,6 +625,39 @@ export class Game {
     this.canvas.style.width = `${w}px`;
     this.canvas.style.height = `${h}px`;
     this.camRig.resize(w, h);
+    this.cine.resize(w / h);
+  }
+
+  /** The camera the frame is seen through (a cut, or the gameplay camera). */
+  get viewCamera() {
+    return this.cine.active ? this.cine.camera : this.camRig.camera;
+  }
+
+  /**
+   * Ground direction for a cut that looks across the line between two points, on the
+   * side the gameplay camera is already on (so left and right stay where they were).
+   */
+  private across(a: Vector3, b: Vector3, toward = 0.25): Vector3 {
+    const l = new Vector3(b.x - a.x, 0, b.z - a.z);
+    if (l.lengthSq() < 1e-6) l.set(1, 0, 0);
+    l.normalize();
+    const side = new Vector3(l.z, 0, -l.x);
+    const cam = this.camRig.camera.position;
+    if (side.x * (cam.x - (a.x + b.x) / 2) + side.z * (cam.z - (a.z + b.z) / 2) < 0) side.negate();
+    // A little over the shoulder of whoever is at `a`.
+    return side.addScaledVector(l, -toward).normalize();
+  }
+
+  private pelvisOf(f: Fighter): () => Vector3 {
+    return () => {
+      const p = this.ragdolls.get(f)?.pelvisPos() ?? f.pos.clone();
+      p.y = Math.max(0.35 * f.scale, p.y);
+      return p;
+    };
+  }
+
+  private cut(shot: Shot) {
+    this.cine.play(shot);
   }
 
   start() {
@@ -672,7 +750,7 @@ export class Game {
     // Timers in real time (stopped while paused).
     if (!GAME_TUNING.paused) this.tickTimers(realDt);
 
-    let scale = GAME_TUNING.timeScale * (this.slowmo > 0 ? 0.25 : 1);
+    let scale = GAME_TUNING.timeScale * (this.cine.active ? this.cine.timeScale : this.slowmo > 0 ? 0.25 : 1);
     if (GAME_TUNING.paused) scale = 0;
     if (this.stepOnce) {
       this.stepOnce = false;
@@ -694,6 +772,7 @@ export class Game {
   private tickTimers(dt: number) {
     const due = (t: number) => t > 0 && t - dt <= 0;
     if (this.slowmo > 0) this.slowmo -= dt;
+    this.cine.update(dt);
     if (due(this.bannerIn)) this.hud.hideBanner();
     if (due(this.holdIn)) {
       for (const e of this.enemies) {
@@ -719,6 +798,7 @@ export class Game {
         this.revivePlayer();
         this.phase = 'play';
         this.hud.hideBanner();
+        this.hud.mood('');
       }
     }
     for (const k of ['bannerIn', 'holdIn', 'clearIn', 'shopIn', 'nextRoundIn', 'respawnIn', 'downIn'] as const) {
@@ -828,10 +908,16 @@ export class Game {
           this.sfx.slice(heavy);
           this.blood.spray(e.point, e.dir.clone().setY(0.25), 0.5 + (e.wound?.bleed ?? 0.3) * 1.2, 3);
         }
+        this.lastHitBy.set(e.defender, e.attacker);
         if (e.sever) this.dismember(e.defender, e.sever, e.dir, e.point);
+        else if (!e.ko && (e.damage >= 16 || (e.counter && heavy) || (e.knockdown && heavy))) {
+          // A huge blow: a quick punch-in, slowed down.
+          const at = e.point.clone();
+          this.cut({ focus: () => at, side: this.across(e.attacker.pos, e.defender.pos, 0.3), distance: 2.3 * Math.max(1, e.defender.scale * 0.8), height: 0.25, orbit: 0.3, fov: 38, duration: 0.8, slow: 0.22, priority: 1 });
+        }
         if (byPlayer && e.combo >= 2) this.hud.showCombo(e.combo);
-        if (byPlayer && e.counter) this.hud.popup('COUNTER', e.point, this.camRig.camera, 'counter');
-        if (byPlayer && e.armored) this.hud.popup('ARMORED', e.point, this.camRig.camera, 'armor');
+        if (byPlayer && e.counter) this.hud.popup('COUNTER', e.point, this.viewCamera, 'counter');
+        if (byPlayer && e.armored) this.hud.popup('ARMORED', e.point, this.viewCamera, 'armor');
         if (e.ko) this.onKO(e.defender);
         break;
       }
@@ -843,7 +929,7 @@ export class Game {
         this.effects.sparks(e.point, e.dir, e.guardBreak ? 18 : 8, '#8fd0ff', 3.5, 0.03);
         this.effects.flash(e.point, 0.2, '#9fd8ff');
         this.ragdolls.get(e.defender)?.applyBlock(e.dir, e.move);
-        if (e.guardBreak) this.hud.popup('GUARD BREAK', e.point, this.camRig.camera, 'armor');
+        if (e.guardBreak) this.hud.popup('GUARD BREAK', e.point, this.viewCamera, 'armor');
         break;
       }
       case 'dodge': {
@@ -875,7 +961,7 @@ export class Game {
         this.syncDropViews();
         break;
       case 'bleedout':
-        this.hud.popup('BLED OUT', new Vector3(e.f.pos.x, 1.6, e.f.pos.z), this.camRig.camera, 'armor');
+        this.hud.popup('BLED OUT', new Vector3(e.f.pos.x, 1.6, e.f.pos.z), this.viewCamera, 'armor');
         this.onKO(e.f);
         break;
       default:
@@ -893,8 +979,23 @@ export class Game {
     this.camRig.zoomPunch(1.2);
     this.slowmo = Math.max(this.slowmo, 0.6);
     for (let i = 0; i < 4; i++) this.blood.spray(point, dir.clone().setY(0.6 + i * 0.2), 1, 3.4);
+    // Close and almost frozen, over the shoulder of whoever did it.
+    const by = this.lastHitBy.get(f) ?? this.player;
+    const at = point.clone();
+    this.cut({
+      focus: () => at,
+      side: this.across(by.pos, f.pos, 0.45),
+      distance: 1.7 * Math.max(1, f.scale * 0.8),
+      height: 0.2,
+      orbit: 0.45,
+      dolly: -0.25,
+      fov: 36,
+      duration: 1.5,
+      slow: 0.1,
+      priority: 3,
+    });
     const label = bone === 'head' ? 'DECAPITATED' : bone.startsWith('thigh') || bone.startsWith('shin') ? 'LEG OFF' : 'ARM OFF';
-    this.hud.popup(label, point, this.camRig.camera, 'armor');
+    this.hud.popup(label, point, this.viewCamera, 'armor');
   }
 
   /** Accumulate trauma and spill blood where it makes sense (mouth, nose, brow). */
@@ -918,6 +1019,10 @@ export class Game {
     if (f === this.player) {
       this.slowmo = 1.5;
       this.phase = 'down';
+      // Your fall, seen from above; the colour drains out.
+      const by = this.lastHitBy.get(f) ?? this.enemy ?? f;
+      this.hud.mood('death');
+      this.cut({ focus: this.pelvisOf(f), side: this.across(by.pos, f.pos, -0.2), distance: 3.0, height: 1.7, orbit: 0.16, dolly: -0.2, fov: 40, duration: 3.2, slow: 0.22, priority: 5 });
       this.clearIn = this.holdIn = -1;
       if (this.mode === 'gauntlet') {
         const best = Math.max(this.save.bestRound, this.round - 1);
@@ -931,6 +1036,11 @@ export class Game {
       return;
     }
     this.koAt.set(f, this.sim.frame);
+    // The finishing blow: low and from the side, following them down.
+    if (this.enemies.every((e) => !e.alive) && this.player.alive) {
+      const by = this.lastHitBy.get(f) ?? this.player;
+      this.cut({ focus: this.pelvisOf(f), side: this.across(by.pos, f.pos, 0.1), distance: 3.8 * Math.max(1, f.scale * 0.75), height: 0.55, orbit: 0.3, fov: 38, duration: 2.2, slow: 0.18, priority: 4 });
+    }
     if (this.mode === 'training') {
       this.slowmo = 1.5;
       this.kos++;
@@ -999,7 +1109,7 @@ export class Game {
     const cutFocus = p.pos.clone();
     if (t) cutFocus.lerp(t.pos, 0.5);
     cutFocus.y = 1;
-    updateCutout(this.camRig.camera, cutFocus, 0.3 + Math.min(0.25, spread * 0.06), this.renderer.domElement.width / this.renderer.domElement.height);
+    updateCutout(this.viewCamera, cutFocus, 0.3 + Math.min(0.25, spread * 0.06), this.renderer.domElement.width / this.renderer.domElement.height);
 
     const head = new Vector3(p.pos.x, 2.25, p.pos.z);
     const near = p.alive ? this.dropInReach() : null;
@@ -1016,7 +1126,7 @@ export class Game {
     this.updateDebug();
     const shown = t ?? (this.phase === 'play' ? this.enemies.find((e) => e.alive) ?? null : null);
     this.hud.update(realDt, p, shown, this.label());
-    this.renderer.render(this.scene, this.camRig.camera);
+    this.renderer.render(this.scene, this.viewCamera);
   }
 
   /** Weapons in hand, new cuts on bodies, and blood dripping from every open wound. */

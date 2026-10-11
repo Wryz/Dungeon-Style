@@ -52,7 +52,8 @@ export type FighterState =
   | 'guardbreak'
   | 'knockdown'
   | 'getup'
-  | 'ko';
+  | 'ko'
+  | 'celebrate';
 
 /** Attack inputs: left/right punch, left/right kick. */
 export type Button = 'lpunch' | 'rpunch' | 'lkick' | 'rkick';
@@ -136,6 +137,8 @@ export class Fighter {
   /** The weapon is stuck in the opponent until this state frame. */
   stuckUntil = 0;
   private readonly impactPose = makePose();
+  /** Head / chest pitch toward the opponent's face (smoothed; + = looking down). */
+  private lookPitch = 0;
   attackSerial = 0;
   hitThisAttack = false;
   /** The attack was a counter (thrown from a counter window). */
@@ -344,7 +347,9 @@ export class Fighter {
     this.strikeHeight = this.aim?.height ?? move.height;
     // Natural scatter: no two strikes land on exactly the same spot.
     const jitter: [number, number, number] = aimId ? [0, 0, 0] : [this.rng.range(-0.04, 0.04), this.rng.range(-0.035, 0.035), 0];
-    this.anim.play(moveKeys(move, this.aim, jitter));
+    // Fit the strike to the opponent in front of us: up for a giant, down for a small one.
+    const dy = Math.max(-0.75, Math.min(0.45, this.heightGap(move, this.aim)));
+    this.anim.play(moveKeys(move, this.aim, jitter, dy, this.reachFit(move)));
   }
 
   private pickAim(move: MoveDef, aimId?: string): Aim | null {
@@ -354,7 +359,40 @@ export class Fighter {
     // Against a covered-up opponent, go around the guard: favour body / leg targets.
     const t = this.target;
     const covering = !!t && (t.state === 'blockstun' || (t.state === 'defend' && t.defense?.def.kind === 'block'));
-    return this.rng.pickWeighted(aims.map((a) => [a, a.weight * (covering && (a.height === 'mid' || a.height === 'low') ? 3 : 1)]));
+    // Go for what you can reach: a giant's head is out of reach, a small one's legs
+    // are awkward to get down to.
+    return this.rng.pickWeighted(
+      aims.map((a) => {
+        const miss = Math.max(0, Math.abs(this.heightGap(move, a)) - 0.3);
+        return [a, a.weight * (covering && (a.height === 'mid' || a.height === 'low') ? 3 : 1) * Math.exp(-miss * 5)];
+      }),
+    );
+  }
+
+  /**
+   * How far forward (fighter-local, unscaled) the striking fist / foot should reach to
+   * land on the target's body rather than through it, allowing for the lunge.
+   */
+  private reachFit(move: MoveDef): number {
+    const t = this.target;
+    if (!t || !t.alive || move.weapon) return Infinity;
+    const lunge = (move.lunge?.distance ?? 0) * this.scale;
+    const stop = (0.74 * (this.scale + t.scale)) / 2;
+    const dist = Math.max(stop, this.distanceTo(t) - lunge);
+    // To the front of their body, plus a little: punches land into the target.
+    return (dist - 0.13 * t.scale) / this.scale + 0.06;
+  }
+
+  /**
+   * How much higher (+) or lower (-) the target's part is than this strike was authored
+   * to hit, in our own (unscaled) metres. Small differences are left to the pose.
+   */
+  private heightGap(move: MoveDef, aim: Aim | null): number {
+    const t = this.target;
+    if (!t || !t.alive) return 0;
+    const h = aim?.height ?? move.height;
+    const gap = targetHeight(t, h) / this.scale - AUTHORED_HEIGHT[h];
+    return Math.abs(gap) < 0.1 ? 0 : gap - Math.sign(gap) * 0.1;
   }
 
   startDefense(kind: DefenseKind, threatSerial: number) {
@@ -426,6 +464,17 @@ export class Fighter {
   enterKO() {
     this.setState('ko');
     this.anim.play([{ f: 6, pose: getPose('limp'), ease: 'out' }]);
+  }
+
+  /** Arms up: the fight is won. */
+  celebrate(frames = 150) {
+    this.setState('celebrate');
+    this.stunFrames = frames;
+    this.anim.play([
+      { f: 14, pose: getPose('victory'), ease: 'out' },
+      { f: frames - 24, pose: getPose('victory') },
+      { f: frames, pose: getPose(this.weapon ? (this.weapon.style === 'oneHand' ? 'wGuard1' : 'wGuard2') : 'guard'), ease: 'inOut' },
+    ]);
   }
 
   enterLocomotion(fade = 6) {
@@ -533,6 +582,14 @@ export class Fighter {
   }
 
   private locomotionPose(dx: number, dz: number, offX: number, offZ: number) {
+    // Eyes on the opponent's face: chin up to a giant, down to something small.
+    const t = this.target && this.target.alive && this.lockedOn ? this.target : null;
+    let want = 0;
+    if (t) {
+      const up = t.rig.head.pos.y - this.rig.head.pos.y;
+      want = Math.max(-0.55, Math.min(0.5, -Math.atan2(up, Math.max(0.4, this.distanceTo(t))) * 0.9));
+    }
+    this.lookPitch += (want - this.lookPitch) * 0.1;
     const m = this.moveBlend;
     const M = this.motion;
     // 0 = fighting stance, 1 = walking like a person (square hips, arm swing, hands down).
@@ -584,8 +641,8 @@ export class Fighter {
       pelvis: [0, -0.3 * f + swing * 0.25 * (1 - run) + pump * 0.16 * run, 0],
       // Running leans the whole body into the stride.
       abdomen: [(0.1 + M.lean) * f + 0.04 * g + 0.13 * run + fwd * 0.05 * m + back * 0.03 * m, 0, -dx * 0.05 * m * f],
-      chest: [0.08 * f + 0.02 * g + 0.04 * run + Math.sin(this.breath * 2.2) * 0.01, -0.1 * f - swing * 0.45 * (1 - run) - pump * 0.3 * run, 0],
-      head: [-0.04 * f - 0.15 * run, 0.4 * f, 0],
+      chest: [0.08 * f + 0.02 * g + 0.04 * run + this.lookPitch * 0.25 + Math.sin(this.breath * 2.2) * 0.01, -0.1 * f - swing * 0.45 * (1 - run) - pump * 0.3 * run, 0],
+      head: [-0.04 * f - 0.15 * run + this.lookPitch, 0.4 * f, 0],
       handL: { at: mix(guardL.at, relaxedL), hint: mix(guardL.hint ?? [0.35, -1, 0], hintL) },
       handR: { at: mix(guardR.at, relaxedR), hint: mix(guardR.hint ?? [-0.35, -1, 0], hintR) },
       footL: { at: footL, hint: KNEE_HINT.L },
@@ -632,20 +689,70 @@ const addV = (a: V3 | undefined, b: V3 | undefined): V3 | undefined =>
   b ? [(a?.[0] ?? 0) + b[0], (a?.[1] ?? 0) + b[1], (a?.[2] ?? 0) + b[2]] : a;
 
 /** Key poses for one throw of a move; active-phase poses are re-aimed at the chosen target. */
-export function moveKeys(m: MoveDef, aim: Aim | null = null, jitter: V3 = [0, 0, 0]): TrackKey[] {
+/**
+ * Keyframes for a strike, fitted to this throw: its aim, a little natural scatter, and
+ * `dy` — how much higher (+) or lower (-) the target is than the move was authored for
+ * (fighter-local metres). The striking limb (and weapon) follow the target up or down;
+ * the body rises and looks up at a big opponent, or bends the knees, leans in and looks
+ * down at a small one.
+ */
+export function moveKeys(m: MoveDef, aim: Aim | null = null, jitter: V3 = [0, 0, 0], dy = 0, reachZ = Infinity): TrackKey[] {
   const scatter = jitter[0] !== 0 || jitter[1] !== 0 || jitter[2] !== 0;
   return m.keys.map((k) => {
     let pose = getPose(k.pose);
-    if (k.at[0] === 'a' && (aim?.offset || aim?.add || scatter)) {
+    const active = k.at[0] === 'a';
+    // The wind-up already heads for the new line; the recovery goes home as authored.
+    const share = active ? 1 : k.at[0] === 's' ? 0.5 : 0;
+    const authored = (POSE_SPECS[k.pose] as PoseSpec)[m.limb]?.at;
+    const short = k.at[0] !== 'r' && !!authored && authored[2] > reachZ;
+    const fit = (dy !== 0 && share > 0) || short;
+    if ((active && (aim?.offset || aim?.add || scatter)) || fit) {
       const spec: PoseSpec = { ...POSE_SPECS[k.pose] };
       const limb = spec[m.limb];
-      if (limb) spec[m.limb] = { at: addV(addV(limb.at, aim?.offset), jitter)!, hint: limb.hint };
-      for (const part of ['root', 'pelvis', 'abdomen', 'chest', 'head'] as const) {
-        const d = aim?.add?.[part];
-        if (d) spec[part] = addV(spec[part], d);
+      const lift: V3 = [0, dy * share, 0];
+      if (limb) {
+        const at = addV(addV(addV(limb.at, active ? aim?.offset : undefined), active ? jitter : undefined), lift)!;
+        // Shorten the strike to the distance actually in front of us.
+        if (at[2] > reachZ) at[2] = Math.max(0.22, reachZ);
+        spec[m.limb] = { at, hint: limb.hint };
+      }
+      if (active) {
+        for (const part of ['root', 'pelvis', 'abdomen', 'chest', 'head'] as const) {
+          const d = aim?.add?.[part];
+          if (d) spec[part] = addV(spec[part], d);
+        }
+      }
+      if (dy !== 0 && share > 0) {
+        const u = dy * share;
+        if (u < 0) {
+          // Lower target: sink the hips, fold forward at the waist, eyes down.
+          spec.root = addV(spec.root, [0, Math.max(-0.22, u * 0.4), 0.02]);
+          spec.abdomen = addV(spec.abdomen, [Math.min(0.45, -u * 0.55), 0, 0]);
+          spec.head = addV(spec.head, [Math.min(0.5, -u * 0.6), 0, 0]);
+        } else {
+          // Taller target: rise onto the balls of the feet, open the chest, look up.
+          spec.root = addV(spec.root, [0, Math.min(0.06, u * 0.15), 0]);
+          spec.chest = addV(spec.chest, [-Math.min(0.25, u * 0.35), 0, 0]);
+          spec.head = addV(spec.head, [-Math.min(0.6, u * 0.9), 0, 0]);
+        }
+        if (spec.blade) {
+          const b = spec.blade;
+          spec.blade = [b[0], b[1] + u * 0.9, b[2]];
+        }
       }
       pose = resolvePose(spec);
     }
     return { f: Math.round(markerFrame(m, k.at)), pose, ease: k.ease as Ease | undefined };
   });
+}
+
+/** Where a strike of each height lands on an opponent the move was authored for (local m). */
+const AUTHORED_HEIGHT: Record<Height, number> = { high: 1.55, mid: 1.11, low: 0.54 };
+
+/** World height of the part a strike of this height would land on. */
+function targetHeight(t: Fighter, h: Height): number {
+  const r = t.rig;
+  if (h === 'high') return r.head.pos.y + 0.13 * t.scale;
+  if (h === 'mid') return (r.chest.pos.y + r.abdomen.pos.y) / 2 + 0.06 * t.scale;
+  return (r.thighL.pos.y + r.thighR.pos.y) / 2 - 0.25 * t.scale;
 }
