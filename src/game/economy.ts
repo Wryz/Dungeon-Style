@@ -56,10 +56,12 @@ export interface SaveData {
 
 export const NEW_SAVE: SaveData = { coins: 0, gear: { helmet: 0, chest: 0, legs: 0, boots: 0, cuffs: 0 }, bestRound: 0, tutorialDone: false };
 const KEY = 'brawler.save.v2';
+const OLD_KEY = 'brawler.save.v1';
 
 export function loadSave(storage: Pick<Storage, 'getItem'> | null = safeStorage()): SaveData {
   try {
-    const raw = storage?.getItem(KEY);
+    // Saves from the dungeon version carry over their coins, gear and tutorial.
+    const raw = storage?.getItem(KEY) ?? storage?.getItem(OLD_KEY);
     if (raw) {
       const s = JSON.parse(raw) as Partial<SaveData>;
       return {

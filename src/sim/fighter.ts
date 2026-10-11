@@ -2,7 +2,7 @@ import { Vector3 } from 'three';
 import { Animator, type TrackKey } from '../body/animator';
 import { Footwork, type FootworkStyle } from '../body/footwork';
 import { IdleBehavior, type IdleStyle } from '../body/idle';
-import { makeProfile, type MotionMods, type MotionProfile, smoothProfile, targetProfile, type Zone } from '../body/motion';
+import { makeProfile, type MotionMods, type MotionProfile, smoothProfile, targetProfile, type Zone, ZONE_RANGES } from '../body/motion';
 import { getPose, GUARD, POSE_SPECS, type PoseName } from '../body/poses';
 import {
   forwardKinematics,
@@ -144,6 +144,10 @@ export class Fighter {
   framesSinceBlock = 999;
   framesSinceHit = 999;
   framesSinceLanded = 999;
+  /** Squared up to a target (soft lock-on, with hysteresis; maintained by the sim). */
+  lockedOn = false;
+  /** Health never drops below this (sparring partners can't be knocked out). */
+  minHp = 0;
   hitReaction: PoseName = 'hitHigh';
 
   /** Player gets automatic defense; enemies defend through their AI. */
@@ -392,7 +396,8 @@ export class Fighter {
       !!t && t.state === 'attack' && !!t.move && t.stateFrame < t.move.startup + t.move.active && dist <= t.move.reach + 0.5;
     const { weights, mods } = targetProfile(
       {
-        dist,
+        // Locked on, you never break into a run: fighting footwork whatever the range.
+        dist: this.lockedOn ? Math.min(dist, ZONE_RANGES.outside) : dist,
         hpFrac: this.hp / this.stats.maxHp,
         guardFrac: this.guard / this.stats.maxGuard,
         framesSinceHit: this.framesSinceHit,

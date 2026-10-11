@@ -90,6 +90,9 @@ export class Footwork {
   private lastStepper: Side | null = null;
   /** Live multipliers from the contextual motion profile. */
   readonly mods = { stance: 1, stepFrames: 1, stepHeight: 1, stride: 1, gait: 0 };
+  /** Smoothed hip offset toward the supporting foot (fighter-local x/z). */
+  private readonly shift = { x: 0, z: 0, primed: false };
+  private readonly shiftTarget = { x: 0, z: 0 };
   /** 0 = walking, 1 = full run (only meaningful while the walking gait is on). */
   run = 0;
   /** Walking/running cycle phase (0..1): the left foot lifts at 0, the right at 0.5. */
@@ -136,6 +139,9 @@ export class Footwork {
       this.initialized = true;
     }
 
+    // Ease the hips toward the supporting foot (weight moves, it doesn't teleport).
+    this.shift.x += (this.shiftTarget.x - this.shift.x) * 0.3;
+    this.shift.z += (this.shiftTarget.z - this.shift.z) * 0.3;
     const moving = speedFrac > 0.08;
     const sc = body.scale ?? 1;
     const speed = Math.hypot(body.walkVel.x, body.walkVel.z) / sc;
@@ -222,7 +228,7 @@ export class Footwork {
       if (f.stepping) return false;
       const forced = errors[side] > FORCE_THRESHOLD;
       if (errors[side] <= thr) return false;
-      if (other.stepping && other.t < (walking ? 0.85 : 0.55) && !forced) return false;
+      if (other.stepping && other.t < (walking ? 0.85 : 0.75) && !forced) return false;
       f.from.copy(f.pos);
       f.t = 0;
       f.lead = 0;
@@ -246,7 +252,7 @@ export class Footwork {
       // The follower drags in after the leader has moved (once it has mostly landed),
       // or on its own only if it is badly out of place.
       const lead = this.foot(leader);
-      const due = this.lastStepper === leader && (!lead.stepping || lead.t > 0.55);
+      const due = this.lastStepper === leader && (!lead.stepping || lead.t > 0.75);
       if (due || errors[follower] > Math.max(thr * 1.8, 0.12) || errors[follower] > FORCE_THRESHOLD) tryStep(follower);
     }
   }
@@ -320,18 +326,22 @@ export class Footwork {
   weightShift(body: Body, offX: number, offZ: number): [number, number] {
     const l = toLocal(this.L.pos, body, new Vector3());
     const r = toLocal(this.R.pos, body, new Vector3());
-    let cx = (l.x + r.x) / 2;
-    let cz = (l.z + r.z) / 2;
-    for (const [f, planted] of [
-      [this.L, r],
-      [this.R, l],
-    ] as const) {
-      if (!f.stepping) continue;
-      const k = 0.35 * Math.sin(Math.PI * f.t);
-      cx += (planted.x - cx) * k;
-      // Walking/running carries the hips forward at a steady pace instead of rocking.
-      cz += (planted.z - cz) * k * (1 - 0.85 * this.mods.gait);
-    }
+    // Hips lean toward whichever foot is carrying the weight: a foot in mid-swing carries
+    // none. Weighting by groundedness stays smooth even when both feet are briefly up.
+    const support = (f: Foot) => (f.stepping ? 1.02 - Math.sin(Math.PI * f.t) : 1.02);
+    const wl = support(this.L);
+    const wr = support(this.R);
+    const mx = (l.x + r.x) / 2;
+    const mz = (l.z + r.z) / 2;
+    const k = 0.45;
+    const tx = ((l.x * wl + r.x * wr) / (wl + wr) - mx) * k;
+    // Walking/running carries the hips forward at a steady pace instead of rocking.
+    const tz = ((l.z * wl + r.z * wr) / (wl + wr) - mz) * k * (1 - 0.85 * this.mods.gait);
+    if (!this.shift.primed) Object.assign(this.shift, { x: tx, z: tz, primed: true });
+    const cx = mx + this.shift.x;
+    const cz = mz + this.shift.z;
+    this.shiftTarget.x = tx;
+    this.shiftTarget.z = tz;
     const [hlx, hlz] = this.homeLocal('L', offX, offZ);
     const [hrx, hrz] = this.homeLocal('R', offX, offZ);
     return [cx - (hlx + hrx) / 2 + offX, cz - (hlz + hrz) / 2 + offZ];

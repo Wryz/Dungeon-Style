@@ -25,15 +25,18 @@ export class Tutorial {
     private readonly player: Fighter,
   ) {
     partner.stats.damageMul = 0.2;
+    partner.minHp = partner.stats.maxHp * 0.3;
+    player.minHp = player.stats.maxHp * 0.3;
     partnerAI.cfg.passive = true;
     partnerAI.cfg.blockChance = 0;
   }
 
   prompt(b: Bindings): string {
     const k = (code: string) => `<b>${keyLabel(code)}</b>`;
+    const skip = ' <small>· Enter skips</small>';
     switch (this.step) {
       case 'punch':
-        return `${k(b.lpunch)} ${k(b.rpunch)} punch`;
+        return `${k(b.lpunch)} ${k(b.rpunch)} punch${skip}`;
       case 'combo':
         return `${k(b.lpunch)}${k(b.rpunch)}${k(b.lpunch)} combo`;
       case 'defense':

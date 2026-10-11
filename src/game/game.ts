@@ -362,6 +362,7 @@ export class Game {
     this.views.get(this.player)?.setTrauma(0, false);
     this.tutorial = null;
     this.tutorialPartner = null;
+    this.player.minHp = 0;
     this.holdIn = this.clearIn = this.nextRoundIn = this.downIn = this.shopIn = this.respawnIn = -1;
     this.slowmo = 0;
     this.hud.hideBanner();
@@ -436,6 +437,7 @@ export class Game {
     }
     this.tutorial = null;
     this.tutorialPartner = null;
+    this.player.minHp = 0;
     this.save.tutorialDone = true;
     writeSave(this.save);
     this.hud.prompt('');
@@ -447,7 +449,9 @@ export class Game {
   private updateGauntlet() {
     if (this.tutorial) {
       this.tutorial.update();
-      if (this.tutorial.finished) this.finishTutorial();
+      // Finished, or the partner went down anyway: on to the real fights.
+      const partnerDown = !!this.tutorialPartner && !this.tutorialPartner.alive;
+      if ((this.tutorial.finished || partnerDown) && this.nextRoundIn < 0) this.finishTutorial();
       return;
     }
     if (this.phase !== 'play' || !this.spec || this.clearIn >= 0) return;
@@ -667,6 +671,10 @@ export class Game {
       }
       case 'KeyH':
         GAME_TUNING.showHitboxes = !GAME_TUNING.showHitboxes;
+        break;
+      case 'Enter':
+      case 'NumpadEnter':
+        if (this.tutorial && this.nextRoundIn < 0) this.finishTutorial();
         break;
       case 'Backspace':
         if (this.phase === 'play') this.restart();

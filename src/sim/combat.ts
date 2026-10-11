@@ -41,6 +41,9 @@ interface Contact {
 }
 
 /** Lock-on tuning (rates in radians per frame). */
+/** How much nearer (m) another opponent must be before the lock switches to it. */
+const TARGET_SWITCH_MARGIN = 0.4;
+
 export const FACING = {
   idleRate: 0.07,
   walkRate: 0.09,
@@ -50,8 +53,10 @@ export const FACING = {
   strafeLead: 0.35,
   /** Offsets smaller than this are tolerated while standing still. */
   idleDeadzone: 0.14,
-  /** Beyond this, the fighter is not locked onto anyone and walks like a person. */
+  /** Closer than this, the fighter squares up to its target (soft lock-on)... */
   lockRange: 4.6,
+  /** ...and stays locked until further than this (no flip-flopping at the edge). */
+  unlockRange: 5.2,
   /** Turn rate while walking freely (rad/frame). */
   freeTurnRate: 0.2,
 };
@@ -130,18 +135,26 @@ export class CombatSim {
 
   // ---------------------------------------------------------------------------
 
+  /**
+   * Lock onto the nearest opponent (measured to the edge of big bodies). A committed
+   * strike keeps its target, and a new one has to be clearly nearer before the lock
+   * switches, so two enemies at similar range don't make it flip back and forth.
+   */
   private retarget(f: Fighter) {
-    if (f.target && f.target.alive) return;
+    const cur = f.target && f.target.alive ? f.target : null;
+    if (cur && f.state === 'attack') return;
+    const reach = (o: Fighter) => f.distanceTo(o) - (o.scale - 1) * 0.35;
     let best: Fighter | null = null;
     let bestD = Infinity;
     for (const o of this.opponents(f)) {
       if (!o.alive) continue;
-      const d = f.distanceTo(o);
+      const d = reach(o);
       if (d < bestD) {
         bestD = d;
         best = o;
       }
     }
+    if (cur && best !== cur && reach(cur) - bestD < TARGET_SWITCH_MARGIN) best = cur;
     f.target = best;
   }
 
@@ -269,6 +282,9 @@ export class CombatSim {
   }
 
   private locomote(f: Fighter) {
+    const lockT = f.target && f.target.alive ? f.target : null;
+    const lockD = lockT ? f.distanceTo(lockT) : Infinity;
+    f.lockedOn = lockD < (f.lockedOn ? FACING.unlockRange : FACING.lockRange);
     const external = this.externalKnockdown && (f.state === 'knockdown' || f.state === 'ko');
     if (!external) {
       f.pos.x += f.vel.x * DT;
@@ -290,8 +306,7 @@ export class CombatSim {
         const dot = (mi.x * fwd.x + mi.z * fwd.z) / raw;
         // Speed comes from the contextual motion profile (stance footwork in range,
         // full walking stride far away, slower when hurt...).
-        const t2 = f.target && f.target.alive ? f.target : null;
-        const locked = !!t2 && f.distanceTo(t2) < FACING.lockRange;
+        const locked = f.lockedOn;
         // Locked on: backpedalling is slower. Free walking: turn first, then go.
         const turnFirst = locked ? 1 : Math.max(0.3, (1 + dot) / 2);
         const sp =
@@ -336,7 +351,6 @@ export class CombatSim {
    */
   private updateFacing(f: Fighter) {
     const t = f.target && f.target.alive ? f.target : null;
-    const dist = t ? f.distanceTo(t) : Infinity;
     const mi = f.moveInput;
     const moving = Math.hypot(mi.x, mi.z) > 0.1;
     let rate = 0;
@@ -348,7 +362,7 @@ export class CombatSim {
 
     let desired: number | null = null;
     let deadzone = 0;
-    if (t && dist < FACING.lockRange) {
+    if (t && f.lockedOn) {
       const toT = Math.atan2(t.pos.x - f.pos.x, t.pos.z - f.pos.z);
       desired = toT;
       if (moving && f.free) {
@@ -490,7 +504,7 @@ export class CombatSim {
 
     let dmg = m.damage * a.stats.damageMul * (counter ? 1.25 : 1) * (1 - d.stats.defense);
     if (armored) dmg *= 0.5;
-    d.hp -= dmg;
+    d.hp = Math.max(d.minHp, d.hp - dmg);
     d.framesSinceHit = 0;
     a.framesSinceLanded = 0;
     const comboing = d.state === 'hitstun' || d.state === 'guardbreak';
