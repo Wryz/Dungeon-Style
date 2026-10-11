@@ -1,5 +1,7 @@
 import { DEFAULT_STATS, type FighterStats } from '../sim/fighter';
+import type { PerkId } from '../sim/perks';
 import type { WeaponId } from '../sim/weapons';
+import { OUTFITS, type OutfitId, RACK, type RackItem, SKILLS, type SkillDef, SUPPLIES, SUPPLY_STACK, type SupplyDef, type SupplyId, TRAINING, type TrainingDef, type TrainingId, trainingPrice } from './catalog';
 
 export type Slot = 'helmet' | 'chest' | 'legs' | 'boots' | 'cuffs';
 export const SLOTS: Slot[] = ['helmet', 'chest', 'legs', 'boots', 'cuffs'];
@@ -60,7 +62,7 @@ export const CATALOG: GearItem[] = [
   { slot: 'cuffs', tier: 6, name: 'Mythril Knuckles', price: 1450, mods: { damageMul: 0.6, reach: 0.08, knockbackMul: 0.6, defense: 0.04 }, material: 'mythril' },
 ];
 
-/** A weapon you walk into each round with, once bought. */
+/** The weapon ladder opponents are armed from as the rounds go on (best last). */
 export interface WeaponItem {
   tier: number;
   weapon: WeaponId;
@@ -92,11 +94,34 @@ export interface SaveData {
   gear: Record<Slot, number>;
   /** Best gauntlet round reached. */
   bestRound: number;
-  /** Best weapon bought (0 = none): carried into every round. */
-  weapon: number;
+  /** Weapons bought from the rack, and the one carried into every round (null: bare hands). */
+  weapons: WeaponId[];
+  loadout: WeaponId | null;
+  /** Training level per stat. */
+  training: Record<TrainingId, number>;
+  /** Skills bought (always on). */
+  skills: PerkId[];
+  /** Supplies in the bag: one of each is used up at the start of every round. */
+  supplies: Record<SupplyId, number>;
+  /** Outfits bought, and the one worn. */
+  outfits: OutfitId[];
+  outfit: OutfitId;
 }
 
-export const NEW_SAVE: SaveData = { coins: 0, gear: { helmet: 0, chest: 0, legs: 0, boots: 0, cuffs: 0 }, bestRound: 0, weapon: 0 };
+const zero = <K extends string>(ids: readonly K[]) => Object.fromEntries(ids.map((k) => [k, 0])) as Record<K, number>;
+
+export const NEW_SAVE: SaveData = {
+  coins: 0,
+  gear: { helmet: 0, chest: 0, legs: 0, boots: 0, cuffs: 0 },
+  bestRound: 0,
+  weapons: [],
+  loadout: null,
+  training: zero(TRAINING.map((t) => t.id)),
+  skills: [],
+  supplies: zero(SUPPLIES.map((x) => x.id)),
+  outfits: ['classic'],
+  outfit: 'classic',
+};
 const KEY = 'brawler.save.v2';
 const OLD_KEY = 'brawler.save.v1';
 
@@ -105,12 +130,35 @@ export function loadSave(storage: Pick<Storage, 'getItem'> | null = safeStorage(
     // Saves from the dungeon version carry over their coins and gear.
     const raw = storage?.getItem(KEY) ?? storage?.getItem(OLD_KEY);
     if (raw) {
-      const s = JSON.parse(raw) as Partial<SaveData>;
+      const s = JSON.parse(raw) as Partial<SaveData> & { weapon?: number };
+      const num = (v: unknown, max = Infinity) => Math.max(0, Math.min(max, Math.floor(Number(v) || 0)));
+      const rack = new Set(RACK.map((r) => r.weapon));
+      let weapons = (Array.isArray(s.weapons) ? s.weapons : []).filter((w) => rack.has(w));
+      let loadout = s.loadout && weapons.includes(s.loadout) ? s.loadout : null;
+      // (Older saves bought weapons up a ladder: you own everything up to the one you had.)
+      if (typeof s.weapon === 'number' && s.weapon > 0) {
+        const ladder = WEAPON_SHOP.filter((w) => w.tier <= s.weapon!).map((w) => w.weapon);
+        weapons = [...new Set([...weapons, ...ladder])];
+        loadout = loadout ?? ladder[ladder.length - 1] ?? null;
+      }
+      const training = { ...NEW_SAVE.training };
+      for (const t of TRAINING) training[t.id] = num(s.training?.[t.id], t.max);
+      const supplies = { ...NEW_SAVE.supplies };
+      for (const x of SUPPLIES) supplies[x.id] = num(s.supplies?.[x.id], SUPPLY_STACK);
+      const skillIds = new Set(SKILLS.map((k) => k.id));
+      const outfitIds = new Set(OUTFITS.map((o) => o.id));
+      const outfits = [...new Set(['classic' as OutfitId, ...(Array.isArray(s.outfits) ? s.outfits : []).filter((o) => outfitIds.has(o))])];
       return {
-        coins: Math.max(0, Number(s.coins) || 0),
+        coins: num(s.coins),
         gear: { ...NEW_SAVE.gear, ...(s.gear ?? {}) },
-        bestRound: Math.max(0, Number(s.bestRound) || 0),
-        weapon: Math.max(0, Math.min(MAX_TIER, Number(s.weapon) || 0)),
+        bestRound: num(s.bestRound),
+        weapons,
+        loadout,
+        training,
+        skills: (Array.isArray(s.skills) ? s.skills : []).filter((k) => skillIds.has(k)),
+        supplies,
+        outfits,
+        outfit: s.outfit && outfits.includes(s.outfit) ? s.outfit : 'classic',
       };
     }
   } catch {
@@ -151,20 +199,113 @@ export function buy(s: SaveData, g: GearItem): boolean {
   return true;
 }
 
-export function nextWeapon(s: SaveData): WeaponItem | null {
-  return weaponItem(s.weapon + 1) ?? null;
-}
+// ---------------------------------------------------------------------------
+// The rest of the shop
+// ---------------------------------------------------------------------------
 
-export function buyWeapon(s: SaveData, w: WeaponItem): boolean {
-  if (s.weapon !== w.tier - 1 || s.coins < w.price) return false;
-  s.coins -= w.price;
-  s.weapon = w.tier;
+/** Spend `price` if there's enough. */
+function spend(s: SaveData, price: number): boolean {
+  if (s.coins < price) return false;
+  s.coins -= price;
   return true;
 }
 
-/** Player stats with all worn gear applied. */
-export function statsWithGear(s: SaveData, base: FighterStats = DEFAULT_STATS): FighterStats {
-  return applyGear(base, s.gear);
+/** The next level of a stat (its price), or null when maxed. */
+export function nextTraining(s: SaveData, t: TrainingDef): number | null {
+  return s.training[t.id] >= t.max ? null : trainingPrice(t, s.training[t.id]);
+}
+
+export function buyTraining(s: SaveData, t: TrainingDef): boolean {
+  const price = nextTraining(s, t);
+  if (price === null || !spend(s, price)) return false;
+  s.training[t.id]++;
+  return true;
+}
+
+export function skillLocked(s: SaveData, k: SkillDef): boolean {
+  return s.bestRound < k.unlock;
+}
+
+export function buySkill(s: SaveData, k: SkillDef): boolean {
+  if (s.skills.includes(k.id) || skillLocked(s, k) || !spend(s, k.price)) return false;
+  s.skills.push(k.id);
+  return true;
+}
+
+export function buySupply(s: SaveData, x: SupplyDef): boolean {
+  if (s.supplies[x.id] >= SUPPLY_STACK || !spend(s, x.price)) return false;
+  s.supplies[x.id]++;
+  return true;
+}
+
+/** Buys a weapon off the rack (and takes it), or takes one already owned. */
+export function buyRack(s: SaveData, r: RackItem): boolean {
+  if (!s.weapons.includes(r.weapon)) {
+    if (!spend(s, r.price)) return false;
+    s.weapons.push(r.weapon);
+  }
+  s.loadout = r.weapon;
+  return true;
+}
+
+export function buyOutfit(s: SaveData, id: OutfitId): boolean {
+  const o = OUTFITS.find((x) => x.id === id);
+  if (!o) return false;
+  if (!s.outfits.includes(id)) {
+    if (!spend(s, o.price)) return false;
+    s.outfits.push(id);
+  }
+  s.outfit = id;
+  return true;
+}
+
+/** Per-round buffs from supplies being used this round. */
+export interface RoundBuffs {
+  maxHp: number;
+  damageMul: number;
+  weaponDamageMul: number;
+  staminaRegen: number;
+  lastStand: boolean;
+  coinMul: number;
+  used: SupplyId[];
+}
+
+export const NO_BUFFS: RoundBuffs = { maxHp: 0, damageMul: 0, weaponDamageMul: 0, staminaRegen: 0, lastStand: false, coinMul: 1, used: [] };
+
+/** Takes one of each supply in the bag for the round about to start. */
+export function useSupplies(s: SaveData): RoundBuffs {
+  const b: RoundBuffs = { ...NO_BUFFS, used: [] };
+  for (const x of SUPPLIES) {
+    if (s.supplies[x.id] <= 0) continue;
+    s.supplies[x.id]--;
+    b.used.push(x.id);
+    if (x.id === 'tonic') b.maxHp += 40;
+    if (x.id === 'warpaint') b.damageMul += 0.15;
+    if (x.id === 'whetstone') b.weaponDamageMul += 0.25;
+    if (x.id === 'rations') b.staminaRegen += 0.4;
+    if (x.id === 'salts') b.lastStand = true;
+    if (x.id === 'luckyCoin') b.coinMul = 2;
+  }
+  return b;
+}
+
+/** Player stats: base, worn gear, training, and this round's supplies. */
+export function statsWithGear(s: SaveData, base: FighterStats = DEFAULT_STATS, buffs: RoundBuffs = NO_BUFFS): FighterStats {
+  const t = s.training;
+  const out = applyGear(base, s.gear);
+  out.maxHp += 10 * t.vitality + buffs.maxHp;
+  out.damageMul += 0.05 * t.power + buffs.damageMul;
+  out.defense = Math.min(0.7, out.defense + 0.02 * t.toughness);
+  out.maxGuard += 12 * t.guard;
+  out.staggerResist = Math.min(0.8, out.staggerResist + 0.04 * t.grit);
+  out.walkSpeed += 0.06 * t.footwork;
+  out.maxPoise += 10 * t.poise;
+  return out;
+}
+
+/** How much faster than normal you get your breath back (training and supplies). */
+export function staminaRegen(s: SaveData, buffs: RoundBuffs = NO_BUFFS): number {
+  return 1 + 0.08 * s.training.conditioning + buffs.staminaRegen;
 }
 
 /** Stats with the given tier of gear worn in each slot (anyone: you, or an opponent). */

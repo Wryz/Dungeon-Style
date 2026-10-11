@@ -1,3 +1,4 @@
+import type { PerkId } from './perks';
 import { Quaternion, Vector3 } from 'three';
 import { Animator, type TrackKey } from '../body/animator';
 import { Footwork, type FootworkStyle } from '../body/footwork';
@@ -168,6 +169,13 @@ export class Fighter {
   counter: Counter | null = null;
   lastDefendedSerial = -1;
   defenseCooldown: Record<DefenseKind, number> = { block: 0, duck: 0, weave: 0, slide: 0 };
+  /** Skills (from the shop) and the once-a-round ones already spent this round. */
+  perks = new Set<PerkId>();
+  perksUsed = new Set<PerkId>();
+  /** Getting your breath back faster than normal (training, supplies). */
+  staminaRegenMul = 1;
+  /** Extra damage with a weapon in hand (supplies). */
+  weaponDamageMul = 1;
   /** The current defence was yours (Q / E met a strike), not the automatic guard. */
   defenseManual = false;
   /** The strike your parry / dodge was timed perfectly to (-1: none). */
@@ -439,7 +447,7 @@ export class Fighter {
     // Timing fits the body and the tool: big bodies move their limbs slower (like a
     // longer pendulum), small ones quicker; heavy weapons take longer to bring round.
     // Tired arms are slow arms.
-    const tempo = Math.sqrt(this.scale) * (move.weapon && this.weapon ? weaponTempo(this.weapon, this.scale) : 1) * (1 + (1 - this.stamina) * 0.6);
+    const tempo = Math.sqrt(this.scale) * (move.weapon && this.weapon ? weaponTempo(this.weapon, this.scale) : 1) * (1 + (1 - this.stamina) * 0.6) * (this.perks.has('quickHands') ? 0.9 : 1);
     // Gassed, a punch is an arm with nothing behind it.
     this.swingStamina = this.stamina;
     // Swinging a heavy weapon costs the breath it looks like it costs.

@@ -44,7 +44,8 @@ import { limbBones, WEAPONS, type Wound } from '../sim/weapons';
 import { DropView, ProjectileView } from '../render/weaponView';
 import { projectileDir, projectileGrip } from '../sim/projectiles';
 import { Cinematics, type Shot } from '../render/cinematics';
-import { deathRewardParts, item, loadSave, opponentGear, type SaveData, SLOTS, statsWithGear, weaponItem, writeSave } from './economy';
+import { OUTFITS, SUPPLIES } from './catalog';
+import { deathRewardParts, item, loadSave, NO_BUFFS, opponentGear, type RoundBuffs, type SaveData, SLOTS, staminaRegen, statsWithGear, useSupplies, writeSave } from './economy';
 import { type RoundSpec, roundSpec, type Spawn } from './gauntlet';
 import { Trauma } from './trauma';
 
@@ -148,7 +149,7 @@ export class Game {
   private readonly projViews = new Map<number, ProjectileView>();
   /** Who was in the air last step (to hear them land). */
   private readonly airborne = new Set<Fighter>();
-  private readonly shownWounds = new WeakSet<Wound>();
+  private shownWounds = new WeakSet<Wound>();
   /** How sweaty each fighter has got this round (0..1). */
   private readonly sweat = new Map<Fighter, number>();
   private readonly ragdolls = new Map<Fighter, Ragdoll>();
@@ -160,6 +161,9 @@ export class Game {
   private downIn = -1;
   /** What the last run paid out when it ended. */
   private lastPay = 0;
+  /** Supplies in use this round. */
+  private buffs: RoundBuffs = NO_BUFFS;
+  private wornOutfit: string | null = null;
   private runSummary: RunSummary | null = null;
   private readonly death: DeathScreen;
   /** This run so far (since the last round 1), for the end-of-run screen. */
@@ -261,6 +265,8 @@ export class Game {
       this.hud.setCoins(this.save.coins, false);
       this.sfx.coin();
     };
+    this.shop.onDenied = () => this.sfx.block(false);
+    this.shop.stats = () => this.player.stats;
     this.shop.onDone = () => {
       this.shop.close();
       this.setMenuPause(false);
@@ -305,17 +311,28 @@ export class Game {
     }
   }
 
+  /** Everything bought, applied: gear, training, skills, this round's supplies, the outfit. */
   applyGear() {
     const p = this.player;
     const hpFrac = p.hp / p.stats.maxHp;
-    p.stats = statsWithGear(this.save, PLAYER_BASE);
+    p.stats = statsWithGear(this.save, PLAYER_BASE, this.buffs);
     p.hp = Math.min(p.stats.maxHp, Math.max(1, hpFrac * p.stats.maxHp));
+    p.staminaRegenMul = staminaRegen(this.save, this.buffs);
+    p.weaponDamageMul = 1 + this.buffs.weaponDamageMul;
+    p.perks = new Set(this.save.skills);
+    if (this.buffs.lastStand) p.perks.add('lastStand');
+    this.applyOutfit();
+    this.applyGearLook();
+  }
+
+  /** Worn armour, shown on the body. */
+  private applyGearLook() {
     const look: GearLook = {};
     for (const slot of SLOTS) {
       const g = item(slot, this.save.gear[slot]);
       if (g) look[slot] = { material: g.material, tier: g.tier };
     }
-    this.views.get(p)?.setGear(look);
+    this.views.get(this.player)?.setGear(look);
   }
 
   // ---------------------------------------------------------------------------
@@ -383,8 +400,31 @@ export class Game {
     for (const e of [...this.enemies]) this.detach(e);
   }
 
+  /** Coins are worth more with Fortune, and double with a Lucky Coin. */
+  private get coinMul(): number {
+    return this.buffs.coinMul * (this.save.skills.includes('fortune') ? 1.3 : 1);
+  }
+
+  /** The outfit chosen in the shop (the body is rebuilt in its colours). */
+  private applyOutfit() {
+    const o = OUTFITS.find((x) => x.id === this.save.outfit) ?? OUTFITS[0];
+    if (this.wornOutfit === o.id) return;
+    this.wornOutfit = o.id;
+    const p = this.player;
+    const old = this.views.get(p);
+    if (!old) return;
+    const view = new FighterView({ ...PLAYER_PALETTE, ...o.colors });
+    view.setScale(p.scale);
+    this.scene.remove(old.root);
+    this.scene.add(view.root);
+    this.views.set(p, view);
+    this.shownWounds = new WeakSet();
+    this.applyGearLook();
+  }
+
   private resetPlayer(x: number, z: number, yaw: number) {
     const p = this.player;
+    p.perksUsed.clear();
     p.pos.set(x, 0, z);
     p.yaw = yaw;
     p.vel.set(0, 0, 0);
@@ -576,10 +616,15 @@ export class Game {
     this.applyGear();
     // Face the middle of the arena.
     this.resetPlayer(x, z, Math.atan2(-x, -z * 0.3));
-    // Walk in with the best weapon you've bought.
-    const w = weaponItem(this.save.weapon);
-    if (w) this.giveWeapon(w.weapon);
+    // Walk in with the weapon you've chosen from the rack.
+    if (this.save.loadout) this.giveWeapon(this.save.loadout);
     this.camRig.snap(this.player);
+  }
+
+  /** Supplies going into this round: " · Health Tonic, War Paint". */
+  private suppliesNote(): string {
+    if (!this.buffs.used.length) return '';
+    return ` · using ${this.buffs.used.map((id) => SUPPLIES.find((x) => x.id === id)!.name).join(', ')}`;
   }
 
   /** How the opponent comes kitted out: " · tier 3 armour · machete". */
@@ -604,6 +649,9 @@ export class Game {
     this.resetArena();
     if (n === 1 || !this.run) this.run = newRun();
     this.runSummary = null;
+    // One of each supply in the bag goes into this round.
+    this.buffs = this.mode === 'gauntlet' ? useSupplies(this.save) : NO_BUFFS;
+    if (this.buffs.used.length) writeSave(this.save);
     this.round = n;
     const spec = roundSpec(n, this.roundRng);
     this.spec = spec;
@@ -640,7 +688,7 @@ export class Game {
       this.camRig.addTrauma(0.35);
       this.sfx.knockdown();
     } else {
-      this.banner(`ROUND ${n}`, `${this.theme.name} · ${ARCHETYPES[spec.spawns[0].kind].name}${this.kitNote(spec.spawns[0])}`, 'intro');
+      this.banner(`ROUND ${n}`, `${this.theme.name} · ${ARCHETYPES[spec.spawns[0].kind].name}${this.kitNote(spec.spawns[0])}${this.suppliesNote()}`, 'intro');
     }
     this.setMenuPause(false);
   }
@@ -655,10 +703,11 @@ export class Game {
     this.phase = 'clear';
     this.save.bestRound = Math.max(this.save.bestRound, spec.round);
     const p = this.player.pos;
-    this.coins.burst(new Vector3(p.x, 1.6, p.z), spec.reward);
+    const reward = Math.round(spec.reward * this.coinMul);
+    this.coins.burst(new Vector3(p.x, 1.6, p.z), reward);
     writeSave(this.save);
     this.sfx.chime();
-    this.banner(spec.boss ? 'BOSS DOWN' : 'ROUND CLEAR', `+${spec.reward} coins`, 'intro', 2.4);
+    this.banner(spec.boss ? 'BOSS DOWN' : 'ROUND CLEAR', `+${reward} coins`, 'intro', 2.4);
     this.shopIn = 2.6;
     this.victoryShot();
   }
@@ -853,6 +902,8 @@ export class Game {
       this.stepOnce = false;
       this.fixedStep();
     }
+    // (A camera cut is already the slow-motion beat: no hit-pause frozen on top of it.)
+    if (this.cine.active && this.hitstop > 0) this.hitstop = 0;
     this.accum += realDt * scale;
     let steps = 0;
     while (this.accum >= DT && steps < 6) {
@@ -1116,6 +1167,17 @@ export class Game {
       case 'defend':
         if (e.kind === 'slide') this.effects.dust(e.f.pos, 10, 0.4);
         break;
+      case 'perk': {
+        const label = e.perk === 'secondWind' ? 'SECOND WIND' : e.perk === 'lastStand' ? 'LAST STAND' : '';
+        if (label) {
+          this.marker(label, e.point, e.f === this.player ? 'parry big' : 'hurt');
+          if (e.f === this.player) {
+            this.sfx.counterReady();
+            this.slowmo = Math.max(this.slowmo, 0.4);
+          }
+        }
+        break;
+      }
       case 'swing':
         this.sfx.whoosh(e.move.weight);
         this.sfx.exhale(e.move.weight !== 'light', e.f.scale);
@@ -1532,7 +1594,7 @@ export class Game {
     // Coins burst out; slow-mo only for the last enemy of a round.
     const kind = this.enemyKind.get(f) ?? 'brawler';
     const at = this.ragdolls.get(f)?.pelvisPos() ?? f.pos.clone();
-    this.coins.burst(at, coinDrop(kind, this.sim.rng, this.round));
+    this.coins.burst(at, Math.round(coinDrop(kind, this.sim.rng, this.round) * this.coinMul));
     if (this.enemies.every((e) => !e.alive)) this.slowmo = 1.2;
   }
 
@@ -1556,7 +1618,9 @@ export class Game {
     }
 
     this.effects.update(simDt, realDt);
-    this.blood.update(simDt);
+    // (In a freeze-frame the blood still creeps outward — barely — so the spray is a fan of
+    // drops in the air, not one clump.)
+    this.blood.update(Math.max(simDt, realDt * 0.1));
     this.gibs.update(simDt, (at, speed) => this.blood.spray(at, new Vector3(0, 1, 0), Math.min(0.4, speed * 0.08), 0.6));
     if (simDt > 0) {
       for (const [f, t] of this.trauma) {

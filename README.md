@@ -28,13 +28,24 @@ demons and giant bosses.
   colosseum; the samurai wears hakama and a topknot, the ninja black with a mask.
 - **Bosses (giants):** The Champion (1.6×), The Minotaur (1.75×, horns and snout) and
   The Cyclops (1.85×). Size scales reach, step length, mass and hit weight.
-- **Economy and progression:** KOs burst into coins and each cleared round pays a
-  bonus; between rounds (and after a death) a shop sells helmet, chestplate, leggings,
-  boots and fist cuffs — **6 tiers each**, from leather and iron up to blacksteel and
-  mythril — that change your stats and show on your character (cheek guards, crests,
-  faulds, knee cops, vambraces at the higher tiers), plus a **weapon** you carry into
-  every round (bat → machete → gladius → katana → fire axe → battle axe). Progress is
-  saved in the browser.
+- **The shop — The Armoury:** KOs burst into coins and each cleared round pays a bonus;
+  between rounds (and after a death) you spend them in a tabbed store, every card with a
+  rarity colour (common → mythic), its stats and its price:
+  - **Armour** — helmet, chestplate, leggings, boots and fist cuffs, 6 tiers each (leather
+    and iron up to blacksteel and mythril), shown on your character.
+  - **Weapons** — a rack of 17 weapons, from a beer bottle to the battle axe; buy any and
+    choose which one you carry into every round (or go in bare-handed).
+  - **Training** — eight stats levelled up to 10 (each level dearer): vitality, power,
+    toughness, guard, grit, footwork, conditioning, poise.
+  - **Skills** — bought once, always on, some unlocked by how far you've got: Perfect
+    Timing (later parries still count), Counter Master, Bloodlust (heal on hit), Thick
+    Blood, Adrenaline, Second Wind (once a round, back up from under 25%), Quick Hands,
+    Fortune (+30% coins), Heavy Hands, Executioner, Last Stand (survive one knockout blow).
+  - **Supplies** — stack up to 9; one of each is used at the start of every round: Health
+    Tonic, War Paint, Whetstone, Iron Rations, Smelling Salts, Lucky Coin (double coins).
+  - **Outfits** — eight colourways for your fighter.
+  Your current stats sit along the bottom; progress is saved in the browser (older saves
+  keep everything, weapons included).
 - **Opponents gear up too:** from round 4 on they wear the same armour you can buy — more
   pieces and better tiers the further you get (tier 6 plate by the late rounds) — and
   more and more of them walk in armed. The round banner tells you what they've got.

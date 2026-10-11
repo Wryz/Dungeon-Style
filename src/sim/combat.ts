@@ -9,6 +9,7 @@ import { angleDelta, approachAngle, DT, Rng } from './math';
 import { aimBallistic, centreOfMass, integrate, type Projectile, projectileDir, projectilePoints, pointVelocity, substeps } from './projectiles';
 import { DEFENSES, type DefenseKind, type Height, type MoveDef, moveLength, spinProgress } from './moves';
 import { chooseDefense, moveContext, selectPlayerMove } from './select';
+import { PERFECT_TIMING_FRAMES, type PerkId } from './perks';
 import { bladePoints, GORE, heft, LIMB_TOUGHNESS, limbBones, sampleOffsets, SEVER_AT, selectWeaponMove, WEAPON_MOVES, type WeaponDef, type Wound } from './weapons';
 
 /** A weapon lying on the arena floor. */
@@ -67,6 +68,8 @@ export type CombatEvent =
   | { type: 'dodge'; attacker: Fighter; defender: Fighter; move: MoveDef; kind: DefenseKind | 'airborne'; point: Vector3; perfect?: boolean }
   | { type: 'defend'; f: Fighter; kind: DefenseKind }
   | { type: 'getup'; f: Fighter }
+  /** A skill kicked in (Second Wind, Last Stand…). */
+  | { type: 'perk'; f: Fighter; perk: PerkId; point: Vector3 }
   /** A weapon thrown (or let fly from the belt). */
   | { type: 'throw'; f: Fighter; projectile: Projectile }
   /** A weapon in flight hit something that isn't a person: the floor, a wall, a prop. */
@@ -343,7 +346,7 @@ export class CombatSim {
       const hurt = 0.5 + 0.5 * (f.hp / f.stats.maxHp);
       // Holding a heavy weapon up is work in itself: you get your breath back slower.
       const burden = 1 - Math.min(0.5, 0.06 * heft(f.weapon, f.scale));
-      f.stamina = Math.max(0, Math.min(1, f.stamina + (resting > 0 ? resting * hurt * burden : resting) * DT));
+      f.stamina = Math.max(0, Math.min(1, f.stamina + (resting > 0 ? resting * hurt * burden * f.staminaRegenMul : resting) * DT));
     }
     for (const k of Object.keys(f.defenseCooldown) as DefenseKind[]) {
       if (f.defenseCooldown[k] > 0) f.defenseCooldown[k]--;
@@ -487,6 +490,13 @@ export class CombatSim {
     return threat;
   }
 
+  /** A once-a-round skill: whether it's there to use now (and if so, spends it). */
+  private oncePerRound(f: Fighter, perk: PerkId): boolean {
+    if (!f.perks.has(perk) || f.perksUsed.has(perk)) return false;
+    f.perksUsed.add(perk);
+    return true;
+  }
+
   /** Whether a strike can be parried (met with the guard), or only got out of the way of. */
   static parryable(f: Fighter, o: Fighter): boolean {
     const m = o.move!;
@@ -519,7 +529,7 @@ export class CombatSim {
     f.defenseManual = true;
     f.framesSinceDefend = 0;
     // Timed to it: met in the last instant before it lands (but still in time).
-    const window = kind === 'block' ? def.startup + PARRY_WINDOW : PERFECT_DODGE;
+    const window = kind === 'block' ? def.startup + parryWindow(f) : PERFECT_DODGE;
     f.perfectSerial = fta <= window && fta >= def.startup - 1 ? serial : -1;
     f.dodgedSerial = f.distanceTo(t) <= (t.move!.reach + t.stats.reach) * t.scale + 0.3 ? serial : -1;
     this.events.push({ type: 'defend', f, kind });
@@ -1023,7 +1033,7 @@ export class CombatSim {
     // Your own dodge, timed to the strike: a perfect dodge.
     const perfect = def.threatSerial >= 0 && def.threatSerial === d.perfectSerial;
     d.perfectSerial = -1;
-    d.counter = { kind: def.def.kind, frames: def.def.counterWindow + (perfect ? 24 : 0) };
+    d.counter = { kind: def.def.kind, frames: counterFrames(d, def.def.counterWindow + (perfect ? 24 : 0)) };
     if (perfect) d.perfectCounter = true;
     const attacker = a ?? this.opponents(d).find((o) => o.id * 100000 + o.attackSerial === def.threatSerial) ?? null;
     if (!attacker || !attacker.move) return;
@@ -1044,7 +1054,7 @@ export class CombatSim {
     let guardBreak = false;
     // A parry: the guard came up just as it arrived, meeting it rather than absorbing
     // it — the attacker is knocked off balance, the defender's hardly checked.
-    const parry = !thrown && m.weight !== 'heavy' && d.state === 'defend' && d.defense?.def.kind === 'block' && d.stateFrame <= DEFENSES.block.startup + PARRY_WINDOW;
+    const parry = !thrown && m.weight !== 'heavy' && d.state === 'defend' && d.defense?.def.kind === 'block' && d.stateFrame <= DEFENSES.block.startup + parryWindow(d);
     // Your own parry, timed to it: a perfect parry — and a counter that goes in hard.
     const perfect = parry && d.perfectSerial >= 0 && d.perfectSerial === a.id * 100000 + a.attackSerial;
     if (perfect) {
@@ -1054,7 +1064,7 @@ export class CombatSim {
     if (parry) {
       d.guard += m.guardDamage * 0.75;
       d.enterBlockstun(4);
-      d.counter = { kind: 'block', frames: DEFENSES.block.counterWindow + 10 + (perfect ? 20 : 0) };
+      d.counter = { kind: 'block', frames: counterFrames(d, DEFENSES.block.counterWindow + 10 + (perfect ? 20 : 0)) };
     } else if (d.guard <= 0) {
       guardBreak = true;
       d.guard = d.stats.maxGuard * 0.5;
@@ -1064,7 +1074,7 @@ export class CombatSim {
       // (A jab on the gloves barely stops you; a big shot on them does.)
       d.enterBlockstun(Math.round(m.blockstun * (m.weight === 'light' ? 0.6 : 1)));
       d.vel.addScaledVector(dir, kb * 0.6);
-      if (d.autoDefense) d.counter = { kind: 'block', frames: DEFENSES.block.counterWindow + m.blockstun };
+      if (d.autoDefense) d.counter = { kind: 'block', frames: counterFrames(d, DEFENSES.block.counterWindow + m.blockstun) };
     }
     // Blocking an edge with your arms still costs you: a cut on the forearm.
     let wound: Wound | null = null;
@@ -1110,11 +1120,23 @@ export class CombatSim {
     let dmg = m.damage * a.stats.damageMul * (counter ? (!thrown && a.isPerfectCounter ? 1.6 : 1.25) : 1) * (1 - defense) * behind;
     if (armored) dmg *= 0.5;
     if (w) dmg *= w.damageMul;
-    if (weight > 0) dmg *= 1 + 0.7 * weight;
+    if (weight > 0) dmg *= (1 + 0.7 * weight) * (a.perks.has('heavyHands') ? 1 + 0.3 * weight : 1);
+    if (w) dmg *= a.weaponDamageMul;
+    // Skills.
+    if (counter && a.perks.has('counterMaster')) dmg *= 1.2;
+    if (a.perks.has('adrenaline') && a.hp < 0.3 * a.stats.maxHp) dmg *= 1.2;
+    if (a.perks.has('executioner') && d.hp < 0.3 * d.stats.maxHp) dmg *= 1.3;
     // (How much of the swing is behind it matters more the heavier it is: caught early
     // it's a shove, caught at full speed it's devastating.)
     if (m.weapon) dmg *= Math.min(1, power) ** (1 + weight) * (haft ? 0.45 : 1);
     d.hp = Math.max(d.minHp, d.hp - dmg);
+    // Last Stand: the blow that would have put you away leaves you on your feet, just.
+    if (d.hp <= 0 && d.minHp <= 0 && this.oncePerRound(d, 'lastStand')) {
+      d.hp = 1;
+      this.events.push({ type: 'perk', f: d, perk: 'lastStand', point: point.clone() });
+    }
+    // Bloodlust: every hit you land feeds you.
+    if (a.alive && a.perks.has('bloodlust')) a.hp = Math.min(a.stats.maxHp, a.hp + 0.03 * a.stats.maxHp);
     // Body shots empty the tank.
     d.stamina = Math.max(0, d.stamina - (zone === 'abdomen' ? 0.09 : zone === 'chest' ? 0.04 : 0.02) * Math.min(2, dmg / 8));
     d.framesSinceHit = 0;
@@ -1200,6 +1222,12 @@ export class CombatSim {
       }
     }
     if (ko) this.dropWeapon(d);
+    // Second Wind: knocked low, something comes back.
+    if (!ko && d.alive && d.hp < 0.25 * d.stats.maxHp && this.oncePerRound(d, 'secondWind')) {
+      d.hp = Math.min(d.stats.maxHp, d.hp + 0.35 * d.stats.maxHp);
+      d.stamina = Math.min(1, d.stamina + 0.4);
+      this.events.push({ type: 'perk', f: d, perk: 'secondWind', point: point.clone() });
+    }
     // The strike stops at the body — unless it cleaved clean through, or the blow
     // carried them off their feet. Edges bite in and have to be wrenched free; fists,
     // feet and blunt weapons rebound.
@@ -1331,6 +1359,7 @@ export class CombatSim {
       rate += w.bleed;
     }
     if (!f.alive || rate <= 0) return;
+    if (f.perks.has('thickBlood')) rate *= 0.4;
     f.hp = Math.max(f.minHp, f.hp - rate * BLEED_DPS * DT);
     if (f.hp <= 0) {
       f.hp = 0;
@@ -1771,6 +1800,16 @@ function overlap(strike: Vector3, radius: number, d: Fighter, height: Height): {
     }
   }
   return null;
+}
+
+/** Frames after the guard comes up that meeting a strike still parries it. */
+function parryWindow(f: Fighter): number {
+  return PARRY_WINDOW + (f.perks.has('perfectTiming') ? PERFECT_TIMING_FRAMES : 0);
+}
+
+/** A counter window, stretched by Counter Master. */
+function counterFrames(f: Fighter, frames: number): number {
+  return f.perks.has('counterMaster') ? Math.round(frames * 1.5) : frames;
 }
 
 /**
