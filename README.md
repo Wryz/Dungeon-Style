@@ -1,4 +1,4 @@
-# Roguelike Brawler
+# DungeonStyle
 
 A 3D low-poly roguelike where combat is automatic and physics-driven: **you only choose
 when and how to attack — the character defends on its own.** Fight round after round,
