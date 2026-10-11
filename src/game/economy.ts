@@ -196,7 +196,12 @@ export function opponentGear(base: FighterStats, gear: Partial<Record<Slot, numb
  * further you got, and a bonus for beating your best.
  */
 export function deathReward(round: number, best: number): number {
+  const r = deathRewardParts(round, best);
+  return r.base + r.bonus;
+}
+
+/** The payout, itemised: for the rounds got through, and the bonus for a new best. */
+export function deathRewardParts(round: number, best: number): { base: number; bonus: number } {
   const cleared = Math.max(0, round - 1);
-  const base = 10 + 12 * cleared + 2 * cleared * cleared;
-  return base + (round - 1 > best ? 25 * cleared : 0);
+  return { base: 10 + 12 * cleared + 2 * cleared * cleared, bonus: round - 1 > best ? 25 * cleared : 0 };
 }

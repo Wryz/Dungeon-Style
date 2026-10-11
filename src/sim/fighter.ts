@@ -157,6 +157,9 @@ export class Fighter {
   hitThisAttack = false;
   /** The attack was a counter (thrown from a counter window). */
   isCounterAttack = false;
+  /** The counter window came from a perfect dodge (and this strike is that counter). */
+  perfectCounter = false;
+  isPerfectCounter = false;
   /** Target chosen for the current attack, and the height class it lands at. */
   aim: Aim | null = null;
   strikeHeight: Height = 'high';
@@ -165,6 +168,15 @@ export class Fighter {
   counter: Counter | null = null;
   lastDefendedSerial = -1;
   defenseCooldown: Record<DefenseKind, number> = { block: 0, duck: 0, weave: 0, slide: 0 };
+  /** A dodge you asked for (frames it stays buffered), and how long until the next one. */
+  dodgeRequest = 0;
+  dodgeCooldown = 0;
+  /** Sim frame the last dodge you asked for started (a strike it beats is a perfect dodge). */
+  manualDodgeFrame = -9999;
+  /** The strike your dodge was timed perfectly to (-1: none). */
+  perfectSerial = -1;
+  /** The strike your last dodge got you out of the way of (it was reaching you). */
+  dodgedSerial = -1;
   weaveSide: 1 | -1 = 1;
 
   buffer: { button: Button; frames: number } | null = null;
@@ -383,6 +395,11 @@ export class Fighter {
     this.buffer = { button, frames };
   }
 
+  /** Dodge pressed: taken as soon as you're able to (buffered for a few frames). */
+  requestDodge(frames = 8) {
+    this.dodgeRequest = frames;
+  }
+
   // ---------------------------------------------------------------------------
   // State transitions
   // ---------------------------------------------------------------------------
@@ -450,6 +467,8 @@ export class Fighter {
     this.attackSerial++;
     this.hitThisAttack = false;
     this.isCounterAttack = isCounter;
+    this.isPerfectCounter = isCounter && this.perfectCounter;
+    this.perfectCounter = false;
     this.counter = null;
     this.buffer = null;
     this.idle.interrupt();

@@ -64,7 +64,7 @@ export type CombatEvent =
   | { type: 'bump'; attacker: Fighter; defender: Fighter; point: Vector3 }
   /** A strike hit a prop (pillar, crate, table...) instead of a person. */
   | { type: 'clang'; f: Fighter; point: Vector3; metal: boolean }
-  | { type: 'dodge'; attacker: Fighter; defender: Fighter; move: MoveDef; kind: DefenseKind | 'airborne'; point: Vector3 }
+  | { type: 'dodge'; attacker: Fighter; defender: Fighter; move: MoveDef; kind: DefenseKind | 'airborne'; point: Vector3; perfect?: boolean }
   | { type: 'defend'; f: Fighter; kind: DefenseKind }
   | { type: 'getup'; f: Fighter }
   /** A weapon thrown (or let fly from the belt). */
@@ -185,6 +185,10 @@ function readiness(f: Fighter): number {
 const canGuard = (f: Fighter) => !(f.isSevered('foreArmL') && f.isSevered('foreArmR'));
 /** Frames after the guard is up during which meeting a strike parries it. */
 const PARRY_WINDOW = 4;
+/** Frames between dodges you throw yourself. */
+const DODGE_COOLDOWN = 32;
+/** A dodge thrown with the strike at most this many frames from landing: a perfect dodge. */
+export const PERFECT_DODGE = 10;
 /** Frames into a stagger before the guard can come back up. */
 const COVER_AFTER = 8;
 /** How far ahead of a strike landing (in multiples of the defence's startup) people react. */
@@ -288,6 +292,7 @@ export class CombatSim {
     for (const f of fs) this.tickTimers(f);
     for (const f of fs) this.advance(f);
     for (const f of fs) this.ais.get(f)?.think(f, f.target, this.walkable);
+    for (const f of fs) this.manualDodge(f);
     for (const f of fs) this.autoDefend(f);
     for (const f of fs) this.tryBufferedAttack(f);
     for (const f of fs) this.tryPickup(f);
@@ -330,6 +335,7 @@ export class CombatSim {
 
   private tickTimers(f: Fighter) {
     if (f.counter && --f.counter.frames <= 0) f.counter = null;
+    if (!f.counter) f.perfectCounter = false;
     // Stamina: running burns it; easing off brings it back (slower when hurt).
     if (f.alive) {
       const run = f.footwork.run * f.motion.gait;
@@ -409,7 +415,9 @@ export class CombatSim {
           if (this.threatOver(f)) {
             // Only a strike that was actually coming counts as dodged (not one that hit a
             // pillar on the way, or was stopped by getting hit).
-            if (!d.success && this.threatReachedUs(f)) this.markDodge(f, null);
+            // (A dodge you threw at a strike that was reaching you counts, even if your step
+            // back took you clean out of its range.)
+            if (!d.success && (this.threatReachedUs(f) || (d.threatSerial >= 0 && d.threatSerial === f.dodgedSerial))) this.markDodge(f, null);
             f.enterDefenseRecovery();
           }
         } else if (d.phase === 'recovery' && f.stateFrame >= d.def.recovery) {
@@ -461,6 +469,44 @@ export class CombatSim {
       return o.stateFrame >= o.move.startup + o.move.active;
     }
     return true;
+  }
+
+  /**
+   * A dodge you threw yourself: a step back out of everything (or, moving sideways, a
+   * slip to that side under anything high). Thrown just as a strike was about to land,
+   * it's a perfect dodge — a longer, stronger counter window. Thrown at nothing, it's a
+   * step back you'll have to wait out.
+   */
+  private manualDodge(f: Fighter) {
+    if (f.dodgeCooldown > 0) f.dodgeCooldown--;
+    if (f.dodgeRequest <= 0) return;
+    f.dodgeRequest--;
+    const able = f.free || (f.state === 'defend' && (f.defense!.phase === 'recovery' || f.defense!.success)) || f.state === 'blockstun';
+    if (!able || !f.alive || f.dodgeCooldown > 0) return;
+    // The nearest strike on its way in, if any.
+    let threat: Fighter | null = null;
+    for (const o of this.opponents(f)) {
+      if (o.state !== 'attack' || !o.move || o.hitThisAttack || o.move.noHit) continue;
+      if (f.distanceTo(o) > (o.move.reach + o.stats.reach) * o.scale + 0.6) continue;
+      if (!threat || o.framesToActive < threat.framesToActive) threat = o;
+    }
+    // Sideways input: slip to that side (under a high one). Otherwise: step back.
+    const c = Math.cos(f.yaw);
+    const sn = Math.sin(f.yaw);
+    const lateral = f.moveInput.x * c - f.moveInput.z * sn;
+    const sideways = Math.abs(lateral) > 0.5 && (!threat || threat.strikeHeight === 'high');
+    const kind: DefenseKind = sideways ? 'weave' : 'slide';
+    const serial = threat ? threat.id * 100000 + threat.attackSerial : -2;
+    f.defenseCooldown[kind] = 0;
+    f.startDefense(kind, serial, lateral > 0 ? 1 : -1);
+    f.framesSinceDefend = 0;
+    f.manualDodgeFrame = this.frame;
+    // Timed to it: thrown in the last instant before it lands (but still in time).
+    f.perfectSerial = threat && threat.framesToActive <= PERFECT_DODGE && threat.framesToActive >= DEFENSES[kind].startup - 1 ? serial : -1;
+    f.dodgedSerial = threat && threat.framesToActive <= 20 && f.distanceTo(threat) <= (threat.move!.reach + threat.stats.reach) * threat.scale + 0.3 ? serial : -1;
+    f.dodgeRequest = 0;
+    f.dodgeCooldown = DODGE_COOLDOWN;
+    this.events.push({ type: 'defend', f, kind });
   }
 
   private autoDefend(f: Fighter) {
@@ -957,11 +1003,18 @@ export class CombatSim {
   private markDodge(d: Fighter, a: Fighter | null, point?: Vector3) {
     const def = d.defense!;
     def.success = true;
-    d.counter = { kind: def.def.kind, frames: def.def.counterWindow };
+    // Your own dodge, timed to the strike: a perfect dodge.
+    const perfect = def.threatSerial >= 0 && def.threatSerial === d.perfectSerial;
+    d.perfectSerial = -1;
+    d.counter = { kind: def.def.kind, frames: def.def.counterWindow + (perfect ? 24 : 0) };
+    if (perfect) {
+      d.perfectCounter = true;
+      d.dodgeCooldown = 0;
+    }
     const attacker = a ?? this.opponents(d).find((o) => o.id * 100000 + o.attackSerial === def.threatSerial) ?? null;
     if (!attacker || !attacker.move) return;
     const p = point ?? bonePoint(d.rig, 'head', 0.12, new Vector3());
-    this.events.push({ type: 'dodge', attacker, defender: d, move: attacker.move, kind: def.def.kind, point: p.clone() });
+    this.events.push({ type: 'dodge', attacker, defender: d, move: attacker.move, kind: def.def.kind, point: p.clone(), perfect });
   }
 
   private block(a: Fighter, d: Fighter, m: MoveDef, point: Vector3, dir: Vector3, thrown: WeaponDef | null = null) {
@@ -1033,7 +1086,8 @@ export class CombatSim {
     // armour stops less of it — the reward for getting a slow swing to land.
     const weight = heavyBlow(m, held, haft);
     const defense = d.stats.defense * (1 - 0.5 * weight);
-    let dmg = m.damage * a.stats.damageMul * (counter ? 1.25 : 1) * (1 - defense) * behind;
+    // (Off a perfect dodge, the counter goes in all the harder.)
+    let dmg = m.damage * a.stats.damageMul * (counter ? (!thrown && a.isPerfectCounter ? 1.6 : 1.25) : 1) * (1 - defense) * behind;
     if (armored) dmg *= 0.5;
     if (w) dmg *= w.damageMul;
     if (weight > 0) dmg *= 1 + 0.7 * weight;

@@ -26,12 +26,13 @@ import { Effects } from '../render/particles';
 import { FighterView, type GearLook, PLAYER_PALETTE, type Palette } from '../render/fighterView';
 import { lookFor } from '../render/looks';
 import { DEFAULT_AI, type AIConfig } from '../sim/ai';
-import { buttonMove, type CombatEvent, CombatSim, type Fatal, type HurtZone, hurtSpheres, strikePoint, type Tear } from '../sim/combat';
+import { buttonMove, type CombatEvent, CombatSim, type Fatal, PERFECT_DODGE, type HurtZone, hurtSpheres, strikePoint, type Tear } from '../sim/combat';
 import { type MoveDef, moveLength } from '../sim/moves';
 import { ARCHETYPES, coinDrop, createEnemy, type EnemyKind, type EnemyMods } from '../sim/enemies';
-import { DEFAULT_STATS, type Fighter, type FighterStats } from '../sim/fighter';
+import { type Button, DEFAULT_STATS, type Fighter, type FighterStats } from '../sim/fighter';
 import { DT, Rng } from '../sim/math';
 import { createPlayer } from '../sim/roster';
+import { DeathScreen, type RunSummary } from '../ui/death';
 import { Hud } from '../ui/hud';
 import { keyLabel } from '../input/bindings';
 import { SettingsMenu } from '../ui/settings';
@@ -42,9 +43,26 @@ import { limbBones, WEAPONS, type Wound } from '../sim/weapons';
 import { DropView, ProjectileView } from '../render/weaponView';
 import { projectileDir, projectileGrip } from '../sim/projectiles';
 import { Cinematics, type Shot } from '../render/cinematics';
-import { deathReward, item, loadSave, opponentGear, type SaveData, SLOTS, statsWithGear, weaponItem, writeSave } from './economy';
+import { deathRewardParts, item, loadSave, opponentGear, type SaveData, SLOTS, statsWithGear, weaponItem, writeSave } from './economy';
 import { type RoundSpec, roundSpec, type Spawn } from './gauntlet';
 import { Trauma } from './trauma';
+
+/** One run of the gauntlet, from round 1 until you fall. */
+export interface RunStats {
+  kos: number;
+  hits: number;
+  damage: number;
+  bestCombo: number;
+  perfect: number;
+  /** Skulls split / cleft / crushed and heads taken. */
+  brutal: number;
+  started: number;
+  killedBy: string;
+}
+
+function newRun(): RunStats {
+  return { kos: 0, hits: 0, damage: 0, bestCombo: 0, perfect: 0, brutal: 0, started: performance.now(), killedBy: '' };
+}
 
 export const GAME_TUNING = {
   timeScale: 1,
@@ -141,6 +159,10 @@ export class Game {
   private downIn = -1;
   /** What the last run paid out when it ended. */
   private lastPay = 0;
+  private runSummary: RunSummary | null = null;
+  private readonly death: DeathScreen;
+  /** This run so far (since the last round 1), for the end-of-run screen. */
+  run: RunStats = newRun();
   private shopIn = -1;
   private bannerIn = -1;
   private attacksThrown = 0;
@@ -221,6 +243,17 @@ export class Game {
     this.settings.onOpenChange = (open) => this.setMenuPause(open);
     this.hud.gearButton.addEventListener('click', () => this.settings.toggle());
     this.shop = new Shop(document.body, this.save);
+    this.death = new DeathScreen(document.body);
+    this.death.onTick = () => this.sfx.coin();
+    this.death.onShop = () => {
+      this.hud.setCoins(this.save.coins, false);
+      this.shop.open(this.round, this.lastPay);
+    };
+    this.death.onAgain = () => {
+      this.hud.setCoins(this.save.coins, false);
+      this.setMenuPause(false);
+      this.startRound(1);
+    };
     this.shop.onBuy = () => {
       writeSave(this.save);
       this.applyGear();
@@ -568,6 +601,8 @@ export class Game {
   /** Round n: new arena, new opponent. */
   startRound(n: number) {
     this.resetArena();
+    if (n === 1 || !this.run) this.run = newRun();
+    this.runSummary = null;
     this.round = n;
     const spec = roundSpec(n, this.roundRng);
     this.spec = spec;
@@ -807,6 +842,7 @@ export class Game {
       if (++this.attacksThrown === 8) this.hud.fadeHint();
     }
     if (inp.pickup && this.player.alive && !blocked && this.player.state !== 'pickup') this.player.pickupRequest = 12;
+    if (inp.dodge && this.player.alive && !blocked) this.player.requestDodge();
 
     // Timers in real time (stopped while paused).
     if (!GAME_TUNING.paused) this.tickTimers(realDt);
@@ -855,11 +891,12 @@ export class Game {
     }
     if (due(this.downIn)) {
       if (this.mode === 'gauntlet') {
-        // Spend what the run earned before going again.
+        // The run's over: how it went, what it paid — then gear up, or straight back in.
         this.hud.hideBanner();
         this.phase = 'shop';
         this.setMenuPause(true);
-        this.shop.open(this.round, this.lastPay);
+        if (this.runSummary) this.death.open(this.runSummary);
+        else this.shop.open(this.round, this.lastPay);
       } else {
         this.revivePlayer();
         this.phase = 'play';
@@ -952,6 +989,14 @@ export class Game {
         const m = e.move;
         const heavy = m.weight === 'heavy';
         const byPlayer = e.attacker.team === 'player';
+        if (byPlayer) {
+          this.run.hits++;
+          this.run.damage += e.damage;
+          this.run.bestCombo = Math.max(this.run.bestCombo, e.combo);
+          if (e.fatal || e.sever === 'head') this.run.brutal++;
+        } else if (e.defender === this.player) {
+          this.run.killedBy = `${ARCHETYPES[this.enemyKind.get(e.attacker) ?? 'brawler']?.name ?? 'them'}${e.weapon ? ` · ${e.weapon.name}` : ''}${e.fatal ? ` · ${e.fatal === 'split' ? 'skull split' : e.fatal === 'cleft' ? 'skull cleft' : 'skull crushed'}` : e.sever === 'head' ? ' · decapitated' : ''}`;
+        }
         // Markers: what that blow did, where it landed.
         const dmg = Math.max(1, Math.round(e.damage));
         if (byPlayer) this.marker(e.counter ? `COUNTER ${dmg}` : String(dmg), e.point, e.counter || e.damage >= 12 ? 'dmg big' : 'dmg');
@@ -1041,7 +1086,14 @@ export class Game {
       }
       case 'dodge': {
         this.sfx.dodge();
-        if (e.defender === this.player) this.marker(e.kind === 'airborne' ? 'EVADED' : 'DODGE', e.point, 'parry');
+        if (e.defender === this.player && e.perfect) {
+          // Timed to the strike: a beat of slow motion, and the counter's yours.
+          this.marker('PERFECT DODGE', e.point, 'parry big');
+          this.slowmo = Math.max(this.slowmo, 0.35);
+          this.camRig.zoomPunch(0.6);
+          this.effects.ring(this.player.pos, 1.1, '#ffd36b', 0.5, () => this.player.pos);
+          this.run.perfect++;
+        } else if (e.defender === this.player) this.marker(e.kind === 'airborne' ? 'EVADED' : 'DODGE', e.point, 'parry');
         else this.marker('MISS', e.point, 'miss');
         if (e.defender === this.player && e.kind !== 'airborne') {
           this.sfx.counterReady();
@@ -1137,12 +1189,15 @@ export class Game {
   }
 
   /** The attack buttons, bottom left: what each throws right now and when it's ready. */
-  private updateMovePanel() {
+  private updateMovePanel(dt: number) {
     const p = this.player;
     const b = this.input.bindings;
     const total = p.state === 'attack' && p.move ? p.attackEnd || moveLength(p.move) : 1;
     const busyLeft = p.state === 'attack' ? 1 - p.stateFrame / Math.max(1, total) : p.free ? 0 : 1;
-    const slots = (['lpunch', 'rpunch', 'lkick', 'rkick'] as const).map((btn) => {
+    const cue = this.tactics(dt);
+    const BTN = ['lpunch', 'rpunch', 'lkick', 'rkick'] as const;
+    const ALT: Partial<Record<(typeof BTN)[number], string>> = { lpunch: 'LMB', rpunch: 'RMB' };
+    const slots: Parameters<Hud['moves']>[0] = BTN.map((btn) => {
       const pick = buttonMove(p, btn);
       const limb = btn === 'lpunch' ? 'foreArmL' : btn === 'rpunch' ? 'foreArmR' : btn === 'lkick' ? 'shinL' : 'shinR';
       const state: 'ready' | 'busy' | 'chain' | 'counter' | 'locked' = !p.alive || p.isSevered(limb) || !pick.move
@@ -1154,12 +1209,75 @@ export class Game {
               ? 'chain'
               : 'ready'
           : 'busy';
-      return { key: keyLabel(b[btn]), name: pick.move?.name ?? '—', state, left: state === 'busy' ? busyLeft : 0 };
+      return { key: keyLabel(b[btn]), name: pick.move?.name ?? '—', state, left: state === 'busy' ? busyLeft : 0, alt: ALT[btn], hint: cue?.hint === btn };
     });
+    // The dodge: when it's back, and when to throw it.
+    const dodgeLeft = p.dodgeCooldown / 32;
+    slots.push({ key: keyLabel(b.dodge), name: 'Dodge', state: !p.alive ? 'locked' : p.dodgeCooldown > 0 ? 'busy' : 'ready', left: dodgeLeft, alt: 'MMB', hint: cue?.hint === 'dodge', wide: true });
     this.hud.moves(slots);
+    this.hud.cue(cue && this.settings.prefs.tips && !this.cine.active ? { text: cue.text, kind: cue.kind, key: cue.hint ? keyLabel(b[cue.hint]) : '' } : null);
     // Something on its way in at you.
     const threat = this.enemies.find((e) => e.alive && e.state === 'attack' && e.move && !e.move.noHit && e.target === p && e.stateFrame < e.move.startup);
     this.hud.incoming(threat ? new Vector3(threat.pos.x, threat.rig.head.pos.y + 0.45 * threat.scale, threat.pos.z) : null, this.cine.active ? null : this.viewCamera, !!threat?.move?.armor);
+  }
+
+  private lastCue: { text: string; kind: 'danger' | 'open' | 'counter' | 'info'; hint: Button | 'dodge' | null; rank: number } | null = null;
+  private cueHold = 0;
+
+  /**
+   * Reading the fight for you: what's the right thing to do this moment? A big swing
+   * coming (dodge it), a counter window open (take it), an opponent off balance or
+   * recovering from a miss (punish), one covering up high (go low), you gassed or
+   * predictable. Held briefly so it doesn't flicker; a more urgent one cuts in.
+   */
+  private tactics(dt: number) {
+    const p = this.player;
+    const t = p.target;
+    let next: typeof this.lastCue = null;
+    if (this.phase === 'play' && p.alive && t && t.alive) {
+      const d = p.distanceTo(t);
+      const pick = (btn: Button) => buttonMove(p, btn);
+      const reach = (m: MoveDef | null | undefined) => (m ? (m.reach + p.stats.reach) * p.scale + 0.35 : 0);
+      const tm = t.move;
+      const big = !!tm && (tm.weight === 'heavy' || !!tm.armor || !!tm.weapon || !!tm.air || t.scale > 1.3);
+      if (t.state === 'attack' && tm && !tm.noHit && !t.hitThisAttack && t.framesToActive >= 2 && t.framesToActive <= 26 && big && d < (tm.reach + t.stats.reach) * t.scale + 0.8 && p.dodgeCooldown <= 0) {
+        // Wait for it… then now: dodged in the last instant, it's a perfect dodge.
+        next = t.framesToActive <= PERFECT_DODGE
+          ? { text: 'Dodge now!', kind: 'danger', hint: 'dodge', rank: 5 }
+          : { text: `${tm.name} coming — wait for it`, kind: 'danger', hint: 'dodge', rank: 5 };
+      } else if (p.counter) {
+        const btn = (['rpunch', 'lpunch', 'rkick', 'lkick'] as const).find((x) => pick(x).counter && pick(x).ready) ?? null;
+        if (btn) next = { text: p.perfectCounter ? 'Perfect! Counter now' : 'Counter now', kind: 'counter', hint: btn, rank: 4 };
+      } else if (t.state === 'guardbreak') {
+        next = { text: 'Guard broken — big shot', kind: 'open', hint: pick('rpunch').ready ? 'rpunch' : 'lpunch', rank: 3 };
+      } else if (t.state === 'attack' && tm && !t.hitThisAttack && t.stateFrame >= tm.startup + tm.active && d < reach(pick('lpunch').move) + 0.3) {
+        next = { text: 'They missed — punish', kind: 'open', hint: 'lpunch', rank: 3 };
+      } else if (t.state === 'hitstun' && t.stateFrame < 10 && d < reach(pick('lpunch').move) + 0.2) {
+        const chain = (['lpunch', 'rpunch', 'lkick', 'rkick'] as const).find((x) => pick(x).chain && pick(x).ready);
+        next = { text: 'Rocked — keep going', kind: 'open', hint: chain ?? 'lpunch', rank: 2 };
+      } else if ((t.state === 'blockstun' || (t.state === 'defend' && t.defense?.def.kind === 'block')) && d < 2.2 * p.scale) {
+        const low = (['rkick', 'lkick'] as const).find((x) => pick(x).move?.height === 'low' && pick(x).ready);
+        next = { text: low ? 'Guard up — go low' : 'Guard up — go round it', kind: 'info', hint: low ?? null, rank: 1 };
+      } else if (t.state === 'knockdown' || t.state === 'getup') {
+        next = { text: 'They’re down — get set', kind: 'info', hint: null, rank: 1 };
+      } else if (p.stamina < 0.22) {
+        next = { text: 'Gassed — back off and breathe', kind: 'info', hint: null, rank: 1 };
+      } else if (p.repeatCount >= 3) {
+        next = { text: 'They’ve read you — mix it up', kind: 'info', hint: null, rank: 1 };
+      }
+    }
+    // (A warning ends the moment it no longer applies — you dodged, or it's over.)
+    const stale = this.lastCue?.kind === 'danger' && next?.kind !== 'danger';
+    if (stale && !next) {
+      this.lastCue = null;
+      this.cueHold = 0;
+    }
+    if (next && (!this.lastCue || stale || next.rank >= this.lastCue.rank || this.cueHold <= 0)) {
+      if (!this.lastCue || next.text !== this.lastCue.text) this.cueHold = 0.6;
+      this.lastCue = next;
+    } else if (!next && this.cueHold <= 0) this.lastCue = null;
+    this.cueHold -= dt;
+    return this.lastCue;
   }
 
   /** Coming down from a jump or a flip: both feet hit the floor at once, with weight. */
@@ -1357,14 +1475,21 @@ export class Game {
       this.clearIn = this.holdIn = -1;
       if (this.mode === 'gauntlet') {
         // The run is over — but what it earned is yours to spend on the next one.
-        const pay = deathReward(this.round, this.save.bestRound);
-        const best = Math.max(this.save.bestRound, this.round - 1);
+        const prevBest = this.save.bestRound;
+        const parts = deathRewardParts(this.round, prevBest);
+        const pay = parts.base + parts.bonus;
+        const best = Math.max(prevBest, this.round - 1);
         this.save.bestRound = best;
         this.save.coins += pay;
         this.lastPay = pay;
         writeSave(this.save);
-        this.hud.setCoins(this.save.coins);
-        this.banner('DEFEATED', `fell in round ${this.round} · best ${best} · +${pay} coins · back to round 1`, 'down', 3.4);
+        const r = this.run;
+        this.runSummary = {
+          round: this.round, best, newBest: this.round - 1 > prevBest, killedBy: r.killedBy,
+          kos: r.kos, hits: r.hits, damage: r.damage, bestCombo: r.bestCombo, perfect: r.perfect, brutal: r.brutal,
+          seconds: (performance.now() - r.started) / 1000, pay: parts, coins: this.save.coins,
+        };
+        this.banner('K.O.', `round ${this.round}`, 'down', 2.6);
       } else {
         this.banner('DOWN', 'get up', 'down', 3.2);
       }
@@ -1372,6 +1497,7 @@ export class Game {
       return;
     }
     this.koAt.set(f, this.sim.frame);
+    this.run.kos++;
     // The finishing blow: low and from the side, following them down.
     // (A decapitation already has its own shot, following the head.)
     if (this.enemies.every((e) => !e.alive) && this.player.alive && !f.isSevered('head')) {
@@ -1460,7 +1586,7 @@ export class Game {
     this.updateDebug();
     const shown = t ?? (this.phase === 'play' ? this.enemies.find((e) => e.alive) ?? null : null);
     this.hud.update(realDt, p, shown, this.label());
-    this.updateMovePanel();
+    this.updateMovePanel(realDt);
     this.renderer.render(this.scene, this.viewCamera);
   }
 

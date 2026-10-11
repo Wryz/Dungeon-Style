@@ -3,6 +3,7 @@ import { CombatSim, type CombatEvent } from '../src/sim/combat';
 import type { Fighter } from '../src/sim/fighter';
 import { createBrawler, createPlayer } from '../src/sim/roster';
 import { selectPlayerMove } from '../src/sim/select';
+import { ENEMY_MOVES } from '../src/sim/moves';
 
 function setup(dist = 1.0, aiCfg = { passive: true, blockChance: 0 }) {
   const sim = new CombatSim(3);
@@ -195,5 +196,43 @@ describe('full fight smoke test', () => {
       expect(Number.isFinite(f.pos.x)).toBe(true);
       expect(Number.isFinite(f.hp)).toBe(true);
     }
+  });
+});
+
+describe('dodging yourself', () => {
+  const swingAt = (dodgeWhen: number | null) => {
+    const { sim, player: p, enemy: e } = setup(1.0);
+    p.autoDefense = false;
+    p.minHp = 1;
+    e.startMove(ENEMY_MOVES.haymaker);
+    let ev: CombatEvent[] = [];
+    for (let i = 0; i < 60; i++) {
+      if (dodgeWhen !== null && e.framesToActive === dodgeWhen && e.state === 'attack') p.requestDodge();
+      ev = ev.concat(sim.step());
+    }
+    return { p, e, ev };
+  };
+
+  it('a dodge timed to the strike beats it: a perfect dodge, a longer counter window, a harder counter', () => {
+    const { p, ev } = swingAt(6);
+    const dodge = ev.find((x) => x.type === 'dodge' && x.defender === p) as Extract<CombatEvent, { type: 'dodge' }> | undefined;
+    expect(dodge?.perfect).toBe(true);
+    expect(hits(ev, p).length).toBe(0);
+  });
+
+  it("without one the haymaker lands; thrown at nothing, a dodge costs you the wait", () => {
+    const none = swingAt(null);
+    expect(hits(none.ev, none.p).length).toBeGreaterThan(0);
+    const { sim, player: p } = setup(3);
+    p.requestDodge();
+    sim.step();
+    expect(p.state).toBe('defend');
+    expect(p.dodgeCooldown).toBeGreaterThan(20);
+    const first = p.manualDodgeFrame;
+    for (let i = 0; i < 10; i++) sim.step();
+    p.requestDodge();
+    sim.step();
+    // (Still waiting: no second dodge.)
+    expect(p.manualDodgeFrame).toBe(first);
   });
 });

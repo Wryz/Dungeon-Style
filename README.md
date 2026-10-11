@@ -139,11 +139,29 @@ npm run build      # typecheck + production build into dist/
 | Action | Keyboard (default) | Mouse | Gamepad | Touch |
 |---|---|---|---|---|
 | Move | WASD (+ arrows) | | left stick | stick |
-| Left punch | **Q** | left click | X / LB | L PUNCH |
+| Left punch | **Q** | left click | X | L PUNCH |
 | Right punch | **E** | right click | Y / RB | R PUNCH |
 | Left kick | **R** | | A / LT | L KICK |
 | Right kick | **F** | | B / RT | R KICK |
+| Dodge | **Left Shift** | middle click | LB | DODGE |
 | Grab / drop weapon | **G** | | R3 / Back | |
+
+Blocking (and slipping a punch you've read) is automatic; **dodging is yours**: a step
+back out of everything, or — moving sideways — a slip under anything high. Thrown in the
+last instant before a strike lands it's a **perfect dodge**: a beat of slow motion, a
+longer counter window and a counter that hits much harder. Thrown early you just step
+away; thrown at nothing you wait out its cooldown.
+
+**Fight tips** read the fight for you, centre screen, with the key to press: a big swing
+coming (*"Haymaker coming — wait for it"* → *"Dodge now!"*), a counter window open, an
+opponent who missed or is rocked (*punish*, *keep going*), one covering up (*go low*),
+or you gassed or getting predictable. The matching button glows in the move panel
+(bottom left), which also shows the dodge and its cooldown. Tips can be turned off in
+Settings.
+
+When you fall, the **defeat screen** sums up the run — a rank (D to S) for how far you
+got, knockouts, damage, best combo, perfect dodges, brutal kills, time — and counts the
+run's payout into your wallet; then gear up in the shop or go straight back in.
 
 **Esc** (or the ⚙ button) opens **Settings**, where every key can be rebound; bindings
 are saved in the browser. Debug: **L** tuning panel · **H** hitboxes · **T** cycle

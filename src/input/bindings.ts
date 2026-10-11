@@ -1,6 +1,6 @@
 import type { Button } from '../sim/fighter';
 
-export type Action = 'up' | 'down' | 'left' | 'right' | Button | 'pickup';
+export type Action = 'up' | 'down' | 'left' | 'right' | Button | 'dodge' | 'pickup';
 
 export const ACTIONS: { id: Action; label: string }[] = [
   { id: 'up', label: 'Move up' },
@@ -11,6 +11,7 @@ export const ACTIONS: { id: Action; label: string }[] = [
   { id: 'rpunch', label: 'Right punch' },
   { id: 'lkick', label: 'Left kick' },
   { id: 'rkick', label: 'Right kick' },
+  { id: 'dodge', label: 'Dodge (step back; sideways: slip)' },
   { id: 'pickup', label: 'Pick up / drop weapon' },
 ];
 
@@ -26,6 +27,7 @@ export const DEFAULT_BINDINGS: Bindings = {
   rpunch: 'KeyE',
   lkick: 'KeyR',
   rkick: 'KeyF',
+  dodge: 'ShiftLeft',
   pickup: 'KeyG',
 };
 
