@@ -12,6 +12,10 @@ export const GROUP_ENV = 0x0001;
 export const GROUP_BODY = 0x0002;
 export const groups = (membership: number, filter: number) => (membership << 16) | filter;
 
+/** Each ragdoll gets its own collision bit (bits 2..15) so bodies can touch each other. */
+const SLOT_BITS = 0xfffc;
+let usedSlots = 0;
+
 /** Live-tunable ragdoll parameters (exposed in the debug panel). */
 export const RAGDOLL_TUNING = {
   /** Fraction of pose error corrected per step by joint "muscles" at full strength. */
@@ -117,6 +121,9 @@ export class Ragdoll {
   private readonly prevRootTarget = new Vector3();
   private rootStrength = 1;
   private limpTimer = 0;
+  /** This ragdoll's own collision bit. */
+  readonly slot: number;
+  private contactMask = -1;
 
   constructor(
     RAPIER: R,
@@ -125,6 +132,10 @@ export class Ragdoll {
   ) {
     const rig = fighter.rig;
     const sc = fighter.scale;
+    let bit = 0x0004;
+    while (bit & usedSlots && bit < 0x10000) bit <<= 1;
+    this.slot = bit < 0x10000 ? bit : 0;
+    usedSlots |= this.slot;
     for (const name of BONES) {
       const def = SKELETON[name];
       const x = rig[name];
@@ -148,7 +159,7 @@ export class Ragdoll {
         const half = Math.max(0.01, def.length / 2 - def.radius * 0.5) * sc;
         cd = RAPIER.ColliderDesc.capsule(half, def.radius * sc).setTranslation(0, (def.dir * def.length * sc) / 2, 0);
       }
-      cd.setMass(MASS[name] * Math.pow(sc, 2.5)).setFriction(0.9).setRestitution(0.05).setCollisionGroups(groups(GROUP_BODY, GROUP_ENV));
+      cd.setMass(MASS[name] * Math.pow(sc, 2.5)).setFriction(0.9).setRestitution(0.05).setCollisionGroups(groups(GROUP_BODY | this.slot, GROUP_ENV));
       world.createCollider(cd, body);
       this.bodies[name] = body;
       this.prev[name] = { p: x.pos.clone(), q: x.rot.clone() };
@@ -169,7 +180,25 @@ export class Ragdoll {
     this.prevRootTarget.copy(rig.pelvis.pos);
   }
 
+  /**
+   * Which other bodies this one is solid against. Two fighters on their feet are kept
+   * apart by the fight sim (powered bodies pressing on each other would only shake);
+   * a body that's down collides with everyone, so a fighter falls against and onto the
+   * other, not through them.
+   */
+  setContacts(down: boolean, downSlots: number) {
+    const others = (down ? SLOT_BITS : downSlots) & ~this.slot;
+    if (others === this.contactMask) return;
+    this.contactMask = others;
+    const g = groups(GROUP_BODY | this.slot, GROUP_ENV | others);
+    for (const name of BONES) {
+      const b = this.bodies[name];
+      for (let i = 0; i < b.numColliders(); i++) b.collider(i).setCollisionGroups(g);
+    }
+  }
+
   dispose() {
+    usedSlots &= ~this.slot;
     for (const j of this.joints) this.world.removeImpulseJoint(j, false);
     for (const name of BONES) this.world.removeRigidBody(this.bodies[name]);
   }

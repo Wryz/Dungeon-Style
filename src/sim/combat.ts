@@ -4,6 +4,7 @@ import type { PoseName } from '../body/poses';
 import { AIDirector, BrawlerAI } from './ai';
 import { type Fighter } from './fighter';
 import { RectWalkable, type Walkable } from '../world/collision';
+import { bodyCapsules, overlap as capsuleOverlap, segDist as segDistance, strikingLimbs } from './bodyShapes';
 import { angleDelta, approachAngle, DT, Rng } from './math';
 import { DEFENSES, type DefenseKind, type Height, type MoveDef, moveLength } from './moves';
 import { chooseDefense, moveContext, selectPlayerMove } from './select';
@@ -50,6 +51,8 @@ export type CombatEvent =
   | { type: 'drop'; drop: Drop }
   | { type: 'bleedout'; f: Fighter }
   | { type: 'bump'; attacker: Fighter; defender: Fighter; point: Vector3 }
+  /** A strike hit a prop (pillar, crate, table...) instead of a person. */
+  | { type: 'clang'; f: Fighter; point: Vector3; metal: boolean }
   | { type: 'dodge'; attacker: Fighter; defender: Fighter; move: MoveDef; kind: DefenseKind | 'airborne'; point: Vector3 }
   | { type: 'defend'; f: Fighter; kind: DefenseKind }
   | { type: 'getup'; f: Fighter };
@@ -57,6 +60,9 @@ export type CombatEvent =
 interface Contact {
   attacker: Fighter;
   defender: Fighter;
+  /** The strike as it was when it connected (the attacker may be hit back first). */
+  move: MoveDef;
+  height: Height;
   point: Vector3;
   zone: HurtZone;
   bone: BoneName;
@@ -230,6 +236,7 @@ export class CombatSim {
           if (f.target && f.target.alive) step = Math.min(step, Math.max(0, f.distanceTo(f.target) - (LUNGE_STOP * (f.scale + f.target.scale)) / 2));
           f.pos.addScaledVector(f.forward, step);
         }
+        f.refitSwing();
         if (f.stateFrame >= (f.attackEnd || moveLength(m))) f.enterLocomotion(5);
         break;
       }
@@ -299,7 +306,12 @@ export class CombatSim {
       const kind = chooseDefense(f, o.move, fta, o.strikeHeight);
       if (!kind) continue;
       if (fta <= DEFENSES[kind].startup + 1) {
-        f.startDefense(kind, serial);
+        // Slip away from the line the arm (or leg) is coming in on.
+        const shoulder = o.rig[o.move.limb === 'handL' ? 'upperArmL' : o.move.limb === 'handR' ? 'upperArmR' : o.move.limb === 'footL' ? 'thighL' : 'thighR'].pos;
+        const dx = shoulder.x - f.pos.x;
+        const dz = shoulder.z - f.pos.z;
+        const localX = dx * Math.cos(f.yaw) - dz * Math.sin(f.yaw);
+        f.startDefense(kind, serial, localX > 0 ? -1 : 1);
         this.events.push({ type: 'defend', f, kind });
         return;
       }
@@ -449,21 +461,146 @@ export class CombatSim {
         const dz = b.pos.z - a.pos.z;
         const d = Math.hypot(dx, dz);
         const minSep = (MIN_SEPARATION * (a.scale + b.scale)) / 2;
-        if (d < minSep) {
-          const push = (minSep - d) / 2;
-          const nx = d > 1e-4 ? dx / d : 1;
-          const nz = d > 1e-4 ? dz / d : 0;
-          a.pos.x -= nx * push;
-          a.pos.z -= nz * push;
-          b.pos.x += nx * push;
-          b.pos.z += nz * push;
+        const nx = d > 1e-4 ? dx / d : 1;
+        const nz = d > 1e-4 ? dz / d : 0;
+        // Bodies are solid: torsos, arms, gloves and legs can't sink into each other
+        // (the limb throwing a strike is left to the strike, which stops on contact).
+        let push = Math.max(0, minSep - d) / 2;
+        push = Math.max(push, this.bodyOverlap(a, b) * 0.5);
+        if (push > 0) {
+          // The bigger body gives way less.
+          const wa = (b.scale * b.scale) / (a.scale * a.scale + b.scale * b.scale);
+          a.pos.x -= nx * push * 2 * wa;
+          a.pos.z -= nz * push * 2 * wa;
+          b.pos.x += nx * push * 2 * (1 - wa);
+          b.pos.z += nz * push * 2 * (1 - wa);
         }
       }
     }
     for (const f of fs) {
-      if (f.state !== 'knockdown' && f.state !== 'ko') this.walkable.resolve(f.pos, BODY_RADIUS * f.scale);
+      // Feet and knees reach past the hips: keep them out of furniture too.
+      if (f.state !== 'knockdown' && f.state !== 'ko') this.walkable.resolve(f.pos, BODY_RADIUS * f.scale, 0.14 * f.scale);
       f.pos.y = 0;
     }
+  }
+
+  /**
+   * A strike stops on whatever it runs into first. If the striking arm or leg is
+   * driving into the opponent's body, guard or weapon (rather than landing cleanly
+   * with the fist / foot), it's caught: by the guard (a block), smothered by the body,
+   * or stopped by a weapon in the way — and a blade held up cuts the arm that hits it.
+   */
+  private resolveJams(landed: Set<Fighter>) {
+    for (const a of this.fighters) {
+      // (A strike that was slipped or ducked carries on — and slides off the shoulder.)
+      if (a.state !== 'attack' || !a.move || a.attackEnd || landed.has(a)) continue;
+      const m = a.move;
+      const dodged = a.hitThisAttack;
+      const kick = m.limb === 'footL' || m.limb === 'footR';
+      // Only once the strike is on its way out: a punch loading up isn't driving into
+      // anything yet. A kick's knee comes up and forward first, so a kick thrown from too
+      // close gets jammed on the way.
+      if (a.stateFrame < m.startup * (kick ? 0.2 : 1)) continue;
+      // The fist / foot itself is the strike — the hit test handles it. Here it's the
+      // forearm, upper arm, shin or thigh arriving first (thrown from too close).
+      // Once it's been slipped, though, the fist is just an arm going past — and it can't
+      // go through the head it missed.
+      const tip = m.limb === 'handL' ? 'fistL' : m.limb === 'handR' ? 'fistR' : null;
+      const mine = bodyCapsules(a).limbs.filter((c) => strikingLimbs(m.limb).includes(c.bone));
+      for (const d of this.opponents(a)) {
+        if (!d.alive || d.state === 'knockdown' || d.state === 'getup') continue;
+        const theirs = bodyCapsules(d);
+        let worst = 0;
+        let hitGuard = false;
+        let at: Vector3 | null = null;
+        for (const x of mine) {
+          if (x.bone === tip && !dodged) continue;
+          for (const y of [...theirs.torso, ...theirs.limbs]) {
+            const v = capsuleOverlap(x, y);
+            if (v > worst) {
+              worst = v;
+              hitGuard = y.bone === 'foreArmL' || y.bone === 'foreArmR' || y.bone === 'fistL' || y.bone === 'fistR' || y.bone === 'upperArmL' || y.bone === 'upperArmR';
+              at = y.b.clone().lerp(x.b, 0.5);
+            }
+          }
+        }
+        // Their weapon, held up in the way.
+        let blade = 0;
+        if (d.weapon && !d.isSevered('foreArmR')) {
+          for (const p of bladePoints(d, d.weapon)) {
+            for (const x of mine) {
+              const v = x.r + d.weapon.radius * d.scale - segDistance(p, p, x.a, x.b);
+              if (v > blade) blade = v;
+              if (v > worst) {
+                worst = v;
+                at = p.clone();
+                hitGuard = true;
+              }
+            }
+          }
+        }
+        if (worst < 0.03 * Math.max(1, a.scale) || !at) continue;
+        const dir = new Vector3(d.pos.x - a.pos.x, 0, d.pos.z - a.pos.z).normalize();
+        if (!dodged && hitGuard && (d.state === 'blockstun' || (d.state === 'defend' && d.defense?.def.kind === 'block'))) {
+          // The guard caught it.
+          a.hitThisAttack = true;
+          this.block(a, d, m, at, dir);
+        } else if (kick && !dodged && m.id === 'teep') {
+          // A push kick that lands with the shin / knee still shoves: that's its job.
+          a.hitThisAttack = true;
+          a.impact('rebound', 2, 10);
+          const mass = (a.scale * a.scale) / (d.scale * d.scale);
+          d.vel.addScaledVector(dir, Math.min(2.5, 1.6 * mass));
+          a.vel.addScaledVector(dir, -Math.min(2.5, 1.6 / mass));
+          this.events.push({ type: 'bump', attacker: a, defender: d, point: at });
+        } else {
+          a.hitThisAttack = true;
+          a.impact('rebound', 1, 8);
+          this.events.push({ type: 'bump', attacker: a, defender: d, point: at });
+        }
+        // Punching into a held blade: it cuts the arm.
+        if (blade > 0.03 && d.weapon?.edge === 'blade' && !m.weapon) {
+          const arm = m.limb === 'handL' ? 'foreArmL' : m.limb === 'handR' ? 'foreArmR' : m.limb === 'footL' ? 'shinL' : 'shinR';
+          this.addWound(a, arm, at, 6 * d.weapon.damageMul, d.weapon.cut);
+          a.hp = Math.max(a.minHp, a.hp - 4 * d.weapon.damageMul);
+        }
+        break;
+      }
+    }
+  }
+
+  /**
+   * A punch or kick whose fist / foot is already on the opponent's head or body in the
+   * last frames of its wind-up (they stepped onto it) lands there and then.
+   */
+  private landsEarly(a: Fighter): boolean {
+    const m = a.move;
+    if (a.state !== 'attack' || !m || m.weapon || a.attackEnd || a.stateFrame >= m.startup || a.stateFrame < m.startup * 0.7) return false;
+    const tip = m.limb === 'handL' ? 'fistL' : m.limb === 'handR' ? 'fistR' : m.limb === 'footL' ? 'shinL' : 'shinR';
+    const mine = bodyCapsules(a).limbs.filter((c) => c.bone === tip);
+    for (const d of this.opponents(a)) {
+      // (Someone already reacting to it gets their defence in first.)
+      if (!d.alive || d.state === 'knockdown' || d.state === 'getup' || d.state === 'defend') continue;
+      for (const x of mine) for (const y of bodyCapsules(d).torso) if (capsuleOverlap(x, y) > 0.02) return true;
+    }
+    return false;
+  }
+
+  /**
+   * How deep two fighters' bodies overlap (sim pose), ignoring limbs mid-strike. Gloves
+   * and forearms touching guard-on-guard is normal at close range (and how a jab gets
+   * parried), so only the trunk, head, upper arms and legs are solid to the other body.
+   */
+  private bodyOverlap(a: Fighter, b: Fighter): number {
+    const skip = (f: Fighter): Parameters<typeof bodyCapsules>[1] => [
+      'fistL', 'fistR', 'foreArmL', 'foreArmR',
+      ...(f.state === 'attack' && f.move && !f.move.weapon ? strikingLimbs(f.move.limb) : []),
+    ];
+    const A = bodyCapsules(a, skip(a));
+    const B = bodyCapsules(b, skip(b));
+    let worst = 0;
+    for (const x of [...A.torso, ...A.limbs]) for (const y of [...B.torso, ...B.limbs]) worst = Math.max(worst, capsuleOverlap(x, y));
+    return worst;
   }
 
   // ---------------------------------------------------------------------------
@@ -475,7 +612,7 @@ export class CombatSim {
     for (const a of this.fighters) {
       if (a.hitThisAttack) continue;
       const swinging = a.inWeaponContact();
-      if (!swinging && !a.inActiveFrames()) continue;
+      if (!swinging && !a.inActiveFrames() && !this.landsEarly(a)) continue;
       const m = a.move!;
       if (swinging && a.weapon) {
         // The whole weapon is solid for the whole swing: along it, and between this
@@ -497,7 +634,7 @@ export class CombatSim {
           if (!d.alive || d.state === 'knockdown' || d.state === 'getup') continue;
           const c = overlapBody(samples, r, d, at);
           if (c) {
-            contacts.push({ attacker: a, defender: d, point: c.point, zone: c.zone, bone: c.bone, power: a.swingPower(), haft: at[c.index] < w.strikeFrom - 0.02 });
+            contacts.push({ attacker: a, defender: d, move: m, height: a.strikeHeight, point: c.point, zone: c.zone, bone: c.bone, power: a.swingPower(), haft: at[c.index] < w.strikeFrom - 0.02 });
             break;
           }
         }
@@ -508,11 +645,29 @@ export class CombatSim {
         if (!d.alive || d.state === 'knockdown' || d.state === 'getup') continue;
         const c = overlap(_strike, (m.radius + a.stats.reach) * a.scale, d, a.strikeHeight);
         if (c) {
-          contacts.push({ attacker: a, defender: d, ...c });
+          contacts.push({ attacker: a, defender: d, move: m, height: a.strikeHeight, ...c });
           break;
         }
       }
     }
+    // Fists, feet and weapons that hit a pillar, a crate or a table stop there.
+    for (const a of this.fighters) {
+      if (a.hitThisAttack || contacts.some((c) => c.attacker === a)) continue;
+      const swinging = a.inWeaponContact();
+      if (!swinging && !a.inActiveFrames()) continue;
+      const solidAt = this.walkable.solidAt?.bind(this.walkable);
+      if (!solidAt) break;
+      const pts = swinging && a.weapon ? bladePoints(a, a.weapon).slice(-3) : [strikePoint(a, a.move!, new Vector3())];
+      for (const p of pts) {
+        const o = solidAt(p);
+        if (!o) continue;
+        a.hitThisAttack = true;
+        a.impact('rebound', 2, 10);
+        this.events.push({ type: 'clang', f: a, point: p.clone(), metal: (o.h ?? 2.5) > 3 });
+        break;
+      }
+    }
+    this.resolveJams(new Set(contacts.map((c) => c.attacker)));
     for (const f of this.fighters) {
       if (f.weapon && f.inWeaponContact()) this.prevBlade.set(f, bladePoints(f, f.weapon));
       else this.prevBlade.delete(f);
@@ -522,9 +677,7 @@ export class CombatSim {
     for (const c of contacts) this.applyStrike(c);
   }
 
-  private applyStrike({ attacker: a, defender: d, point, zone, bone, power = 1, haft = false }: Contact) {
-    const m = a.move!;
-    const height = a.strikeHeight;
+  private applyStrike({ attacker: a, defender: d, move: m, height, point, zone, bone, power = 1, haft = false }: Contact) {
     const dir = new Vector3(d.pos.x - a.pos.x, 0, d.pos.z - a.pos.z);
     if (dir.lengthSq() < 1e-6) dir.copy(a.forward);
     dir.normalize();

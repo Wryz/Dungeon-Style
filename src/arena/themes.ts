@@ -39,9 +39,9 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
     name: 'The Street',
     shape: { kind: 'rect', hx: 7, hz: 4.2 },
     obstacles: [
-      { kind: 'box', x: 4.6, z: -3.2, hx: 1.05, hz: 0.5 }, // parked car
-      { kind: 'circle', x: -5.6, z: -3.6, r: 0.3 }, // trash can
-      { kind: 'circle', x: -1.4, z: 3.6, r: 0.18 }, // hydrant
+      { kind: 'box', x: 4.6, z: -3.2, hx: 1.05, hz: 0.5, h: 1.05 }, // parked car
+      { kind: 'circle', x: -5.6, z: -3.6, r: 0.3, h: 0.9 }, // trash can
+      { kind: 'circle', x: -1.4, z: 3.6, r: 0.18, h: 0.55 }, // hydrant
     ],
     playerSpawn: [-4, 0.5],
     enemySpawns: [
@@ -58,9 +58,9 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
     name: 'Grocery Store',
     shape: { kind: 'rect', hx: 6.5, hz: 4.3 },
     obstacles: [
-      { kind: 'box', x: -1.6, z: -0.6, hx: 1.6, hz: 0.35 }, // aisle island
-      { kind: 'box', x: 2.6, z: 1.6, hx: 1.2, hz: 0.35 }, // aisle island
-      { kind: 'circle', x: -4.8, z: 2.8, r: 0.45 }, // cart
+      { kind: 'box', x: -1.6, z: -0.6, hx: 1.6, hz: 0.35, h: 1.4 }, // aisle island
+      { kind: 'box', x: 2.6, z: 1.6, hx: 1.2, hz: 0.35, h: 1.4 }, // aisle island
+      { kind: 'circle', x: -4.8, z: 2.8, r: 0.45, h: 1.0 }, // cart
     ],
     playerSpawn: [-4.2, 1],
     enemySpawns: [
@@ -77,8 +77,8 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
     name: 'The Colosseum',
     shape: { kind: 'circle', r: 8.2 },
     obstacles: [
-      { kind: 'circle', x: -3.8, z: -4.2, r: 0.5 }, // broken column
-      { kind: 'circle', x: 4.4, z: 3.6, r: 0.5 },
+      { kind: 'circle', x: -3.8, z: -4.2, r: 0.5, h: 1.6 }, // broken column
+      { kind: 'circle', x: 4.4, z: 3.6, r: 0.5, h: 1.6 },
     ],
     playerSpawn: [-3.5, 0.8],
     enemySpawns: [
@@ -95,10 +95,10 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
     name: 'The Warehouse',
     shape: { kind: 'rect', hx: 6.2, hz: 4.2 },
     obstacles: [
-      { kind: 'circle', x: -2.6, z: -1.6, r: 0.28 }, // steel pillar
-      { kind: 'circle', x: 2.8, z: 1.7, r: 0.28 },
-      { kind: 'box', x: 4.9, z: -3.1, hx: 0.6, hz: 0.6 }, // crate stack
-      { kind: 'box', x: -5, z: 3, hx: 0.55, hz: 0.45 },
+      { kind: 'circle', x: -2.6, z: -1.6, r: 0.28, h: 4.5 }, // steel pillar
+      { kind: 'circle', x: 2.8, z: 1.7, r: 0.28, h: 4.5 },
+      { kind: 'box', x: 4.9, z: -3.1, hx: 0.6, hz: 0.6, h: 1.7 }, // crate stack
+      { kind: 'box', x: -5, z: 3, hx: 0.55, hz: 0.45, h: 1.7 },
     ],
     playerSpawn: [-3.8, 0.8],
     enemySpawns: [[3.6, -0.6], [3.2, 2.6], [1.6, -3]],
@@ -110,10 +110,10 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
     name: 'The Bar',
     shape: { kind: 'rect', hx: 5.8, hz: 3.9 },
     obstacles: [
-      { kind: 'box', x: 0, z: -3.35, hx: 3.6, hz: 0.45 }, // bar counter
-      { kind: 'box', x: 3.7, z: 1.9, hx: 1.1, hz: 0.6 }, // pool table
-      { kind: 'circle', x: -3.3, z: 1.9, r: 0.42 }, // table
-      { kind: 'circle', x: -1.2, z: 2.9, r: 0.42 },
+      { kind: 'box', x: 0, z: -3.35, hx: 3.6, hz: 0.45, h: 1.1 }, // bar counter
+      { kind: 'box', x: 3.7, z: 1.9, hx: 1.1, hz: 0.6, h: 0.8 }, // pool table
+      { kind: 'circle', x: -3.3, z: 1.9, r: 0.42, h: 0.78 }, // table
+      { kind: 'circle', x: -1.2, z: 2.9, r: 0.42, h: 0.78 },
     ],
     playerSpawn: [-3.6, -0.6],
     enemySpawns: [[3.2, -0.8], [1.4, 1.6], [4.6, -1.6]],
@@ -135,9 +135,9 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
     name: 'The Rooftop',
     shape: { kind: 'rect', hx: 6.6, hz: 4.3 },
     obstacles: [
-      { kind: 'box', x: -4.4, z: -3.1, hx: 0.9, hz: 0.65 }, // AC unit
-      { kind: 'box', x: 4.6, z: 2.6, hx: 0.7, hz: 0.7 }, // stairwell hut corner
-      { kind: 'circle', x: 1.6, z: -2.9, r: 0.22 }, // vent stack
+      { kind: 'box', x: -4.4, z: -3.1, hx: 0.9, hz: 0.65, h: 1.1 }, // AC unit
+      { kind: 'box', x: 4.6, z: 2.6, hx: 0.7, hz: 0.7, h: 2.6 }, // stairwell hut corner
+      { kind: 'circle', x: 1.6, z: -2.9, r: 0.22, h: 1.4 }, // vent stack
     ],
     playerSpawn: [-3.8, 0.9],
     enemySpawns: [[3.6, -0.4], [2.8, -2.2], [5.4, -0.4]],

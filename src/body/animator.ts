@@ -25,6 +25,11 @@ export class Animator {
     this.mode = 'track';
   }
 
+  /** Swap the running track's keys (same timing) without restarting it: re-aiming. */
+  retarget(keys: TrackKey[]) {
+    if (this.mode === 'track') this.keys = keys;
+  }
+
   /** Switch to a procedurally generated pose, cross-fading over `fadeLen` frames. */
   procedural(fadeLen = 6) {
     copyPose(this.out, this.snapshot);

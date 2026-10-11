@@ -180,6 +180,22 @@ your own attack's wind-up or recovery when the enemy's strike lands, you get hit
 attacks can interrupt a wind-up (counter hit), but the Brawler's haymaker and sweep have
 **armor** against light hits (orange telegraph). Red limb glow + ground ring = incoming.
 
+**Solid bodies.** Fighters are capsules (head, trunk, arms, legs), not just two circles:
+trunks, heads, upper arms and legs push each other apart (gloves and forearms are allowed
+to meet guard-on-guard), and the bigger body gives way less. A strike stops on whatever
+it reaches first. A guard that's up catches it. A forearm or shin driven into the body
+from too close gets smothered, and a teep thrown from there shoves. A punch that was
+slipped slides off the shoulder instead of passing through the head, and a fist already
+touching the target late in its wind-up lands early. Fists, feet and weapons that hit a
+pillar, crate or car stop on it, with a knock or a few sparks. Weapons never pass through
+the person holding them or rest inside the opponent. A dodged swing rides over the body
+it missed, and a re-aimed overhead still goes up and over the top. Furniture is padded
+for knees and feet. Every obstacle has a height, so a counter-height table is solid to a
+fist but not to something that passes above it. A fighter who goes down is solid to the
+one still standing, so they fall against them, not through them. `tests/collision.test.ts`
+runs AI-vs-AI fights across arenas and fails if bodies, limbs or weapons pass through
+each other or the scenery.
+
 ## Architecture
 
 ```

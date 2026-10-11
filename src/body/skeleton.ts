@@ -91,10 +91,31 @@ export function copyPose(src: Pose, out: Pose): Pose {
 export function blendPose(a: Pose, b: Pose, t: number, out: Pose): Pose {
   out.root.lerpVectors(a.root, b.root, t);
   for (const n of BONES) out.rot[n].slerpQuaternions(a.rot[n], b.rot[n], t);
-  out.blade.lerpVectors(a.blade, b.blade, t);
-  if (out.blade.lengthSq() < 1e-4) out.blade.copy(b.blade);
-  out.blade.normalize();
+  slerpDir(a.blade, b.blade, t, out.blade);
   return out;
+}
+
+const _dirAxis = new Vector3();
+const _from = new Vector3();
+const _q = new Quaternion();
+
+/**
+ * Turn one direction into another by rotating it (constant length, steady angular
+ * speed) — a weapon swings round, it doesn't shrink through the middle and flip. A
+ * reversal (wind-up behind to strike in front) goes over the top.
+ */
+export function slerpDir(a: Vector3, b: Vector3, t: number, out: Vector3): Vector3 {
+  _from.copy(a).normalize();
+  const dot = Math.max(-1, Math.min(1, _from.dot(b) / (b.length() || 1)));
+  _dirAxis.crossVectors(_from, b);
+  if (_dirAxis.lengthSq() < 1e-6) {
+    if (dot > 0) return out.copy(b).normalize();
+    _dirAxis.set(0, 1, 0).cross(_from);
+    if (_dirAxis.lengthSq() < 1e-6) _dirAxis.set(1, 0, 0);
+    _dirAxis.negate();
+  }
+  _q.setFromAxisAngle(_dirAxis.normalize(), Math.acos(dot) * t);
+  return out.copy(_from).applyQuaternion(_q).normalize();
 }
 
 // ---------------------------------------------------------------------------

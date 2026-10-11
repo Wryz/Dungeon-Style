@@ -2,8 +2,11 @@ import type { Vector3 } from 'three';
 
 /** Where fighters may stand. The sim pushes bodies back inside every step. */
 export interface Walkable {
-  /** Push a circle of radius `r` (on the ground plane) out of anything solid. */
-  resolve(p: Vector3, r: number): void;
+  /** Push a circle of radius `r` (on the ground plane) out of anything solid; props
+   * get an extra `propPad` (feet and knees reach further out than the hips). */
+  resolve(p: Vector3, r: number, propPad?: number): void;
+  /** The prop (if any) a point is inside of. */
+  solidAt?(p: Vector3, pad?: number): Obstacle | null;
   /** Is this point standable (centre only)? */
   isWalkable(x: number, z: number): boolean;
 }
@@ -27,7 +30,8 @@ export class RectWalkable implements Walkable {
   }
 }
 
-export type Obstacle = { kind: 'circle'; x: number; z: number; r: number } | { kind: 'box'; x: number; z: number; hx: number; hz: number };
+/** A solid prop on the arena floor; `h` is how tall it is (default 2.5 m). */
+export type Obstacle = ({ kind: 'circle'; x: number; z: number; r: number } | { kind: 'box'; x: number; z: number; hx: number; hz: number }) & { h?: number };
 export type ArenaShape = { kind: 'rect'; hx: number; hz: number } | { kind: 'circle'; r: number };
 
 /** Arena floor: a rectangular or circular boundary plus solid props (posts, shelves, cars...). */
@@ -37,7 +41,8 @@ export class ArenaWalkable implements Walkable {
     readonly obstacles: Obstacle[] = [],
   ) {}
 
-  resolve(p: Vector3, r: number) {
+  resolve(p: Vector3, wallR: number, propPad = 0) {
+    const r = wallR + propPad;
     for (const o of this.obstacles) {
       if (o.kind === 'circle') {
         const dx = p.x - o.x;
@@ -71,16 +76,27 @@ export class ArenaWalkable implements Walkable {
     }
     const s = this.shape;
     if (s.kind === 'rect') {
-      p.x = Math.min(s.hx - r, Math.max(-s.hx + r, p.x));
-      p.z = Math.min(s.hz - r, Math.max(-s.hz + r, p.z));
+      p.x = Math.min(s.hx - wallR, Math.max(-s.hx + wallR, p.x));
+      p.z = Math.min(s.hz - wallR, Math.max(-s.hz + wallR, p.z));
     } else {
       const d = Math.hypot(p.x, p.z);
-      const max = s.r - r;
+      const max = s.r - wallR;
       if (d > max) {
         p.x *= max / d;
         p.z *= max / d;
       }
     }
+  }
+
+  /** Is this point (world, with height) inside a prop? */
+  solidAt(p: Vector3, pad = 0): Obstacle | null {
+    for (const o of this.obstacles) {
+      if (p.y > (o.h ?? 2.5) + pad) continue;
+      if (o.kind === 'circle') {
+        if (Math.hypot(p.x - o.x, p.z - o.z) < o.r + pad) return o;
+      } else if (Math.abs(p.x - o.x) < o.hx + pad && Math.abs(p.z - o.z) < o.hz + pad) return o;
+    }
+    return null;
   }
 
   isWalkable(x: number, z: number) {

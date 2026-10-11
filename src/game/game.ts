@@ -875,7 +875,11 @@ export class Game {
     this.footsteps();
     if (this.mode === 'gauntlet') this.updateGauntlet();
 
+    const isDown = (f: Fighter) => f.state === 'knockdown' || f.state === 'ko' || !f.alive;
+    let downSlots = 0;
+    for (const [f, rd] of this.ragdolls) if (isDown(f)) downSlots |= rd.slot;
     for (const [f, rd] of this.ragdolls) {
+      rd.setContacts(isDown(f), downSlots);
       rd.drive(f);
       rd.capturePrev();
     }
@@ -1009,6 +1013,23 @@ export class Game {
       case 'bump':
         this.sfx.bump();
         break;
+      case 'clang': {
+        // A strike that ran into the scenery: a pillar, a crate, a car.
+        const w = e.f.weapon;
+        const away = new Vector3(e.f.pos.x - e.point.x, 0.4, e.f.pos.z - e.point.z).normalize();
+        if (w) {
+          this.sfx.impact(e.metal ? 'metal' : (IMPACT[w.id] ?? 'wood'), true);
+          // Steel on stone or iron throws a few sparks; anything else just knocks off grit.
+          const steel = w.edge === 'blade' || IMPACT[w.id] === 'metal';
+          if (e.metal && steel) this.effects.sparks(e.point, away, 10, '#ffd27a', 3.2, 0.012);
+          else this.effects.sparks(e.point, away, 6, e.metal ? '#b9b2a6' : '#8a6a48', 1.4, 0.02);
+        } else {
+          this.sfx.bump();
+          this.effects.sparks(e.point, away, 4, '#b9b2a6', 1, 0.015);
+        }
+        if (e.f === this.player) this.camRig.addTrauma(0.12);
+        break;
+      }
       case 'bleedout':
         if (this.cues) this.hud.popup('BLED OUT', new Vector3(e.f.pos.x, 1.6, e.f.pos.z), this.viewCamera, 'armor');
         this.onKO(e.f);

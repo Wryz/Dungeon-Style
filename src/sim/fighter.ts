@@ -15,10 +15,12 @@ import {
   type Rig,
   type BoneName,
   DEFAULT_BLADE,
+  slerpDir,
   solveArm,
   solveLegs,
 } from '../body/skeleton';
-import { bladeFrame, SECOND_HAND, WEAPON_MOVES, type WeaponDef, type Wound } from './weapons';
+import { bladeFrame, sampleOffsets, SECOND_HAND, WEAPON_MOVES, type WeaponDef, type Wound } from './weapons';
+import { bodyCapsules, type Capsule, closestOnSegment } from './bodyShapes';
 
 export interface FighterStyle {
   footwork: FootworkStyle;
@@ -366,7 +368,26 @@ export class Fighter {
     const jitter: [number, number, number] = aimId ? [0, 0, 0] : [this.rng.range(-0.04, 0.04), this.rng.range(-0.035, 0.035), 0];
     // Fit the strike to the opponent in front of us: up for a giant, down for a small one.
     const dy = Math.max(-0.75, Math.min(0.45, this.heightGap(move, this.aim)));
+    this.swingJitter = jitter;
+    this.swingDy = dy;
     this.anim.play(moveKeys(move, this.aim, jitter, dy, this.reachFit(move), this.weaponFit(move, this.aim)));
+  }
+
+  private swingJitter: [number, number, number] = [0, 0, 0];
+  private swingDy = 0;
+
+  /**
+   * Re-aim a weapon swing that's still coming round at where the target actually is
+   * now — they moved, or bodies stopped us short of where the step-in would have taken
+   * us — so it's still the head of the axe, not the haft, that arrives.
+   */
+  refitSwing() {
+    const m = this.move;
+    if (this.state !== 'attack' || !m?.weapon || this.attackEnd || this.stateFrame >= m.startup) return;
+    const l = m.lunge;
+    const left = l ? Math.max(0, Math.min(1, (l.to - this.stateFrame) / Math.max(1, l.to - l.from))) : 0;
+    const fit = this.weaponFit(m, this.aim, left);
+    if (fit) this.anim.retarget(moveKeys(m, this.aim, this.swingJitter, this.swingDy, Infinity, fit));
   }
 
   private pickAim(move: MoveDef, aimId?: string): Aim | null {
@@ -390,11 +411,11 @@ export class Fighter {
    * Where a weapon strike should land (fighter-local, unscaled, after the lunge): the
    * aimed part of the target, at the front of their body.
    */
-  private weaponFit(move: MoveDef, aim: Aim | null): WeaponFit | null {
+  private weaponFit(move: MoveDef, aim: Aim | null, lungeLeft = 1): WeaponFit | null {
     const t = this.target;
     const w = this.weapon;
     if (!t || !t.alive || !w || !move.weapon) return null;
-    const lunge = (move.lunge?.distance ?? 0) * this.scale;
+    const lunge = (move.lunge?.distance ?? 0) * this.scale * lungeLeft;
     const stop = (0.74 * (this.scale + t.scale)) / 2;
     const ahead = Math.max(stop, this.distanceTo(t) - lunge) - 0.1 * t.scale;
     // Side offset of the target relative to our facing.
@@ -436,10 +457,11 @@ export class Fighter {
     return Math.abs(gap) < 0.1 ? 0 : gap - Math.sign(gap) * 0.1;
   }
 
-  startDefense(kind: DefenseKind, threatSerial: number) {
+  /** @param slipSide for a weave: +1 slips to our left, -1 to our right (default: alternate). */
+  startDefense(kind: DefenseKind, threatSerial: number, slipSide?: 1 | -1) {
     const def = DEFENSES[kind];
     this.setState('defend');
-    if (kind === 'weave') this.weaveSide = this.weaveSide === 1 ? -1 : 1;
+    if (kind === 'weave') this.weaveSide = slipSide ?? (this.weaveSide === 1 ? -1 : 1);
     this.defense = { def, threatSerial, phase: 'startup', success: false, side: this.weaveSide };
     this.lastDefendedSerial = threatSerial;
     this.stamina = Math.max(0, this.stamina - 0.015);
@@ -574,7 +596,11 @@ export class Fighter {
       solveLegs(L, { at: this.footwork.localTarget('L', this, 0), hint: KNEE_HINT.L }, { at: this.footwork.localTarget('R', this, 0), hint: KNEE_HINT.R });
       blendPose(this.anim.out, L, this.moveBlend, this.pose);
     }
-    if (this.weapon?.style === 'twoHand' && !this.isSevered('foreArmL') && !this.isSevered('foreArmR')) this.gripWithBothHands();
+    if (this.weapon && !this.isSevered('foreArmR')) {
+      forwardKinematics(this.pose, this.rig, this.pos, this.yaw, this.scale);
+      this.keepWeaponClear();
+      if (this.weapon.style === 'twoHand' && !this.isSevered('foreArmL')) this.gripWithBothHands();
+    }
     forwardKinematics(this.pose, this.rig, this.pos, this.yaw, this.scale);
     // Authored-leg animations (kicks, defense, reactions): feet are wherever the pose put them.
     if (!driven) this.footwork.syncToRig(this.rig);
@@ -585,6 +611,57 @@ export class Fighter {
     const e = 1 - this.stamina;
     this.breathPhase += (2.2 + 4.5 * e) / 60;
     return Math.sin(this.breathPhase) * (0.01 + 0.045 * e * e);
+  }
+
+  /**
+   * A weapon can't pass through a body: if it would go through our own torso or head
+   * (or through the opponent when we're not swinging at them), the wrist turns it clear.
+   */
+  private keepWeaponClear() {
+    // The forward swing follows its own (fitted) path: deflecting it mid-stroke is what
+    // turns a chop into a sideways flail.
+    // A swing that was dodged (decided, not stopped on anything) rides over / past the
+    // body that got out of its way rather than through it.
+    const dodged = this.state === 'attack' && this.hitThisAttack && !this.attackEnd;
+    if (this.inWeaponContact() && !dodged) return;
+    const w = this.weapon!;
+    const t = this.target;
+    const swinging = this.inWeaponContact() || (this.state === 'attack' && this.stateFrame < this.stuckUntil) || !!this.attackEnd;
+    // An overhead brings the weapon right past the wielder's own head: in a swing only
+    // the trunk is in the way.
+    const solids: Capsule[] = bodyCapsules(this).torso.filter((c) => !swinging || c.bone !== 'head');
+    if (t && t.alive && (dodged || !swinging)) {
+      const b = bodyCapsules(t);
+      solids.push(...b.torso, ...b.limbs);
+    }
+    const offs = sampleOffsets(w);
+    for (let iter = 0; iter < 10; iter++) {
+      bladeFrame(this, _grip, _dir);
+      let worst = 0;
+      let at = 1;
+      _push.set(0, 0, 0);
+      for (const off of offs) {
+        if (off < 0.14) continue;
+        _p.copy(_grip).addScaledVector(_dir, off * this.scale);
+        for (const c of solids) {
+          closestOnSegment(_p, c.a, c.b, _q);
+          const pen = c.r + (w.radius + 0.01) * this.scale - _p.distanceTo(_q);
+          if (pen > worst) {
+            worst = pen;
+            at = off * this.scale;
+            _push.subVectors(_p, _q);
+          }
+        }
+      }
+      if (worst < 0.008) return;
+      if (_push.lengthSq() < 1e-8) _push.set(0, 1, 0);
+      _push.normalize();
+      // Swing the blade out along the push, enough to clear at that point.
+      _dir.addScaledVector(_push, Math.min(1.2, (worst / at) * 1.3)).normalize();
+      const c = Math.cos(this.yaw);
+      const s = Math.sin(this.yaw);
+      this.pose.blade.set(_dir.x * c - _dir.z * s, _dir.y, _dir.x * s + _dir.z * c).normalize();
+    }
   }
 
   /** Two-handed grip: the lead hand holds the haft just below the rear hand. */
@@ -752,6 +829,9 @@ export function timed(m: MoveDef, tempo: number): MoveDef {
 const _localRig = makeRig();
 const _grip = new Vector3();
 const _dir = new Vector3();
+const _push = new Vector3();
+const _p = new Vector3();
+const _q = new Vector3();
 
 const guardHand = (h: { at: [number, number, number]; hint?: [number, number, number] }, dy: number, dz: number) => ({
   at: [h.at[0], h.at[1] + dy, h.at[2] + dz] as [number, number, number],
@@ -801,6 +881,33 @@ const REAR_SHOULDER: V3 = [-0.2, 1.43, 0.12];
 const ARM_REACH = 0.58;
 
 export function moveKeys(m: MoveDef, aim: Aim | null = null, jitter: V3 = [0, 0, 0], dy = 0, reachZ = Infinity, wfit: WeaponFit | null = null): TrackKey[] {
+  const keys = buildKeys(m, aim, jitter, dy, reachZ, wfit);
+  if (!wfit || !m.weapon) return keys;
+  // Re-aiming the strike mustn't make it turn the other way round: an overhead goes up
+  // and over the top even when it's aimed down at a short opponent, rather than the
+  // head swinging forward under the hands (through the wielder's own head). If the
+  // shortest turn to the new aim runs against the authored swing, pass through the
+  // middle of the authored arc on the way.
+  const ci = m.keys.findIndex((k) => k.at[0] === 'a' && k.at[1] === 0);
+  if (ci < 1) return keys;
+  const from = getPose(m.keys[ci - 1].pose).blade;
+  const authored = getPose(m.keys[ci].pose).blade;
+  const fitted = keys[ci].pose.blade;
+  const turnAuthored = _ta.crossVectors(from, authored);
+  const turnFitted = _tb.crossVectors(from, fitted);
+  if (turnAuthored.dot(turnFitted) >= 0 && from.dot(fitted) > -0.95) return keys;
+  const a = keys[ci - 1];
+  const b = keys[ci];
+  const mid = blendPose(a.pose, b.pose, 0.5, makePose());
+  slerpDir(from, authored, 0.5, mid.blade);
+  keys.splice(ci, 0, { f: Math.round((a.f + b.f) / 2), pose: mid, ease: 'linear' });
+  return keys;
+}
+
+const _ta = new Vector3();
+const _tb = new Vector3();
+
+function buildKeys(m: MoveDef, aim: Aim | null, jitter: V3, dy: number, reachZ: number, wfit: WeaponFit | null): TrackKey[] {
   const scatter = jitter[0] !== 0 || jitter[1] !== 0 || jitter[2] !== 0;
   return m.keys.map((k) => {
     let pose = getPose(k.pose);
