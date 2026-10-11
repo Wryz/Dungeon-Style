@@ -6,6 +6,8 @@ export interface InputFrame {
   moveX: number;
   moveY: number;
   presses: Button[];
+  /** Pick up / drop weapon pressed this frame. */
+  pickup: boolean;
   /** Menu / debug keys pressed this frame (KeyboardEvent.code). */
   keys: string[];
 }
@@ -17,6 +19,7 @@ const ARROWS: Partial<Record<string, Action>> = { ArrowUp: 'up', ArrowDown: 'dow
 export class Input {
   private readonly held = new Set<Action>();
   private presses: Button[] = [];
+  private pickup = false;
   private keys: string[] = [];
   private gpPrev: boolean[] = [];
   private touchMove = { x: 0, y: 0 };
@@ -43,6 +46,7 @@ export class Input {
       if (action) {
         this.held.add(action);
         if ((BUTTONS as string[]).includes(action)) this.presses.push(action as Button);
+        if (action === 'pickup') this.pickup = true;
         e.preventDefault();
       } else if (META_KEYS.has(e.code)) {
         this.keys.push(e.code);
@@ -170,6 +174,10 @@ export class Input {
         this.gpPrev[i] = down;
       }
       if (gp.buttons[9]?.pressed && !this.gpPrev[9]) this.keys.push('Escape');
+      // Right stick click / select: pick up or drop a weapon.
+      if ((gp.buttons[11]?.pressed && !this.gpPrev[11]) || (gp.buttons[8]?.pressed && !this.gpPrev[8])) this.pickup = true;
+      this.gpPrev[11] = !!gp.buttons[11]?.pressed;
+      this.gpPrev[8] = !!gp.buttons[8]?.pressed;
       this.gpPrev[9] = !!gp.buttons[9]?.pressed;
       break;
     }
@@ -178,8 +186,9 @@ export class Input {
       x /= l;
       y /= l;
     }
-    const frame = { moveX: x, moveY: y, presses: this.presses, keys: this.keys };
+    const frame = { moveX: x, moveY: y, presses: this.presses, keys: this.keys, pickup: this.pickup };
     this.presses = [];
+    this.pickup = false;
     this.keys = [];
     return frame;
   }

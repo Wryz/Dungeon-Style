@@ -26,13 +26,24 @@ demons and giant bosses.
 - **Economy:** KOs burst into coins and each cleared round pays a bonus; between rounds
   a shop sells helmet, chestplate, leggings, boots and fist cuffs (3 tiers each) that
   change your stats and show on your character. Progress is saved in the browser.
+- **Weapons:** every arena has weapons lying around — a folding chair in the ring, a
+  bat and a machete on the street, a cleaver and a frying pan in the grocery store, a
+  gladius and a battle axe in the colosseum. Walk over one and press **G** to grab it
+  (G again swaps, or drops it). Armed, the fighting style changes: one-handed weapons
+  slash (Q, chaining into a backhand) and chop overhead (E); two-handed weapons sweep
+  wide and smash down with a slow, armoured overhead. Kicks stay kicks. Edged weapons
+  leave lasting cuts that keep bleeding (and slowly drain health — enough of them and
+  your opponent bleeds out); heavy edges take arms, legs and heads off, and the limb
+  flies free as a physics body while the stump pumps blood. Your own limbs only come
+  off with the blow that finishes you. Enemies pick weapons up too; the Minotaur
+  carries an axe and the Cyclops a spiked club. Blocking a blade costs a forearm cut.
 - **Movement:** in a fight, boxer footwork; out of range, a real run (~3.8 m/s) with a
   clocked stride, flight phase, forward lean and pumping arms.
 - **Tutorial:** the first visit is a warm-up in the ring against a sparring partner —
   punches, a combo, automatic defense, countering, kicks — with few-word prompts.
 
 A training ring with a respawning brawler is at `?mode=training` (or the **L** panel →
-Gauntlet, which can also jump to any round).
+Gauntlet, which can also jump to any round; **Weapons** puts any weapon in your hands).
 
 Built with **Three.js + Rapier (WASM physics) + TypeScript + Vite**. Runs entirely in the
 browser, no backend.
@@ -55,6 +66,8 @@ npm run build      # typecheck + production build into dist/
 | Right punch | **E** | right click | Y / RB | R PUNCH |
 | Left kick | **R** | | A / LT | L KICK |
 | Right kick | **F** | | B / RT | R KICK |
+| Grab / drop weapon | **G** | | R3 / Back | |
+| Skip warm-up | **Enter** | | | |
 
 **Esc** (or the ⚙ button) opens **Settings**, where every key can be rebound; bindings
 are saved in the browser. Debug: **L** tuning panel · **H** hitboxes · **T** cycle
@@ -131,6 +144,7 @@ src/
     select.ts   context move selection (per button) + automatic defense choice
     ai.ts       enemy AI (per-archetype plans, spacing, strings, blocking) + director
     enemies.ts  enemy archetypes (stats, moves, style, coins)
+    weapons.ts  weapons, armed techniques, blade geometry, wounds and dismemberment
   body/
     skeleton.ts 12-bone humanoid, forward kinematics, two-bone IK
     poses.ts    authored key poses (IK targets for fists/feet)
@@ -146,7 +160,7 @@ src/
               wall cutout, blood, coins, particles
   feel/       procedural impact audio (WebAudio, no assets)
   input/      rebindable keyboard, mouse, gamepad and touch input
-  game/       glue: fixed-step loop, gauntlet flow (rounds, bosses, coins, shop),
+  game/       glue: fixed-step loop, gauntlet flow (rounds, bosses, coins, shop, weapons),
               round generation, economy + save data, trauma/blood, tutorial
   ui/         HUD, settings (key rebinding, blood toggle), shop
   debug/      Tweakpane live tuning (frame data, feel, physics, AI)

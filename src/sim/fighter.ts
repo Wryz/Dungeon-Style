@@ -13,8 +13,11 @@ import {
   type PoseSpec,
   resolvePose,
   type Rig,
+  type BoneName,
+  solveArm,
   solveLegs,
 } from '../body/skeleton';
+import { bladeFrame, WEAPON_MOVES, type WeaponDef, type Wound } from './weapons';
 
 export interface FighterStyle {
   footwork: FootworkStyle;
@@ -148,6 +151,16 @@ export class Fighter {
   lockedOn = false;
   /** Health never drops below this (sparring partners can't be knocked out). */
   minHp = 0;
+  /** Frames left on a request to pick up / drop a weapon. */
+  pickupRequest = 0;
+  /** Weapon in hand (null = fists). */
+  weapon: WeaponDef | null = null;
+  /** Lasting cuts (each keeps bleeding a little). */
+  readonly wounds: Wound[] = [];
+  /** Bones cut off (with everything below them). */
+  readonly severed = new Set<BoneName>();
+  /** Cleaving damage taken per limb (enough of it and the limb comes off). */
+  readonly limbDamage: Partial<Record<BoneName, number>> = {};
   hitReaction: PoseName = 'hitHigh';
 
   /** Player gets automatic defense; enemies defend through their AI. */
@@ -219,6 +232,27 @@ export class Fighter {
     const m = this.move;
     if (this.state !== 'attack' || !m?.cancel) return false;
     return this.stateFrame >= m.cancel.from && this.stateFrame <= m.cancel.to;
+  }
+
+  /** A move by id: own moves, plus weapon techniques while armed. */
+  moveDef(id: string): MoveDef | undefined {
+    return this.moves[id] ?? (this.weapon ? WEAPON_MOVES[id] : undefined);
+  }
+
+  /** Is this bone (or a bone above it) cut off? */
+  isSevered(bone: BoneName): boolean {
+    if (this.severed.has(bone)) return true;
+    if (bone === 'foreArmL') return this.severed.has('upperArmL');
+    if (bone === 'foreArmR') return this.severed.has('upperArmR');
+    if (bone === 'shinL') return this.severed.has('thighL');
+    if (bone === 'shinR') return this.severed.has('thighR');
+    return false;
+  }
+
+  /** Can this move still be thrown with the limbs left? */
+  canUse(m: MoveDef): boolean {
+    const bone: BoneName = m.limb === 'handL' ? 'foreArmL' : m.limb === 'handR' ? 'foreArmR' : m.limb === 'footL' ? 'shinL' : 'shinR';
+    return !this.isSevered(bone);
   }
 
   distanceTo(o: Fighter): number {
@@ -385,9 +419,21 @@ export class Fighter {
       solveLegs(L, { at: this.footwork.localTarget('L', this, 0), hint: KNEE_HINT.L }, { at: this.footwork.localTarget('R', this, 0), hint: KNEE_HINT.R });
       blendPose(this.anim.out, L, this.moveBlend, this.pose);
     }
+    if (this.weapon?.style === 'twoHand' && !this.isSevered('foreArmL') && !this.isSevered('foreArmR')) this.gripWithBothHands();
     forwardKinematics(this.pose, this.rig, this.pos, this.yaw, this.scale);
     // Authored-leg animations (kicks, defense, reactions): feet are wherever the pose put them.
     if (!driven) this.footwork.syncToRig(this.rig);
+  }
+
+  /** Two-handed grip: the lead hand holds the haft just below the rear hand. */
+  private gripWithBothHands() {
+    // Kicks and reactions leave the hands where the animation has them.
+    const swinging = this.state === 'attack' && !!this.move?.weapon;
+    if (!swinging && this.state !== 'idle' && this.state !== 'walk' && this.state !== 'defend' && this.state !== 'blockstun') return;
+    forwardKinematics(this.pose, _localRig);
+    bladeFrame({ rig: _localRig, scale: 1 }, _grip, _dir);
+    _grip.addScaledVector(_dir, -0.15);
+    solveArm(this.pose, 'L', { at: [_grip.x, _grip.y, _grip.z], hint: [0.5, -1, -0.2] });
   }
 
   /** Re-evaluates the fight context and eases the movement profile toward it. */
@@ -448,15 +494,21 @@ export class Fighter {
     // Running: elbows locked near 90°, arms pumping hard from the shoulder.
     const run = this.footwork.run * g;
     const pump = Math.max(-1, Math.min(1, (footR[2] - footL[2]) / 0.55));
-    const guardL = guardHand(GUARD.handL!, M.guardY + back * 0.02 * m, M.guardZ);
-    const guardR = guardHand(GUARD.handR!, M.guardY + back * 0.02 * m, M.guardZ * 0.6);
+    const G = this.weapon ? POSE_SPECS[this.weapon.style === 'oneHand' ? 'wGuard1' : 'wGuard2'] : GUARD;
+    const guardL = guardHand(G.handL!, M.guardY + back * 0.02 * m, M.guardZ);
+    const guardR = guardHand(G.handR!, M.guardY + back * 0.02 * m, M.guardZ * 0.6);
     const lerp3 = (a: V3, b: V3, k: number): V3 => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
     const runHand = (side: 1 | -1): V3 => {
       const th = 0.32 + 0.68 * pump * side;
       return [side * (0.2 - 0.07 * Math.max(0, pump * side)), 1.4 - 0.39 * Math.cos(th), 0.17 + 0.39 * Math.sin(th)];
     };
-    const relaxedL = lerp3([0.21, 0.94 + Math.max(0, swing) * 0.15, 0.03 + swing * 0.55], runHand(1), run);
-    const relaxedR = lerp3([-0.21, 0.94 + Math.max(0, -swing) * 0.15, 0.03 - swing * 0.55], runHand(-1), run);
+    let relaxedL = lerp3([0.21, 0.94 + Math.max(0, swing) * 0.15, 0.03 + swing * 0.55], runHand(1), run);
+    let relaxedR = lerp3([-0.21, 0.94 + Math.max(0, -swing) * 0.15, 0.03 - swing * 0.55], runHand(-1), run);
+    // A two-handed weapon is carried across the body (the off hand stays on the haft).
+    if (this.weapon?.style === 'twoHand') {
+      relaxedR = [-0.2, 1.12, 0.18];
+      relaxedL = [-0.05, 1.05, 0.2];
+    }
     const hintL = lerp3([0.2, -0.25, -1], [0.3, -0.35, -1], run);
     const hintR = lerp3([-0.2, -0.25, -1], [-0.3, -0.35, -1], run);
     // Running bob: lowest as the body passes over the planted foot, highest in flight.
@@ -486,6 +538,10 @@ export class Fighter {
     return resolvePose(spec, this.locoPose);
   }
 }
+
+const _localRig = makeRig();
+const _grip = new Vector3();
+const _dir = new Vector3();
 
 const guardHand = (h: { at: [number, number, number]; hint?: [number, number, number] }, dy: number, dz: number) => ({
   at: [h.at[0], h.at[1] + dy, h.at[2] + dz] as [number, number, number],

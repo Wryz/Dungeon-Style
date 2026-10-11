@@ -339,3 +339,18 @@ export function solveLegs(pose: Pose, footL: LimbTarget, footR: LimbTarget): Pos
   return pose;
 }
 
+
+/** Re-solves one arm of an already-resolved pose so the fist reaches `t` (fighter-local). */
+export function solveArm(pose: Pose, side: Side, t: LimbTarget): Pose {
+  forwardKinematics(pose, _tmpRig);
+  const upper = side === 'L' ? 'upperArmL' : 'upperArmR';
+  const fore = side === 'L' ? 'foreArmL' : 'foreArmR';
+  const def = SKELETON[upper];
+  const chest = _tmpRig.chest;
+  _root.set(def.offset[0], def.offset[1], def.offset[2]).applyQuaternion(chest.rot).add(chest.pos);
+  _target.set(t.at[0], t.at[1], t.at[2]);
+  const h = t.hint ?? [SIDE_SIGN[side] * 0.5, -1, -0.3];
+  _v.set(h[0], h[1], h[2]);
+  solveTwoBone(_root, chest.rot, _target, _v, def.length, SKELETON[fore].length + FIST_OFFSET, -1, pose.rot[upper], pose.rot[fore]);
+  return pose;
+}

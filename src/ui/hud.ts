@@ -131,6 +131,7 @@ export class Hud {
       <span>${k(b.up)}${k(b.left)}${k(b.down)}${k(b.right)} move</span>
       <span>${k(b.lpunch)} ${k(b.rpunch)} punch L / R</span>
       <span>${k(b.lkick)} ${k(b.rkick)} kick L / R</span>
+      <span>${k(b.pickup)} grab / drop weapon</span>
       <span class="dim">defense is automatic</span>
       <span class="dim"><b>Esc</b> settings</span>
       <span class="dim"><b>L</b> tuning</span>`;

@@ -1,3 +1,4 @@
+import type { WeaponId } from '../sim/weapons';
 import type { ArenaShape, Obstacle } from '../world/collision';
 
 export type ThemeId = 'ring' | 'street' | 'grocery' | 'colosseum';
@@ -11,6 +12,9 @@ export interface ThemeDef {
   playerSpawn: [number, number];
   /** Enemy spawn points (used in order; wraps around). */
   enemySpawns: [number, number][];
+  /** Weapons lying around this arena, and where they can be. */
+  weapons: WeaponId[];
+  weaponSpots: [number, number][];
 }
 
 export const THEMES: Record<ThemeId, ThemeDef> = {
@@ -26,6 +30,9 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
       [2.4, -2.4],
       [0.6, -2.6],
     ],
+    // Somebody always leaves a folding chair in the ring.
+    weapons: ['chair'],
+    weaponSpots: [[-2.5, -2.4], [2.5, 2.5], [-2.5, 2.5]],
   },
   street: {
     id: 'street',
@@ -43,6 +50,8 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
       [2, -2.2],
       [5.8, 0],
     ],
+    weapons: ['bat', 'machete'],
+    weaponSpots: [[-1.6, -2.9], [1.2, 3.0], [-5.4, 2.6], [5.6, 2.8]],
   },
   grocery: {
     id: 'grocery',
@@ -60,6 +69,8 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
       [0.8, -3],
       [5.2, -3.2],
     ],
+    weapons: ['cleaver', 'pan'],
+    weaponSpots: [[-1.4, -1.5], [2.4, 0.7], [-4.6, -2.9], [0.4, 3.4]],
   },
   colosseum: {
     id: 'colosseum',
@@ -76,5 +87,7 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
       [2.6, -3],
       [5.4, 0.8],
     ],
+    weapons: ['gladius', 'axe'],
+    weaponSpots: [[-1.6, 3.4], [0.6, -4.2], [-5.6, -1.6], [2.4, 5.4]],
   },
 };

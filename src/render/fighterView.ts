@@ -2,6 +2,8 @@ import { BoxGeometry, BufferGeometry, Color, Group, Mesh, MeshStandardMaterial, 
 import type { Ragdoll } from '../body/ragdoll';
 import { type BoneName, BONES, SKELETON } from '../body/skeleton';
 import type { Fighter } from '../sim/fighter';
+import type { WeaponDef, Wound } from '../sim/weapons';
+import { buildWeapon, mountWeapon } from './weaponView';
 
 export interface Palette {
   skin: string;
@@ -257,6 +259,87 @@ export class FighterView {
     }
   }
 
+  private readonly woundMeshes: Mesh[] = [];
+  private readonly woundGroups: Group[] = [];
+  private weaponMesh: Group | null = null;
+  private weaponId: string | null = null;
+
+  /** Shows the weapon in hand (or none). */
+  setWeapon(def: WeaponDef | null) {
+    if ((def?.id ?? null) === this.weaponId) return;
+    this.weaponId = def?.id ?? null;
+    if (this.weaponMesh) {
+      this.weaponMesh.parent?.remove(this.weaponMesh);
+      this.weaponMesh = null;
+    }
+    if (!def) return;
+    const holder = new Group();
+    mountWeapon(holder);
+    holder.add(buildWeapon(def));
+    this.bones.foreArmR.add(holder);
+    this.weaponMesh = holder;
+  }
+
+  /** World position of a wound (where it bleeds from). */
+  woundPoint(w: Wound, out = new Vector3()): Vector3 {
+    const g = this.bones[w.bone];
+    g.updateMatrixWorld();
+    const [x, y, z] = w.stump ? w.local : surfacePoint(w.bone, w.local).p;
+    return g.localToWorld(out.set(x, y, z));
+  }
+
+  /** A lasting cut: a dark gash on the body part with a trickle of blood running down. */
+  addWound(w: Wound) {
+    if (w.stump) {
+      this.addStump(w);
+      return;
+    }
+    const { p, n } = surfacePoint(w.bone, w.local);
+    const g = new Group();
+    g.position.set(p[0], p[1], p[2]);
+    // Face the surface normal; the gash runs across it at the wound's angle.
+    g.quaternion.setFromUnitVectors(_up.set(0, 0, 1), _n.set(n[0], n[1], n[2]));
+    const gash = new Mesh(new BoxGeometry(w.length, 0.024, 0.008), WOUND_MAT);
+    gash.rotation.z = w.angle;
+    const wet = new Mesh(new BoxGeometry(w.length * 0.7, 0.01, 0.01), WET_MAT);
+    wet.rotation.z = w.angle;
+    wet.position.z = 0.002;
+    g.add(gash, wet);
+    // Trickle runs "down" the limb (toward -Y of the bone), on the surface.
+    const down = _n.set(0, -1, 0).applyQuaternion(g.quaternion.clone().invert());
+    const len = 0.04 + w.bleed * 0.08;
+    const trickle = new Mesh(new BoxGeometry(0.014, len, 0.005), WOUND_MAT);
+    trickle.position.set(down.x * len * 0.5, down.y * len * 0.5, 0.001);
+    trickle.rotation.z = Math.atan2(down.x, -down.y);
+    g.add(trickle);
+    this.bones[w.bone].add(g);
+    this.woundGroups.push(g);
+  }
+
+  /** Heals everything (new round). */
+  clearWounds() {
+    for (const g of this.woundGroups) g.parent?.remove(g);
+    for (const m of this.woundMeshes) m.parent?.remove(m);
+    this.woundGroups.length = 0;
+    this.woundMeshes.length = 0;
+  }
+
+  /** Where a limb was cut off: a raw red stump on the body, and on the end of the limb. */
+  private addStump(w: Wound) {
+    const lost = w.stump!;
+    const r = (SKELETON[lost].radius ?? 0.06) * 2.1;
+    const cap = new Mesh(new BoxGeometry(lost === 'head' ? 0.16 : r, 0.03, lost === 'head' ? 0.14 : r), STUMP_MAT);
+    cap.position.set(w.local[0], w.local[1] - (lost === 'head' ? -0.01 : 0.012), w.local[2]);
+    this.bones[w.bone].add(cap);
+    const bone = new Mesh(new BoxGeometry(r * 0.35, 0.035, r * 0.35), BONE_MAT);
+    bone.position.copy(cap.position);
+    this.bones[w.bone].add(bone);
+    const end = new Mesh(new BoxGeometry(lost === 'head' ? 0.12 : r * 0.95, 0.025, lost === 'head' ? 0.12 : r * 0.95), STUMP_MAT);
+    end.position.set(0, lost === 'head' ? 0.02 : -0.01, 0);
+    this.bones[lost].add(end);
+    this.woundMeshes.push(cap, bone, end);
+  }
+
   /** Uniform model scale (giants / small creatures). */
   setScale(sc: number) {
     for (const b of BONES) this.bones[b].scale.setScalar(sc);
@@ -304,3 +387,54 @@ export class FighterView {
 }
 
 const TMP = new Color();
+
+const WOUND_MAT = new MeshStandardMaterial({ color: '#5e0a0a', roughness: 0.35, flatShading: true });
+const WET_MAT = new MeshStandardMaterial({ color: '#b3121a', roughness: 0.15, metalness: 0.1, flatShading: true });
+const STUMP_MAT = new MeshStandardMaterial({ color: '#9e1016', roughness: 0.3, flatShading: true });
+const BONE_MAT = new MeshStandardMaterial({ color: '#efe6d2', roughness: 0.6, flatShading: true });
+const _up = new Vector3();
+const _n = new Vector3();
+
+/** Main block of each body part (size, centre), bone-local — matches `build()`. */
+const PART_BOX: Record<BoneName, { size: [number, number, number]; c: [number, number, number] }> = {
+  pelvis: { size: [0.34, 0.2, 0.22], c: [0, 0.03, 0] },
+  abdomen: { size: [0.33, 0.24, 0.21], c: [0, 0.1, 0] },
+  chest: { size: [0.46, 0.3, 0.25], c: [0, 0.14, 0] },
+  head: { size: [0.25, 0.27, 0.25], c: [0, 0.16, 0.01] },
+  upperArmL: { size: [0.13, 0.31, 0.13], c: [0, -0.135, 0] },
+  upperArmR: { size: [0.13, 0.31, 0.13], c: [0, -0.135, 0] },
+  foreArmL: { size: [0.115, 0.24, 0.115], c: [0, -0.11, 0] },
+  foreArmR: { size: [0.115, 0.24, 0.115], c: [0, -0.11, 0] },
+  thighL: { size: [0.16, 0.47, 0.17], c: [0, -0.22, 0] },
+  thighR: { size: [0.16, 0.47, 0.17], c: [0, -0.22, 0] },
+  shinL: { size: [0.14, 0.4, 0.15], c: [0, -0.19, 0] },
+  shinR: { size: [0.14, 0.4, 0.15], c: [0, -0.19, 0] },
+};
+
+/** Pushes a bone-local point out onto the surface of that body part's block. */
+function surfacePoint(bone: BoneName, local: [number, number, number]): { p: [number, number, number]; n: [number, number, number] } {
+  const { size, c } = PART_BOX[bone];
+  const h = [size[0] / 2, size[1] / 2, size[2] / 2];
+  const d = [local[0] - c[0], local[1] - c[1], local[2] - c[2]];
+  // Limbs: never put the cut on the end caps — project sideways.
+  const limb = bone !== 'pelvis' && bone !== 'abdomen' && bone !== 'chest' && bone !== 'head';
+  d[1] = Math.max(-h[1] * 0.85, Math.min(h[1] * 0.85, d[1]));
+  let axis = 0;
+  let best = -1;
+  for (let i = 0; i < 3; i++) {
+    if (limb && i === 1) continue;
+    const r = Math.abs(d[i]) / h[i];
+    if (r > best) {
+      best = r;
+      axis = i;
+    }
+  }
+  if (Math.abs(d[axis]) < 1e-4) d[axis] = h[axis];
+  const p: [number, number, number] = [c[0] + d[0], c[1] + d[1], c[2] + d[2]];
+  const sgn = Math.sign(d[axis]);
+  p[axis] = c[axis] + sgn * (h[axis] + 0.003);
+  for (let i = 0; i < 3; i++) if (i !== axis) p[i] = Math.max(c[i] - h[i] * 0.9, Math.min(c[i] + h[i] * 0.9, p[i]));
+  const n: [number, number, number] = [0, 0, 0];
+  n[axis] = sgn;
+  return { p, n };
+}

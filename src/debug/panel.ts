@@ -1,3 +1,4 @@
+import { type WeaponId, WEAPONS } from '../sim/weapons';
 import { Pane } from 'tweakpane';
 import { RAGDOLL_TUNING } from '../body/ragdoll';
 import { GAME_TUNING, type Game } from '../game/game';
@@ -92,6 +93,12 @@ export function buildPanel(game: Game): { toggle: () => void } {
       }
     }
   }
+
+  const wpn = pane.addFolder({ title: 'Weapons', expanded: false });
+  const pick = { weapon: 'axe' };
+  wpn.addBinding(pick, 'weapon', { options: Object.fromEntries(Object.values(WEAPONS).map((w) => [w.name, w.id])) });
+  wpn.addButton({ title: 'Give to player' }).on('click', () => game.giveWeapon(pick.weapon as WeaponId));
+  wpn.addButton({ title: 'Empty hands' }).on('click', () => game.giveWeapon(null));
 
   const runF = pane.addFolder({ title: 'Gauntlet', expanded: false });
   runF.addButton({ title: game.mode === 'gauntlet' ? 'Open training ring' : 'Back to the gauntlet' }).on('click', () => {

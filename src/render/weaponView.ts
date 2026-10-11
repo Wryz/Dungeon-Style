@@ -1,0 +1,159 @@
+import {
+  BoxGeometry,
+  type BufferGeometry,
+  Color,
+  CylinderGeometry,
+  Group,
+  Matrix4,
+  Mesh,
+  MeshStandardMaterial,
+  RingGeometry,
+  Vector3,
+} from 'three';
+import { FIST_OFFSET, SKELETON } from '../body/skeleton';
+import { WRIST_ANGLE, type WeaponDef } from '../sim/weapons';
+
+const MATS: Record<string, { color: string; metalness?: number; roughness?: number }> = {
+  steel: { color: '#eef2f5', metalness: 0.3, roughness: 0.25 },
+  iron: { color: '#7e858b', metalness: 0.6, roughness: 0.45 },
+  wood: { color: '#7a5232', roughness: 0.85 },
+  darkWood: { color: '#4a2f1c', roughness: 0.85 },
+  black: { color: '#1d1d20', roughness: 0.6 },
+  brass: { color: '#c79a3c', metalness: 0.7, roughness: 0.35 },
+  ash: { color: '#d7b98a', roughness: 0.8 },
+  grey: { color: '#9aa0a8', metalness: 0.4, roughness: 0.5 },
+  bone: { color: '#e6dcc4', roughness: 0.7 },
+};
+
+const mat = (k: string) => {
+  const m = MATS[k];
+  return new MeshStandardMaterial({ color: m.color, metalness: m.metalness ?? 0, roughness: m.roughness ?? 0.7, flatShading: true });
+};
+
+/**
+ * Blocky weapon models in weapon space: grip at the origin, the weapon running up +Y to
+ * its tip, the flat of the blade facing ±X (the edge leads along +Z).
+ */
+export function buildWeapon(def: WeaponDef): Group {
+  const g = new Group();
+  const part = (geo: BufferGeometry, m: string, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0) => {
+    const mesh = new Mesh(geo, mat(m));
+    mesh.position.set(x, y, z);
+    mesh.rotation.set(rx, ry, rz);
+    mesh.castShadow = true;
+    g.add(mesh);
+    return mesh;
+  };
+  const box = (w: number, h: number, d: number) => new BoxGeometry(w, h, d);
+  const L = def.length;
+  switch (def.id) {
+    case 'cleaver':
+      part(box(0.035, 0.16, 0.035), 'darkWood', 0, -0.02, 0);
+      part(box(0.012, 0.25, 0.11), 'steel', 0, 0.2, 0.035);
+      break;
+    case 'machete':
+      part(box(0.035, 0.15, 0.035), 'black', 0, -0.02, 0);
+      part(box(0.012, L - 0.1, 0.068), 'steel', 0, 0.06 + (L - 0.1) / 2, 0.01);
+      part(box(0.014, L - 0.12, 0.012), 'iron', 0, 0.06 + (L - 0.12) / 2, -0.026);
+      part(box(0.012, 0.09, 0.045), 'steel', 0, L - 0.02, 0.02, 0.45, 0, 0);
+      break;
+    case 'gladius':
+      part(box(0.035, 0.13, 0.035), 'wood', 0, -0.02, 0);
+      part(box(0.045, 0.03, 0.045), 'brass', 0, -0.1, 0);
+      part(box(0.04, 0.025, 0.13), 'brass', 0, 0.06, 0);
+      part(box(0.014, L - 0.16, 0.065), 'steel', 0, 0.07 + (L - 0.16) / 2, 0);
+      part(box(0.014, 0.08, 0.046), 'steel', 0, L - 0.05, 0, Math.PI / 4, 0, 0);
+      break;
+    case 'pan':
+      part(box(0.03, 0.26, 0.02), 'black', 0, 0.08, 0);
+      part(new CylinderGeometry(0.13, 0.12, 0.035, 10), 'iron', 0, 0.33, 0, 0, 0, Math.PI / 2);
+      break;
+    case 'axe':
+      part(box(0.04, L + 0.15, 0.04), 'wood', 0, (L - 0.15) / 2, 0);
+      part(box(0.03, 0.12, 0.06), 'iron', 0, L - 0.14, 0);
+      part(box(0.018, 0.2, 0.2), 'steel', 0, L - 0.14, 0.13);
+      part(box(0.018, 0.26, 0.04), 'steel', 0, L - 0.14, 0.235);
+      part(box(0.02, 0.05, 0.1), 'iron', 0, L - 0.14, -0.08);
+      break;
+    case 'bat':
+      part(new CylinderGeometry(0.028, 0.022, 0.1, 8), 'black', 0, -0.07, 0);
+      part(new CylinderGeometry(0.045, 0.024, L - 0.05, 8), 'ash', 0, (L - 0.05) / 2, 0);
+      part(new CylinderGeometry(0.036, 0.036, 0.02, 8), 'ash', 0, -0.13, 0);
+      break;
+    case 'club':
+      part(new CylinderGeometry(0.08, 0.035, L + 0.1, 7), 'darkWood', 0, (L - 0.1) / 2, 0);
+      for (let i = 0; i < 9; i++) {
+        const a = (i / 9) * Math.PI * 2;
+        const y = L * (0.55 + 0.4 * ((i * 0.37) % 1));
+        part(box(0.025, 0.025, 0.06), 'bone', Math.sin(a) * 0.07, y, Math.cos(a) * 0.07, 0, a, 0);
+      }
+      break;
+    case 'chair': {
+      // Held by the back legs: legs, seat and backrest of a folding chair.
+      for (const s of [1, -1]) part(box(0.022, L + 0.1, 0.022), 'grey', s * 0.17, (L - 0.1) / 2, 0);
+      part(box(0.38, 0.28, 0.02), 'grey', 0, L - 0.12, 0);
+      part(box(0.38, 0.02, 0.34), 'grey', 0, L * 0.45, 0.17);
+      for (const s of [1, -1]) part(box(0.022, 0.4, 0.022), 'grey', s * 0.17, L * 0.45 - 0.2, 0.32, -0.5, 0, 0);
+      break;
+    }
+  }
+  return g;
+}
+
+const _m = new Matrix4();
+
+/**
+ * Mounts a weapon on the right forearm group: at the fist, running along the same
+ * direction the sim uses for hit detection (see `bladeFrame`).
+ */
+export function mountWeapon(group: Group) {
+  const c = Math.cos(WRIST_ANGLE);
+  const s = Math.sin(WRIST_ANGLE);
+  // Forearm frame: -Y along the bone; the blade leans from it toward -Z.
+  const yw = new Vector3(0, -c, -s);
+  const xw = new Vector3(1, 0, 0);
+  const zw = new Vector3().crossVectors(xw, yw);
+  _m.makeBasis(xw, yw, zw);
+  group.quaternion.setFromRotationMatrix(_m);
+  group.position.set(0, -(SKELETON.foreArmR.length + FIST_OFFSET), 0);
+}
+
+/** A weapon lying on the floor, with a soft glow ring so it reads as a pickup. */
+export class DropView {
+  readonly root = new Group();
+  private readonly ring: Mesh;
+  private readonly ringMat: MeshStandardMaterial;
+
+  constructor(def: WeaponDef, x: number, z: number, yaw: number) {
+    const w = buildWeapon(def);
+    // Lie it on its flat, along `yaw`, centred on the drop point.
+    w.rotation.set(Math.PI / 2, 0, 0);
+    w.position.set(0, def.id === 'chair' ? 0.03 : 0.035, -def.length / 2);
+    const holder = new Group();
+    holder.add(w);
+    holder.rotation.y = yaw;
+    this.root.add(holder);
+    this.ringMat = new MeshStandardMaterial({ color: '#ffe08a', emissive: new Color('#ffcf4a'), emissiveIntensity: 0.8, transparent: true, opacity: 0.5, depthWrite: false });
+    this.ring = new Mesh(new RingGeometry(0.42, 0.5, 28), this.ringMat);
+    this.ring.rotation.x = -Math.PI / 2;
+    this.ring.position.y = 0.012;
+    this.root.add(this.ring);
+    this.root.position.set(x, 0, z);
+  }
+
+  update(time: number, near: boolean) {
+    const p = 0.5 + 0.5 * Math.sin(time * 3);
+    this.ringMat.opacity = near ? 0.85 : 0.25 + 0.2 * p;
+    this.ring.scale.setScalar(near ? 1.05 : 0.95 + 0.05 * p);
+  }
+
+  dispose() {
+    this.root.parent?.remove(this.root);
+    this.root.traverse((o) => {
+      if (o instanceof Mesh) {
+        o.geometry.dispose();
+        (o.material as MeshStandardMaterial).dispose();
+      }
+    });
+  }
+}

@@ -108,15 +108,27 @@ export class Sfx {
     this.thump(f * 1.5, f * 1.5, 0.05, 0.14, 'sine');
   }
 
-  gate(closing: boolean) {
+  /** Edge through flesh: a wet, tearing high-frequency rip plus a dull thud. */
+  slice(heavy: boolean) {
     if (!this.ctx) return;
-    this.noiseBurst('lowpass', closing ? 700 : 400, 0.8, 0.5, 0.005, closing ? 0.25 : 0.5);
-    this.thump(closing ? 110 : 80, 50, 0.6, closing ? 0.3 : 0.5, 'square');
+    this.noiseBurst('highpass', 2200, 0.9, heavy ? 0.6 : 0.45, 0.002, heavy ? 0.16 : 0.1, 6000);
+    this.noiseBurst('bandpass', 700, 1.4, 0.5, 0.004, heavy ? 0.2 : 0.12, 300);
+    this.thump(heavy ? 120 : 150, 50, heavy ? 0.7 : 0.45, heavy ? 0.2 : 0.12);
   }
 
-  glitch() {
+  /** A limb coming off: crunch and a heavy wet tear. */
+  sever() {
     if (!this.ctx) return;
-    this.thump(60 + Math.random() * 900, 30 + Math.random() * 2000, 0.06, 0.08, 'sawtooth');
+    this.noiseBurst('bandpass', 1800, 3, 0.7, 0.001, 0.05);
+    this.noiseBurst('lowpass', 900, 0.6, 0.8, 0.004, 0.35, 200);
+    this.thump(95, 35, 0.9, 0.3);
+  }
+
+  /** Metal and wood: grabbing or dropping a weapon. */
+  clank(pickup: boolean) {
+    if (!this.ctx) return;
+    this.thump(pickup ? 620 : 420, pickup ? 900 : 300, 0.12, 0.1, 'square');
+    this.noiseBurst('bandpass', pickup ? 3200 : 2000, 4, 0.25, 0.001, 0.12);
   }
 
   chime() {

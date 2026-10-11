@@ -74,6 +74,8 @@ export interface MoveDef {
    * fighter can keep stepping. 'full' (default): whole-body move that carries momentum.
    */
   layer?: 'upper' | 'full';
+  /** Struck with the weapon in hand (hit detection along the blade; damage × weapon). */
+  weapon?: boolean;
   /** Target options (first = primary). Omitted: always the authored target. */
   aims?: Aim[];
   /** Moves this can cancel into, and the window (relative to move start) where that is allowed. */

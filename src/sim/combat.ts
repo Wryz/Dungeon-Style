@@ -1,5 +1,5 @@
 import { Vector3 } from 'three';
-import { bonePoint, fistPoint, footPoint } from '../body/skeleton';
+import { type BoneName, bonePoint, fistPoint, footPoint, SKELETON } from '../body/skeleton';
 import type { PoseName } from '../body/poses';
 import { AIDirector, BrawlerAI } from './ai';
 import { type Fighter } from './fighter';
@@ -7,6 +7,15 @@ import { RectWalkable, type Walkable } from '../world/collision';
 import { angleDelta, approachAngle, DT, Rng } from './math';
 import { DEFENSES, type DefenseKind, type Height, type MoveDef, moveLength } from './moves';
 import { chooseDefense, moveContext, selectPlayerMove } from './select';
+import { bladePoints, LIMB_TOUGHNESS, limbBones, SEVER_AT, selectWeaponMove, WEAPON_MOVES, type WeaponDef, type Wound } from './weapons';
+
+/** A weapon lying on the arena floor. */
+export interface Drop {
+  id: number;
+  weapon: WeaponDef;
+  pos: Vector3;
+  yaw: number;
+}
 
 export type HurtZone = 'head' | 'chest' | 'abdomen' | 'legs';
 
@@ -27,8 +36,19 @@ export type CombatEvent =
       knockdown: boolean;
       ko: boolean;
       combo: number;
+      /** Body part struck. */
+      bone: BoneName;
+      /** Weapon used (null for fists and feet). */
+      weapon: WeaponDef | null;
+      /** A new cut, if the weapon has an edge. */
+      wound: Wound | null;
+      /** A limb (or the head) cut off. */
+      sever: BoneName | null;
     }
-  | { type: 'block'; attacker: Fighter; defender: Fighter; move: MoveDef; point: Vector3; dir: Vector3; guardBreak: boolean }
+  | { type: 'block'; attacker: Fighter; defender: Fighter; move: MoveDef; point: Vector3; dir: Vector3; guardBreak: boolean; wound: Wound | null }
+  | { type: 'pickup'; f: Fighter; drop: Drop }
+  | { type: 'drop'; drop: Drop }
+  | { type: 'bleedout'; f: Fighter }
   | { type: 'dodge'; attacker: Fighter; defender: Fighter; move: MoveDef; kind: DefenseKind | 'airborne'; point: Vector3 }
   | { type: 'defend'; f: Fighter; kind: DefenseKind }
   | { type: 'getup'; f: Fighter };
@@ -38,7 +58,11 @@ interface Contact {
   defender: Fighter;
   point: Vector3;
   zone: HurtZone;
+  bone: BoneName;
 }
+
+/** Hit points lost per second per unit of bleeding. */
+export const BLEED_DPS = 1.1;
 
 /** Lock-on tuning (rates in radians per frame). */
 /** How much nearer (m) another opponent must be before the lock switches to it. */
@@ -79,6 +103,10 @@ export class CombatSim {
   readonly ais = new Map<Fighter, BrawlerAI>();
   /** Turn-taking between enemies (only one starts an attack per window). */
   readonly director = new AIDirector();
+  /** Weapons lying around. */
+  readonly drops: Drop[] = [];
+  private dropSerial = 0;
+  private readonly prevBlade = new Map<Fighter, Vector3[]>();
   frame = 0;
   /** Where fighters can stand (the arena floor minus its props). */
   walkable: Walkable = new RectWalkable(-7.5, 7.5, -4.5, 4.5);
@@ -95,6 +123,7 @@ export class CombatSim {
     this.fighters.push(f);
     if (ai) {
       ai.director ??= this.director;
+      ai.drops = this.drops;
       this.ais.set(f, ai);
     }
     f.updatePose(0, 0, 0);
@@ -123,6 +152,8 @@ export class CombatSim {
     for (const f of fs) this.ais.get(f)?.think(f, f.target);
     for (const f of fs) this.autoDefend(f);
     for (const f of fs) this.tryBufferedAttack(f);
+    for (const f of fs) this.tryPickup(f);
+    for (const f of fs) this.bleed(f);
     for (const f of fs) this.locomote(f);
     this.separate();
     for (const f of fs) {
@@ -273,9 +304,15 @@ export class CombatSim {
       (f.state === 'attack' && ctx.chainFrom !== null) ||
       (f.state === 'defend' && d !== null && (d.success || d.phase === 'recovery'));
     if (!allowed) return;
-    const id = selectPlayerMove(b.button, ctx);
-    const move = id ? f.moves[id] : undefined;
-    if (!move) return;
+    let id: string | null | undefined;
+    if (f.weapon) {
+      id = selectWeaponMove(b.button, f.weapon, ctx.counter, ctx.chainFrom);
+      // Kicks out of a weapon combo.
+      if (id === undefined && ctx.chainFrom && WEAPON_MOVES[ctx.chainFrom]) id = b.button === 'lkick' ? 'frontKick' : 'lowKick';
+    }
+    if (id === undefined) id = selectPlayerMove(b.button, ctx);
+    const move = id ? f.moveDef(id) : undefined;
+    if (!move || !f.canUse(move)) return;
     if (f.state === 'attack' && ctx.chainFrom && !f.move!.cancel!.into.includes(move.id)) return;
     f.startMove(move, ctx.counter !== null);
     this.events.push({ type: 'attackStart', f, move });
@@ -420,6 +457,24 @@ export class CombatSim {
     for (const a of this.fighters) {
       if (!a.inActiveFrames() || a.hitThisAttack) continue;
       const m = a.move!;
+      if (m.weapon && a.weapon) {
+        // Along the weapon, plus between this frame's and last frame's position so a
+        // fast swing can't pass through someone between two frames.
+        const pts = bladePoints(a, a.weapon);
+        const prev = this.prevBlade.get(a);
+        const samples = [...pts];
+        if (prev && prev.length === pts.length) for (let i = 0; i < pts.length; i++) samples.push(pts[i].clone().lerp(prev[i], 0.5));
+        const r = (a.weapon.radius + a.stats.reach) * a.scale;
+        for (const d of this.opponents(a)) {
+          if (!d.alive || d.state === 'knockdown' || d.state === 'getup') continue;
+          const c = overlapBody(samples, r, d);
+          if (c) {
+            contacts.push({ attacker: a, defender: d, ...c });
+            break;
+          }
+        }
+        continue;
+      }
       strikePoint(a, m, _strike);
       for (const d of this.opponents(a)) {
         if (!d.alive || d.state === 'knockdown' || d.state === 'getup') continue;
@@ -430,12 +485,16 @@ export class CombatSim {
         }
       }
     }
+    for (const f of this.fighters) {
+      if (f.weapon && f.state === 'attack' && f.move?.weapon) this.prevBlade.set(f, bladePoints(f, f.weapon));
+      else this.prevBlade.delete(f);
+    }
     // Apply after detection so simultaneous strikes trade.
     for (const c of contacts) c.attacker.hitThisAttack = true;
     for (const c of contacts) this.applyStrike(c);
   }
 
-  private applyStrike({ attacker: a, defender: d, point, zone }: Contact) {
+  private applyStrike({ attacker: a, defender: d, point, zone, bone }: Contact) {
     const m = a.move!;
     const height = a.strikeHeight;
     const dir = new Vector3(d.pos.x - a.pos.x, 0, d.pos.z - a.pos.z);
@@ -465,7 +524,7 @@ export class CombatSim {
       this.block(a, d, m, point, dir);
       return;
     }
-    this.hit(a, d, m, point, dir, zone);
+    this.hit(a, d, m, point, dir, zone, bone);
   }
 
   private markDodge(d: Fighter, a: Fighter | null, point?: Vector3) {
@@ -493,10 +552,21 @@ export class CombatSim {
       d.vel.addScaledVector(dir, kb * 0.6);
       if (d.autoDefense) d.counter = { kind: 'block', frames: DEFENSES.block.counterWindow + m.blockstun };
     }
-    this.events.push({ type: 'block', attacker: a, defender: d, move: m, point: point.clone(), dir: dir.clone(), guardBreak });
+    // Blocking an edge with your arms still costs you: a cut on the forearm.
+    let wound: Wound | null = null;
+    const w = m.weapon ? a.weapon : null;
+    if (w && w.cut > 0) {
+      const side = d.rig.foreArmL.pos.distanceToSquared(point) < d.rig.foreArmR.pos.distanceToSquared(point) ? 'foreArmL' : 'foreArmR';
+      if (!d.isSevered(side)) {
+        d.hp = Math.max(d.minHp, Math.max(1, d.hp - m.damage * w.damageMul * 0.15));
+        wound = this.addWound(d, side, point, m.damage * w.damageMul * 0.4, w.cut);
+      }
+    }
+    this.events.push({ type: 'block', attacker: a, defender: d, move: m, point: point.clone(), dir: dir.clone(), guardBreak, wound });
   }
 
-  private hit(a: Fighter, d: Fighter, m: MoveDef, point: Vector3, dir: Vector3, zone: HurtZone) {
+  private hit(a: Fighter, d: Fighter, m: MoveDef, point: Vector3, dir: Vector3, zone: HurtZone, bone: BoneName) {
+    const w = m.weapon ? a.weapon : null;
     const caughtInStartup = d.state === 'attack' && !!d.move && d.stateFrame < d.move.startup;
     const counter = caughtInStartup || a.isCounterAttack;
     const armor = d.state === 'attack' && d.move?.armor;
@@ -504,12 +574,13 @@ export class CombatSim {
 
     let dmg = m.damage * a.stats.damageMul * (counter ? 1.25 : 1) * (1 - d.stats.defense);
     if (armored) dmg *= 0.5;
+    if (w) dmg *= w.damageMul;
     d.hp = Math.max(d.minHp, d.hp - dmg);
     d.framesSinceHit = 0;
     a.framesSinceLanded = 0;
     const comboing = d.state === 'hitstun' || d.state === 'guardbreak';
     a.combo = comboing ? a.combo + 1 : 1;
-    d.poise -= m.poiseDamage * (1 - d.stats.staggerResist) * (counter ? 1.3 : 1);
+    d.poise -= m.poiseDamage * (1 - d.stats.staggerResist) * (counter ? 1.3 : 1) * (w?.edge === 'blunt' ? 1.35 : 1);
     d.buffer = null;
     d.counter = null;
 
@@ -531,6 +602,30 @@ export class CombatSim {
       d.enterHitstun(Math.round(m.hitstun * (counter ? 1.2 : 1)), reactionFor(m, zone));
       d.vel.addScaledVector(dir, kb);
     }
+    // Edges cut (and keep bleeding); heavy edges can take a limb off.
+    const wound = w && w.cut > 0 && !d.isSevered(bone) ? this.addWound(d, bone, point, dmg, w.cut) : null;
+    let sever: BoneName | null = null;
+    const at = SEVER_AT[bone];
+    if (w && w.cleave > 0 && at && d.minHp <= 0 && !d.isSevered(at)) {
+      const dealt = (d.limbDamage[at] ?? 0) + dmg * w.cleave * (m.weight === 'heavy' ? 1.3 : 1);
+      d.limbDamage[at] = dealt;
+      // Your own limbs only come off with the blow that finishes you.
+      const allowed = d.team !== 'player' || ko;
+      const tough = (LIMB_TOUGHNESS[at] ?? 30) * d.scale ** 1.5;
+      if (allowed && (dealt >= tough || (ko && w.cleave >= 0.45 && this.rng.chance(0.65)))) sever = at;
+    }
+    if (sever) {
+      this.sever(d, sever);
+      // Losing the head or a leg ends the fight.
+      if (!ko && (sever === 'head' || sever.startsWith('thigh') || sever.startsWith('shin'))) {
+        d.hp = 0;
+        ko = true;
+        knockdown = false;
+        d.enterKO();
+        d.vel.addScaledVector(dir, 1);
+      }
+    }
+    if (ko) this.dropWeapon(d);
     this.events.push({
       type: 'hit',
       attacker: a,
@@ -545,7 +640,111 @@ export class CombatSim {
       knockdown,
       ko,
       combo: a.combo,
+      bone,
+      weapon: w,
+      wound,
+      sever,
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Weapons, wounds, dismemberment
+  // ---------------------------------------------------------------------------
+
+  /** Opens a lasting cut where the blow landed. */
+  private addWound(d: Fighter, bone: BoneName, point: Vector3, dmg: number, cut: number): Wound {
+    const x = d.rig[bone];
+    const local = point.clone().sub(x.pos).applyQuaternion(x.rot.clone().invert()).divideScalar(d.scale);
+    const bleed = Math.min(1, Math.max(0.15, cut * dmg * 0.06));
+    const wound: Wound = {
+      bone,
+      local: [local.x, local.y, local.z],
+      angle: this.rng.range(-0.9, 0.9),
+      length: Math.min(0.2, 0.05 + dmg * 0.006) * (0.7 + cut * 0.4),
+      bleed,
+      floor: bleed * 0.25,
+    };
+    d.wounds.push(wound);
+    if (d.wounds.length > 16) d.wounds.splice(d.wounds.findIndex((w) => !w.stump), 1);
+    return wound;
+  }
+
+  /** Cuts a limb off at `bone` (the ragdoll lets it go; the stump bleeds hard). */
+  private sever(d: Fighter, bone: BoneName) {
+    for (const b of limbBones(bone)) d.severed.add(b);
+    const parent: BoneName =
+      bone === 'head' ? 'chest' : bone === 'foreArmL' ? 'upperArmL' : bone === 'foreArmR' ? 'upperArmR' : bone === 'shinL' ? 'thighL' : bone === 'shinR' ? 'thighR' : bone.startsWith('thigh') ? 'pelvis' : 'chest';
+    // The joint, in the parent's frame (authored scale).
+    const o = SKELETON[bone].offset;
+    const stump: Wound = { bone: parent, local: [o[0], o[1], o[2]], angle: 0, length: 0, bleed: 1, floor: 0.3, stump: bone };
+    d.wounds.push(stump);
+    for (const w of d.wounds) if (limbBones(bone).includes(w.bone)) w.bleed = w.floor = 0;
+    if (bone === 'foreArmR' || bone === 'upperArmR') this.dropWeapon(d);
+  }
+
+  /** Bleeding: every open cut drains a little health; enough of it and they go down. */
+  private bleed(f: Fighter) {
+    if (!f.wounds.length) return;
+    let rate = 0;
+    for (const w of f.wounds) {
+      w.bleed = Math.max(w.floor, w.bleed * 0.9993);
+      rate += w.bleed;
+    }
+    if (!f.alive || rate <= 0) return;
+    f.hp = Math.max(f.minHp, f.hp - rate * BLEED_DPS * DT);
+    if (f.hp <= 0) {
+      f.hp = 0;
+      f.enterKO();
+      this.dropWeapon(f);
+      this.events.push({ type: 'bleedout', f });
+    }
+  }
+
+  /** Puts a weapon on the floor. */
+  addDrop(weapon: WeaponDef, x: number, z: number, yaw = 0): Drop {
+    const p = new Vector3(x, 0, z);
+    this.walkable.resolve(p, 0.25);
+    const drop: Drop = { id: ++this.dropSerial, weapon, pos: p, yaw };
+    this.drops.push(drop);
+    this.events.push({ type: 'drop', drop });
+    return drop;
+  }
+
+  /** Lets go of the weapon in hand (it lands by the rear hand). */
+  dropWeapon(f: Fighter) {
+    if (!f.weapon) return;
+    const at = fistPoint(f.rig, 'R', new Vector3());
+    const w = f.weapon;
+    f.weapon = null;
+    this.addDrop(w, at.x, at.z, f.yaw + 1.2);
+  }
+
+  /** Grab (or swap for) the nearest weapon in reach; with none in reach, drop yours. */
+  private tryPickup(f: Fighter) {
+    if (f.pickupRequest <= 0) return;
+    f.pickupRequest--;
+    if (!f.free || !f.alive || f.isSevered('foreArmR')) return;
+    f.pickupRequest = 0;
+    let best: Drop | null = null;
+    let bestD = 1.15 * f.scale;
+    for (const d of this.drops) {
+      const dist = Math.hypot(d.pos.x - f.pos.x, d.pos.z - f.pos.z);
+      if (dist < bestD) {
+        bestD = dist;
+        best = d;
+      }
+    }
+    if (!best) {
+      if (f.team === 'player') this.dropWeapon(f);
+      return;
+    }
+    // Two-handed weapons need both hands.
+    if (best.weapon.style === 'twoHand' && f.isSevered('foreArmL')) return;
+    this.drops.splice(this.drops.indexOf(best), 1);
+    const old = f.weapon;
+    f.weapon = best.weapon;
+    this.events.push({ type: 'pickup', f, drop: best });
+    if (old) this.addDrop(old, best.pos.x, best.pos.z, best.yaw + 0.8);
   }
 }
 
@@ -572,10 +771,11 @@ export interface HurtSphere {
   zone: HurtZone;
   center: Vector3;
   r: number;
+  bone?: BoneName;
 }
 
 export function hurtSpheres(d: Fighter, height: Height): HurtSphere[] {
-  const spheres = hurtSpheresUnscaled(d, height);
+  const spheres = hurtSpheresUnscaled(d, height).filter((h) => !h.bone || !d.isSevered(h.bone));
   if (d.scale !== 1) for (const h of spheres) h.r *= d.scale;
   return spheres;
 }
@@ -584,32 +784,71 @@ function hurtSpheresUnscaled(d: Fighter, height: Height): HurtSphere[] {
   const rig = d.rig;
   if (height === 'high') {
     return [
-      { zone: 'head', center: bonePoint(rig, 'head', 0.13, new Vector3()), r: 0.16 },
-      { zone: 'chest', center: bonePoint(rig, 'chest', 0.2, new Vector3()), r: 0.17 },
+      { zone: 'head', bone: 'head', center: bonePoint(rig, 'head', 0.13, new Vector3()), r: 0.16 },
+      { zone: 'chest', bone: 'chest', center: bonePoint(rig, 'chest', 0.2, new Vector3()), r: 0.17 },
     ];
   }
   if (height === 'mid') {
     return [
-      { zone: 'chest', center: bonePoint(rig, 'chest', 0.12, new Vector3()), r: 0.2 },
-      { zone: 'abdomen', center: bonePoint(rig, 'abdomen', 0.1, new Vector3()), r: 0.19 },
+      { zone: 'chest', bone: 'chest', center: bonePoint(rig, 'chest', 0.12, new Vector3()), r: 0.2 },
+      { zone: 'abdomen', bone: 'abdomen', center: bonePoint(rig, 'abdomen', 0.1, new Vector3()), r: 0.19 },
     ];
   }
   return [
-    { zone: 'legs', center: bonePoint(rig, 'shinL', 0.22, new Vector3()), r: 0.11 },
-    { zone: 'legs', center: bonePoint(rig, 'shinR', 0.22, new Vector3()), r: 0.11 },
-    { zone: 'legs', center: bonePoint(rig, 'thighL', 0.25, new Vector3()), r: 0.12 },
-    { zone: 'legs', center: bonePoint(rig, 'thighR', 0.25, new Vector3()), r: 0.12 },
+    { zone: 'legs', bone: 'shinL', center: bonePoint(rig, 'shinL', 0.22, new Vector3()), r: 0.11 },
+    { zone: 'legs', bone: 'shinR', center: bonePoint(rig, 'shinR', 0.22, new Vector3()), r: 0.11 },
+    { zone: 'legs', bone: 'thighL', center: bonePoint(rig, 'thighL', 0.25, new Vector3()), r: 0.12 },
+    { zone: 'legs', bone: 'thighR', center: bonePoint(rig, 'thighR', 0.25, new Vector3()), r: 0.12 },
   ];
 }
 
-function overlap(strike: Vector3, radius: number, d: Fighter, height: Height): { point: Vector3; zone: HurtZone } | null {
+/** The whole body, limb by limb (what a weapon can catch). */
+export function bodySpheres(d: Fighter): HurtSphere[] {
+  const rig = d.rig;
+  const s = (zone: HurtZone, bone: BoneName, t: number, r: number): HurtSphere => ({ zone, bone, center: bonePoint(rig, bone, t, new Vector3()), r: r * d.scale });
+  const out = [
+    s('head', 'head', 0.13, 0.15),
+    s('chest', 'chest', 0.16, 0.19),
+    s('abdomen', 'abdomen', 0.1, 0.17),
+    s('abdomen', 'pelvis', 0.02, 0.15),
+    s('chest', 'upperArmL', 0.15, 0.075),
+    s('chest', 'upperArmR', 0.15, 0.075),
+    s('chest', 'foreArmL', 0.14, 0.07),
+    s('chest', 'foreArmR', 0.14, 0.07),
+    s('legs', 'thighL', 0.22, 0.1),
+    s('legs', 'thighR', 0.22, 0.1),
+    s('legs', 'shinL', 0.22, 0.085),
+    s('legs', 'shinR', 0.22, 0.085),
+  ];
+  return out.filter((h) => !d.isSevered(h.bone!));
+}
+
+/** Deepest contact between any of `points` (radius r) and the defender's body. */
+function overlapBody(points: Vector3[], r: number, d: Fighter): { point: Vector3; zone: HurtZone; bone: BoneName } | null {
+  let best: { point: Vector3; zone: HurtZone; bone: BoneName } | null = null;
+  let bestDepth = 0;
+  const spheres = bodySpheres(d);
+  for (const p of points) {
+    for (const s of spheres) {
+      const depth = r + s.r - p.distanceTo(s.center);
+      if (depth <= bestDepth) continue;
+      bestDepth = depth;
+      _c.subVectors(p, s.center);
+      if (_c.lengthSq() < 1e-8) _c.set(0, 0, 1);
+      best = { point: s.center.clone().addScaledVector(_c.normalize(), s.r), zone: s.zone, bone: s.bone! };
+    }
+  }
+  return best;
+}
+
+function overlap(strike: Vector3, radius: number, d: Fighter, height: Height): { point: Vector3; zone: HurtZone; bone: BoneName } | null {
   for (const s of hurtSpheres(d, height)) {
     const dist = strike.distanceTo(s.center);
     if (dist < radius + s.r) {
       _c.subVectors(strike, s.center);
       if (_c.lengthSq() < 1e-8) _c.set(0, 0, 1);
       const point = s.center.clone().addScaledVector(_c.normalize(), s.r);
-      return { point, zone: s.zone };
+      return { point, zone: s.zone, bone: s.bone ?? 'chest' };
     }
   }
   return null;

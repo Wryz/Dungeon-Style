@@ -1,3 +1,4 @@
+import { type WeaponId, WEAPONS } from './weapons';
 import { type AIConfig, type AIPlan, BRAWLER_PLAN, BrawlerAI, DEFAULT_AI } from './ai';
 import { Fighter, type FighterStats, type FighterStyle } from './fighter';
 import type { Rng } from './math';
@@ -20,6 +21,8 @@ export interface Archetype {
   /** Body size (giant bosses > 1, small creatures < 1). */
   scale?: number;
   boss?: boolean;
+  /** Comes armed. */
+  weapon?: WeaponId;
 }
 
 const LIGHT_STYLE: FighterStyle = {
@@ -184,6 +187,7 @@ Object.assign(ARCHETYPES, {
   minotaur: {
     kind: 'minotaur',
     name: 'The Minotaur',
+    weapon: 'axe',
     stats: { maxHp: 320, walkSpeed: 1.6, staggerResist: 0.7, defense: 0.2 },
     style: BOSS_STYLE,
     plan: { moves: [['bruiserHook', 30], ['bruiserBody', 30], ['sweep', 20], ['teep', 20]], range: 1.0, attackRange: 1.3, punish: 'bruiserBody', chains: {} },
@@ -195,6 +199,7 @@ Object.assign(ARCHETYPES, {
   cyclops: {
     kind: 'cyclops',
     name: 'The Cyclops',
+    weapon: 'club',
     stats: { maxHp: 380, walkSpeed: 1.35, staggerResist: 0.75, defense: 0.25 },
     style: BOSS_STYLE,
     plan: { moves: [['bruiserHook', 35], ['sweep', 25], ['bruiserBody', 25], ['roundhouse', 15]], range: 1.0, attackRange: 1.3, punish: 'bruiserBody', chains: {} },
@@ -221,6 +226,7 @@ export function createEnemy(kind: EnemyKind, rng: Rng, mods: EnemyMods = {}, bas
   if (stats.walkSpeed) stats.walkSpeed *= Math.sqrt(sc);
   const fighter = new Fighter('enemy', a.name, ENEMY_MOVES, stats, a.style);
   fighter.scale = sc;
+  if (a.weapon) fighter.weapon = WEAPONS[a.weapon];
   const cfg = { ...DEFAULT_AI, ...baseAi, ...a.ai };
   cfg.aggression *= mods.aggression ?? 1;
   // Spacing scales with size.

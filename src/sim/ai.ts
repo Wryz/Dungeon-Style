@@ -1,5 +1,7 @@
+import type { Drop } from './combat';
 import type { Fighter } from './fighter';
 import type { Rng } from './math';
+import { weaponPlan } from './weapons';
 
 export interface AIConfig {
   /** Scales attack frequency. 1 = baseline. */
@@ -68,6 +70,9 @@ export class BrawlerAI {
   private decidedSerial = -1;
   private willBlock = false;
   private punishDelay = -1;
+  /** Weapons on the floor (shared with the sim). */
+  drops: Drop[] = [];
+  private armed: { key: string; plan: AIPlan } | null = null;
 
   constructor(
     public cfg: AIConfig,
@@ -82,12 +87,13 @@ export class BrawlerAI {
     if (!target || !target.alive || this.cfg.passive) return;
 
     const dist = self.distanceTo(target);
+    const plan = this.planFor(self);
 
     // Attack strings: cancel straight -> haymaker.
     if (self.state === 'attack' && this.chain && self.inCancelWindow()) {
-      const next = self.moves[this.chain];
+      const next = self.moveDef(this.chain);
       this.chain = null;
-      if (next && dist < 1.6) self.startMove(next);
+      if (next && self.canUse(next) && dist < plan.attackRange + 0.35 * self.scale) self.startMove(next);
       return;
     }
 
@@ -112,13 +118,16 @@ export class BrawlerAI {
     }
     if (!self.free) return;
 
+    // Unarmed with a weapon lying nearby: go and grab it (unless already toe to toe).
+    if (this.seekWeapon(self, dist)) return;
+
     // Punish a whiffed / blocked player move.
     if (this.punishDelay >= 0) {
       this.punishDelay++;
       if (this.punishDelay > 2) {
         this.punishDelay = -1;
-        if (dist < this.plan.attackRange + 0.1 && this.rng.chance(0.6)) {
-          this.start(self, this.plan.punish);
+        if (dist < plan.attackRange + 0.1 && this.rng.chance(0.6)) {
+          this.start(self, plan.punish);
           return;
         }
       }
@@ -131,7 +140,7 @@ export class BrawlerAI {
     const fx = dx / len;
     const fz = dz / len;
     const downed = target.state === 'knockdown' || target.state === 'getup';
-    const want = downed ? 1.7 : this.plan.range;
+    const want = downed ? 1.7 : plan.range;
     let mx = 0;
     let mz = 0;
     if (dist > want + 0.1) {
@@ -162,24 +171,58 @@ export class BrawlerAI {
 
     // Punish a player stuck in recovery.
     if (target.state === 'attack' && target.move && target.stateFrame > target.move.startup + target.move.active + 2) {
-      if (dist < this.plan.attackRange + 0.05 && this.rng.chance(0.05 * this.cfg.aggression)) {
-        this.start(self, this.plan.punish);
+      if (dist < plan.attackRange + 0.05 && this.rng.chance(0.05 * this.cfg.aggression)) {
+        this.start(self, plan.punish);
         return;
       }
     }
 
     this.cooldown -= this.cfg.aggression;
-    if (this.cooldown <= 0 && dist < this.plan.attackRange && (!this.director || this.director.canAttack())) {
-      this.start(self, this.rng.pickWeighted<string>(this.plan.moves));
+    if (this.cooldown <= 0 && dist < plan.attackRange && (!this.director || this.director.canAttack())) {
+      this.start(self, this.rng.pickWeighted<string>(plan.moves));
     }
   }
 
+  /** The base plan, or how this fighter uses the weapon in its hands. */
+  private planFor(self: Fighter): AIPlan {
+    if (!self.weapon) return this.plan;
+    const key = `${self.weapon.style}:${self.scale}`;
+    if (this.armed?.key !== key) {
+      const p = weaponPlan(self.weapon);
+      this.armed = { key, plan: { ...p, range: p.range * self.scale, attackRange: p.attackRange * self.scale } };
+    }
+    return this.armed.plan;
+  }
+
+  private seekWeapon(self: Fighter, dist: number): boolean {
+    if (self.weapon || !this.drops.length || self.isSevered('foreArmR')) return false;
+    let best: Drop | null = null;
+    let bd = 4.5 * self.scale;
+    for (const d of this.drops) {
+      if (d.weapon.style === 'twoHand' && self.isSevered('foreArmL')) continue;
+      const dd = Math.hypot(d.pos.x - self.pos.x, d.pos.z - self.pos.z);
+      if (dd < bd) {
+        bd = dd;
+        best = d;
+      }
+    }
+    if (!best || (dist < 1.3 * self.scale && bd > 0.8 * self.scale)) return false;
+    if (bd < 0.7 * self.scale) {
+      self.pickupRequest = 6;
+      return true;
+    }
+    const dx = best.pos.x - self.pos.x;
+    const dz = best.pos.z - self.pos.z;
+    self.moveInput.set(dx / bd, 0, dz / bd);
+    return true;
+  }
+
   private start(self: Fighter, id: string) {
-    const m = self.moves[id];
-    if (!m) return;
+    const m = self.moveDef(id);
+    if (!m || !self.canUse(m)) return;
     self.startMove(m);
     this.director?.claim();
-    const next = this.plan.chains[id];
+    const next = this.planFor(self).chains[id];
     this.chain = next && this.rng.chance(this.cfg.stringChance) ? next : null;
     this.cooldown = this.rng.range(50, 110);
   }

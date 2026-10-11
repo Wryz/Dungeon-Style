@@ -110,6 +110,9 @@ export class Ragdoll {
   readonly prev = {} as Record<BoneName, { p: Vector3; q: Quaternion }>;
   readonly cur = {} as Record<BoneName, { p: Vector3; q: Quaternion }>;
   private readonly joints: RAPIER_NS.ImpulseJoint[] = [];
+  private readonly jointOf = new Map<BoneName, RAPIER_NS.ImpulseJoint>();
+  /** Bones cut loose from the body (no longer driven). */
+  readonly loose = new Set<BoneName>();
   private readonly dips = new Map<BoneName | 'root', Dip>();
   private readonly prevRootTarget = new Vector3();
   private rootStrength = 1;
@@ -161,6 +164,7 @@ export class Ragdoll {
       const j = world.createImpulseJoint(jd, this.bodies[def.parent], this.bodies[name], true);
       j.setContactsEnabled(false);
       this.joints.push(j);
+      this.jointOf.set(name, j);
     }
     this.prevRootTarget.copy(rig.pelvis.pos);
   }
@@ -168,6 +172,26 @@ export class Ragdoll {
   dispose() {
     for (const j of this.joints) this.world.removeImpulseJoint(j, false);
     for (const name of BONES) this.world.removeRigidBody(this.bodies[name]);
+  }
+
+  /**
+   * Cuts the body apart at `bone`: the joint to its parent goes, and that part (with
+   * everything below it) is flung free as dead weight.
+   */
+  sever(bone: BoneName, bones: BoneName[], impulse: Vector3) {
+    const j = this.jointOf.get(bone);
+    if (j) {
+      this.world.removeImpulseJoint(j, true);
+      this.joints.splice(this.joints.indexOf(j), 1);
+      this.jointOf.delete(bone);
+    }
+    for (const b of bones) {
+      this.loose.add(b);
+      const body = this.bodies[b];
+      const m = body.mass();
+      body.applyImpulse({ x: impulse.x * m, y: impulse.y * m, z: impulse.z * m }, true);
+      body.applyTorqueImpulse({ x: (Math.random() - 0.5) * m * 0.4, y: (Math.random() - 0.5) * m * 0.4, z: (Math.random() - 0.5) * m * 0.4 }, true);
+    }
   }
 
   /** Current pelvis position (physics). */
@@ -245,6 +269,7 @@ export class Ragdoll {
   /** Teleport the body to the fighter's current target pose (respawn). */
   snapTo(f: Fighter) {
     for (const name of BONES) {
+      if (this.loose.has(name)) continue;
       const x = f.rig[name];
       const b = this.bodies[name];
       b.setTranslation({ x: x.pos.x, y: x.pos.y, z: x.pos.z }, true);
@@ -285,6 +310,7 @@ export class Ragdoll {
     const T = RAGDOLL_TUNING;
 
     for (const name of BONES) {
+      if (this.loose.has(name)) continue;
       const def = SKELETON[name];
       const body = this.bodies[name];
       const rot = toQ(body.rotation());

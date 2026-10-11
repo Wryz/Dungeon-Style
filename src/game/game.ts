@@ -32,9 +32,13 @@ import { DEFAULT_STATS, type Fighter, type FighterStats } from '../sim/fighter';
 import { DT, Rng } from '../sim/math';
 import { createPlayer } from '../sim/roster';
 import { Hud } from '../ui/hud';
+import { keyLabel } from '../input/bindings';
 import { SettingsMenu } from '../ui/settings';
 import { Shop } from '../ui/shop';
 import { ArenaWalkable } from '../world/collision';
+import type { Drop } from '../sim/combat';
+import { limbBones, WEAPONS, type Wound } from '../sim/weapons';
+import { DropView } from '../render/weaponView';
 import { item, loadSave, type SaveData, SLOTS, statsWithGear, writeSave } from './economy';
 import { type RoundSpec, roundSpec } from './gauntlet';
 import { Trauma } from './trauma';
@@ -105,6 +109,8 @@ export class Game {
   private phase: Phase = 'play';
   private readonly fxRng = new Rng(99);
   private readonly views = new Map<Fighter, FighterView>();
+  private readonly dropViews = new Map<number, DropView>();
+  private readonly shownWounds = new WeakSet<Wound>();
   private readonly ragdolls = new Map<Fighter, Ragdoll>();
   private hitstop = 0;
   private hitstopVictim: Fighter | null = null;
@@ -301,9 +307,76 @@ export class Game {
     p.poise = p.stats.maxPoise;
     p.counter = null;
     p.buffer = null;
+    // Patched up between rounds: wounds healed, everything reattached, empty-handed.
+    p.wounds.length = 0;
+    p.severed.clear();
+    for (const k of Object.keys(p.limbDamage)) delete p.limbDamage[k as keyof typeof p.limbDamage];
+    p.weapon = null;
+    p.pickupRequest = 0;
+    this.views.get(p)?.clearWounds();
     p.enterLocomotion(1);
     p.updatePose(0, 0, 0);
-    this.ragdolls.get(p)?.snapTo(p);
+    const rd = this.ragdolls.get(p);
+    if (rd && rd.loose.size) {
+      rd.dispose();
+      this.ragdolls.set(p, new Ragdoll(RAPIER, this.world, p));
+    } else rd?.snapTo(p);
+  }
+
+  /** Weapons scattered around the arena at the start of a round. */
+  private scatterWeapons() {
+    const spots = [...this.theme.weaponSpots];
+    for (let i = spots.length - 1; i > 0; i--) {
+      const j = Math.floor(this.roundRng.next() * (i + 1));
+      [spots[i], spots[j]] = [spots[j], spots[i]];
+    }
+    this.theme.weapons.forEach((id, i) => {
+      const [x, z] = spots[i % spots.length];
+      this.sim.addDrop(WEAPONS[id], x, z, this.roundRng.range(0, Math.PI * 2));
+    });
+    // The drops' events are picked up on the next sim step.
+    this.syncDropViews();
+  }
+
+  private clearDrops() {
+    this.sim.drops.length = 0;
+    this.syncDropViews();
+  }
+
+  /** Keeps one floor model per weapon lying around. */
+  private syncDropViews() {
+    const live = new Set(this.sim.drops.map((d) => d.id));
+    for (const [id, v] of this.dropViews) {
+      if (live.has(id)) continue;
+      v.dispose();
+      this.dropViews.delete(id);
+    }
+    for (const d of this.sim.drops) {
+      if (this.dropViews.has(d.id)) continue;
+      const v = new DropView(d.weapon, d.pos.x, d.pos.z, d.yaw);
+      this.scene.add(v.root);
+      this.dropViews.set(d.id, v);
+    }
+  }
+
+  /** Debug: put a weapon straight into the player's hands. */
+  giveWeapon(id: keyof typeof WEAPONS | null) {
+    this.player.weapon = id ? WEAPONS[id] : null;
+  }
+
+  /** The weapon the player could grab right now. */
+  private dropInReach(): Drop | null {
+    const p = this.player;
+    let best: Drop | null = null;
+    let bd = 1.15 * p.scale;
+    for (const d of this.sim.drops) {
+      const dist = Math.hypot(d.pos.x - p.pos.x, d.pos.z - p.pos.z);
+      if (dist < bd) {
+        bd = dist;
+        best = d;
+      }
+    }
+    return best;
   }
 
   // ---------------------------------------------------------------------------
@@ -356,6 +429,7 @@ export class Game {
   /** Clears the floor of the last fight. */
   private resetArena() {
     this.clearEnemies();
+    this.clearDrops();
     this.coins.clear();
     this.blood.clear();
     this.trauma.clear();
@@ -402,6 +476,7 @@ export class Game {
       const f = this.spawn(s.kind, x + ring, z, s);
       this.sim.ais.get(f)!.cfg.passive = true;
     });
+    this.scatterWeapons();
     this.holdIn = INTRO_HOLD;
     if (spec.boss) {
       this.banner(`BOSS · ${ARCHETYPES[spec.boss].name.toUpperCase()}`, `round ${n} · ${this.theme.name}`, 'down', 2.6);
@@ -478,6 +553,7 @@ export class Game {
     this.setTheme('ring');
     this.placePlayer();
     this.spawnEnemy(true);
+    this.scatterWeapons();
   }
 
   /** Replace the opponent (training), or add a brawler (debug panel "Respawn enemy"). */
@@ -538,6 +614,7 @@ export class Game {
     this.resetArena();
     this.placePlayer();
     this.spawnEnemy(true);
+    this.scatterWeapons();
   }
 
   /** Debug/capture helper: place the player and the first enemy `dist` apart, facing each other. */
@@ -590,6 +667,7 @@ export class Game {
       this.player.press(b);
       if (++this.attacksThrown === 8) this.hud.fadeHint();
     }
+    if (inp.pickup && this.player.alive && !blocked) this.player.pickupRequest = 12;
 
     // Timers in real time (stopped while paused).
     if (!GAME_TUNING.paused) this.tickTimers(realDt);
@@ -746,6 +824,11 @@ export class Game {
         }
         this.views.get(e.defender)?.hitFlash();
         this.bleed(e.defender, e.zone, m, e.damage, e.counter, e.dir);
+        if (e.weapon?.edge === 'blade') {
+          this.sfx.slice(heavy);
+          this.blood.spray(e.point, e.dir.clone().setY(0.25), 0.5 + (e.wound?.bleed ?? 0.3) * 1.2, 3);
+        }
+        if (e.sever) this.dismember(e.defender, e.sever, e.dir, e.point);
         if (byPlayer && e.combo >= 2) this.hud.showCombo(e.combo);
         if (byPlayer && e.counter) this.hud.popup('COUNTER', e.point, this.camRig.camera, 'counter');
         if (byPlayer && e.armored) this.hud.popup('ARMORED', e.point, this.camRig.camera, 'armor');
@@ -781,9 +864,37 @@ export class Game {
       case 'getup':
         this.effects.dust(e.f.pos, 10, 0.5 * e.f.scale);
         break;
+      case 'pickup':
+        this.sfx.clank(true);
+        this.effects.ring(e.drop.pos, 0.6, '#ffd36b', 0.35);
+        if (e.f === this.player) this.hud.popup(e.drop.weapon.name.toUpperCase(), new Vector3(e.f.pos.x, 2.1, e.f.pos.z), this.camRig.camera, 'counter');
+        this.syncDropViews();
+        break;
+      case 'drop':
+        this.sfx.clank(false);
+        this.syncDropViews();
+        break;
+      case 'bleedout':
+        this.hud.popup('BLED OUT', new Vector3(e.f.pos.x, 1.6, e.f.pos.z), this.camRig.camera, 'armor');
+        this.onKO(e.f);
+        break;
       default:
         break;
     }
+  }
+
+  /** A limb comes off: the ragdoll lets it go, blood everywhere. */
+  private dismember(f: Fighter, bone: import('../body/skeleton').BoneName, dir: Vector3, point: Vector3) {
+    const rd = this.ragdolls.get(f);
+    const fling = dir.clone().multiplyScalar(2.6).add(new Vector3(0, bone === 'head' ? 3.2 : 2.2, 0));
+    rd?.sever(bone, limbBones(bone), fling);
+    this.sfx.sever();
+    this.camRig.addTrauma(0.45);
+    this.camRig.zoomPunch(1.2);
+    this.slowmo = Math.max(this.slowmo, 0.6);
+    for (let i = 0; i < 4; i++) this.blood.spray(point, dir.clone().setY(0.6 + i * 0.2), 1, 3.4);
+    const label = bone === 'head' ? 'DECAPITATED' : bone.startsWith('thigh') || bone.startsWith('shin') ? 'LEG OFF' : 'ARM OFF';
+    this.hud.popup(label, point, this.camRig.camera, 'armor');
   }
 
   /** Accumulate trauma and spill blood where it makes sense (mouth, nose, brow). */
@@ -869,6 +980,7 @@ export class Game {
       writeSave(this.save);
     }
     this.themeView?.update(this.time);
+    this.updateWeaponsAndWounds(simDt);
 
     // Camera: frame the nearest fight, look ahead while moving freely.
     const p = this.player;
@@ -889,15 +1001,44 @@ export class Game {
     cutFocus.y = 1;
     updateCutout(this.camRig.camera, cutFocus, 0.3 + Math.min(0.25, spread * 0.06), this.renderer.domElement.width / this.renderer.domElement.height);
 
+    const head = new Vector3(p.pos.x, 2.25, p.pos.z);
+    const near = p.alive ? this.dropInReach() : null;
+    for (const [id, v] of this.dropViews) v.update(this.time, near?.id === id);
     if (this.tutorial) {
-      const head = new Vector3(p.pos.x, 2.25, p.pos.z);
       this.hud.prompt(this.tutorial.prompt(this.input.bindings), head, this.camRig.camera);
+    } else if (near && this.phase === 'play') {
+      const k = keyLabel(this.input.bindings.pickup);
+      this.hud.prompt(`<b>${k}</b> ${p.weapon ? 'swap for' : 'grab'} ${near.weapon.name}`, head, this.camRig.camera);
+    } else {
+      this.hud.prompt('');
     }
 
     this.updateDebug();
     const shown = t ?? (this.phase === 'play' ? this.enemies.find((e) => e.alive) ?? null : null);
     this.hud.update(realDt, p, shown, this.label());
     this.renderer.render(this.scene, this.camRig.camera);
+  }
+
+  /** Weapons in hand, new cuts on bodies, and blood dripping from every open wound. */
+  private updateWeaponsAndWounds(simDt: number) {
+    for (const [f, view] of this.views) {
+      view.setWeapon(f.isSevered('foreArmR') ? null : f.weapon);
+      for (const w of f.wounds) {
+        if (!this.shownWounds.has(w)) {
+          this.shownWounds.add(w);
+          view.addWound(w);
+        }
+        if (simDt <= 0 || w.bleed <= 0.02 || !this.blood.enabled) continue;
+        if (w.stump && w.bleed > 0.45 && Math.random() < 0.6) {
+          // Arterial spurts from a fresh stump.
+          const at = view.woundPoint(w);
+          const out = at.clone().sub(view.bones.chest.getWorldPosition(new Vector3())).setY(0).normalize().setY(w.stump === 'head' ? 1.4 : 0.5);
+          this.blood.spray(at, out, 0.18 * w.bleed, 1.6 + Math.random());
+        } else if (Math.random() < w.bleed * simDt * 6) {
+          this.blood.drip(view.woundPoint(w));
+        }
+      }
+    }
   }
 
   private label(): string {
