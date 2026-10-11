@@ -104,6 +104,8 @@ export function blendPose(a: Pose, b: Pose, t: number, out: Pose): Pose {
 }
 
 const _dirAxis = new Vector3();
+const _invChest = new Quaternion();
+const _local = new Vector3();
 const _back = new Vector3();
 const _from = new Vector3();
 const _q = new Quaternion();
@@ -360,6 +362,8 @@ export function resolvePose(spec: PoseSpec, out: Pose = makePose()): Pose {
     const chest = _tmpRig.chest;
     _root.set(def.offset[0], def.offset[1], def.offset[2]).applyQuaternion(chest.rot).add(chest.pos);
     _target.set(t.at[0], t.at[1], t.at[2]);
+    // (Weapon poses place the hands deliberately — on the haft, through a swing.)
+    if (!spec.blade) keepHandForward(_root, chest.rot, _target);
     const h = t.hint ?? [SIDE_SIGN[side] * 0.5, -1, -0.3];
     _v.set(h[0], h[1], h[2]);
     solveTwoBone(_root, chest.rot, _target, _v, def.length, SKELETON[fore].length + FIST_OFFSET, -1, out.rot[upper], out.rot[fore]);
@@ -417,4 +421,24 @@ export function solveArm(pose: Pose, side: Side, t: LimbTarget): Pose {
   _v.set(h[0], h[1], h[2]);
   solveTwoBone(_root, chest.rot, _target, _v, def.length, SKELETON[fore].length + FIST_OFFSET, -1, pose.rot[upper], pose.rot[fore]);
   return pose;
+}
+
+/**
+ * A folded arm keeps the hand in front of the shoulder. With the hand straight above
+ * (or behind) its own shoulder the elbow has no stable answer and thrashes about with
+ * the slightest sway — and no guard is held like that anyway. Fades in only for a
+ * folded arm with the hand at or above shoulder height, so reaches overhead and behind
+ * (a wind-up) are untouched.
+ */
+function keepHandForward(shoulder: Vector3, chestRot: Quaternion, target: Vector3) {
+  _invChest.copy(chestRot).invert();
+  _local.subVectors(target, shoulder).applyQuaternion(_invChest);
+  const len = _local.length();
+  const folded = Math.min(1, Math.max(0, (0.42 - len) / 0.1));
+  const high = Math.min(1, Math.max(0, (_local.y + 0.1) / 0.1));
+  const k = folded * high;
+  const minZ = 0;
+  if (k <= 0 || _local.z >= minZ) return;
+  _local.z += (minZ - _local.z) * k * k * (3 - 2 * k);
+  target.copy(_local.applyQuaternion(chestRot)).add(shoulder);
 }

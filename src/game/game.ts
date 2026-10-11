@@ -25,7 +25,7 @@ import { Effects } from '../render/particles';
 import { FighterView, type GearLook, PLAYER_PALETTE, type Palette } from '../render/fighterView';
 import { lookFor } from '../render/looks';
 import { DEFAULT_AI, type AIConfig } from '../sim/ai';
-import { type CombatEvent, CombatSim, type HurtZone, hurtSpheres, pushScale, strikePoint } from '../sim/combat';
+import { type CombatEvent, CombatSim, type HurtZone, hurtSpheres, strikePoint } from '../sim/combat';
 import type { MoveDef } from '../sim/moves';
 import { ARCHETYPES, coinDrop, createEnemy, type EnemyKind, type EnemyMods } from '../sim/enemies';
 import { DEFAULT_STATS, type Fighter, type FighterStats } from '../sim/fighter';
@@ -67,6 +67,8 @@ const WOODEN = new Set(['bat', 'club', 'bokken', 'cue']);
 
 type Mode = 'gauntlet' | 'training';
 type Phase = 'play' | 'clear' | 'shop' | 'down';
+
+const TORSO = ['chest', 'abdomen', 'head'] as const;
 
 export class Game {
   readonly renderer: WebGLRenderer;
@@ -135,6 +137,8 @@ export class Game {
   private bannerIn = -1;
   private attacksThrown = 0;
   private time = 0;
+  /** Game time: runs with the slow-motion, stops for pauses and hitstop. */
+  private simClock = 0;
   private pausedBySettings = false;
   private readonly lookAhead = new Vector3();
   /** Exposed for the debug panel and automated capture scripts. */
@@ -295,6 +299,7 @@ export class Game {
     this.telegraphed.delete(f);
     this.koAt.delete(f);
     this.trauma.delete(f);
+    this.falls.delete(f);
   }
 
   private spawn(kind: EnemyKind, x: number, z: number, mods: EnemyMods = {}, fx = true): Fighter {
@@ -391,7 +396,6 @@ export class Game {
           this.sfx.landing(w.mass, !WOODEN.has(w.id), hard);
           this.effects.dust(at, Math.round(2 + 3 * hard * Math.min(2, w.mass / 2)), 0.08 + 0.04 * w.mass);
         });
-        d.from = undefined;
       }
     }
   }
@@ -784,7 +788,7 @@ export class Game {
       this.player.press(b);
       if (++this.attacksThrown === 8) this.hud.fadeHint();
     }
-    if (inp.pickup && this.player.alive && !blocked) this.player.pickupRequest = 12;
+    if (inp.pickup && this.player.alive && !blocked && this.player.state !== 'pickup') this.player.pickupRequest = 12;
 
     // Timers in real time (stopped while paused).
     if (!GAME_TUNING.paused) this.tickTimers(realDt);
@@ -970,7 +974,7 @@ export class Game {
         rd?.applyHit(e.zone, e.point, e.dir, m, (e.armored ? 0.4 : 1) * Math.min(1.8, e.attacker.scale / e.defender.scale));
         if (e.knockdown || e.ko) {
           // Momentum: who hit whom, and with what.
-          const k = Math.min(2.2, pushScale(e.attacker, e.defender, e.weapon));
+          const k = Math.min(2.2, e.push);
           rd?.launch(e.dir.clone().multiplyScalar((m.knockback * 0.9 + (e.ko ? 1 : 0)) * k).add(new Vector3(0, 1.2 + (m.lift ?? 0) * 3, 0)));
           // (The thud comes when the body actually hits the floor: see bodyLanding.)
         }
@@ -1108,11 +1112,6 @@ export class Game {
   private readonly falls = new Map<Fighter, { vy: number; quiet: number }>();
 
   /**
-   * A body hitting the floor: heard (and, for something big, felt) at the moment it
-   * lands, not when the blow was struck — a heavy thud, dust, the camera jolting when a
-   * giant goes down.
-   */
-  /**
    * A body going down can fall against someone still standing — but it can't rest on
    * them: whoever's upright isn't a post, so it slides off them to the floor.
    */
@@ -1120,8 +1119,11 @@ export class Game {
     if (f.state !== 'knockdown' && f.state !== 'ko') return;
     for (const s of this.sim.fighters) {
       if (s === f || !s.alive || s.state === 'knockdown' || s.state === 'ko') continue;
-      for (const b of ['chest', 'abdomen', 'head'] as const) {
+      for (const b of TORSO) {
         const body = rd.bodies[b];
+        const v = body.linvel();
+        // Still flying from the blow: let the launch play out.
+        if (v.y > 0.3) continue;
         const t = body.translation();
         if (t.y < 0.35 * f.scale) continue;
         const dx = t.x - s.pos.x;
@@ -1129,7 +1131,6 @@ export class Game {
         const d = Math.hypot(dx, dz);
         const reach = 0.42 * s.scale + 0.2 * f.scale;
         if (d > reach) continue;
-        const v = body.linvel();
         const k = (reach - d) * 6;
         const nx = d > 1e-3 ? dx / d : 1;
         const nz = d > 1e-3 ? dz / d : 0;
@@ -1138,6 +1139,11 @@ export class Game {
     }
   }
 
+  /**
+   * A body hitting the floor: heard (and, for something big, felt) at the moment it
+   * lands, not when the blow was struck — a heavy thud, dust, the camera jolting when a
+   * giant goes down.
+   */
   private bodyLanding(f: Fighter, rd: Ragdoll) {
     let s = this.falls.get(f);
     if (!s) this.falls.set(f, (s = { vy: 0, quiet: 0 }));
@@ -1261,6 +1267,7 @@ export class Game {
   // ---------------------------------------------------------------------------
 
   private render(realDt: number, simDt: number, alpha: number) {
+    this.simClock += simDt;
     for (const [f, view] of this.views) {
       const rd = this.ragdolls.get(f);
       if (rd) view.syncFromRagdoll(rd, alpha);
@@ -1317,7 +1324,8 @@ export class Game {
 
     const head = new Vector3(p.pos.x, 2.25, p.pos.z);
     const near = p.alive ? this.dropInReach() : null;
-    for (const [id, v] of this.dropViews) v.update(this.time, near?.id === id);
+    // (A weapon falls at the same speed as everything else, slowed in a slow-motion.)
+    for (const [id, v] of this.dropViews) v.update(this.simClock, near?.id === id);
     if (this.tutorial) {
       this.hud.prompt(this.tutorial.prompt(this.input.bindings), head, this.camRig.camera);
     } else if (near && this.phase === 'play') {

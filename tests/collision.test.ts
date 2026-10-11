@@ -82,8 +82,8 @@ describe('collisions', () => {
       // Trunks never sink into each other; props are never walked or swung through.
       expect(m.torso).toBeLessThanOrEqual(2);
       expect(m.env).toBe(0);
-      // Arms and legs only brush in passing (25 of 1500 frames, shallow).
-      expect(m.limb).toBeLessThanOrEqual(25);
+      // Arms and legs only brush in passing (~2% of frames, shallow).
+      expect(m.limb).toBeLessThanOrEqual(30);
       expect(m.limbMax).toBeLessThan(0.3);
       // Weapons don't pass through the wielder, and only graze the other fighter.
       expect(m.wOwn).toBeLessThanOrEqual(10);

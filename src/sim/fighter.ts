@@ -172,6 +172,9 @@ export class Fighter {
   framesSinceBlock = 999;
   framesSinceHit = 999;
   framesSinceLanded = 999;
+  framesSinceDefend = 999;
+  /** The last strike this fighter failed to read (automatic defense doesn't retry it). */
+  misreadSerial = -1;
   /** Squared up to a target (soft lock-on, with hysteresis; maintained by the sim). */
   lockedOn = false;
   /** Health never drops below this (sparring partners can't be knocked out). */
@@ -361,6 +364,7 @@ export class Fighter {
    */
   startPickup(target: { pos: Vector3; weapon: WeaponDef }, frames: number) {
     this.setState('pickup');
+    this.pickupRequest = 0;
     this.stunFrames = frames;
     const grabAt = Math.round(frames * 0.5);
     this.pickupTarget = { pos: target.pos, weapon: target.weapon, grabAt };
@@ -488,6 +492,21 @@ export class Fighter {
    * How much higher (+) or lower (-) the target's part is than this strike was authored
    * to hit, in our own (unscaled) metres. Small differences are left to the pose.
    */
+  /**
+   * Whether an unarmed strike can get to what it goes for on the current target: a small
+   * creature's jab can't get up to a giant's head (nor its body shot to his belly), but a
+   * kick can always find a shin.
+   */
+  canReach(move: MoveDef): boolean {
+    if (move.weapon) return true;
+    const aims: (Aim | null)[] = move.aims?.length ? move.aims : [null];
+    return aims.some((a) => {
+      if ((a?.height ?? move.height) === 'low') return true;
+      const g = this.heightGap(move, a);
+      return g <= 0.5 && g >= -0.8;
+    });
+  }
+
   private heightGap(move: MoveDef, aim: Aim | null): number {
     const t = this.target;
     if (!t || !t.alive) return 0;

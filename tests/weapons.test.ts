@@ -187,6 +187,51 @@ describe('weapons', () => {
     expect(sim.drops.length).toBe(1);
   });
 
+  it('pressing pickup again while bending down does not throw the new weapon away', () => {
+    for (const held of [null, 'bat'] as const) {
+      const { sim, player } = duel(held, 4);
+      sim.addDrop(WEAPONS.machete, 0.4, 0);
+      player.pickupRequest = 12;
+      sim.step();
+      expect(player.state).toBe('pickup');
+      const events: string[] = [];
+      // Impatient: a press every few frames all the way down and up.
+      for (let i = 0; i < 80; i++) {
+        if (player.state === 'pickup' && i % 4 === 0) player.pickupRequest = 12;
+        for (const e of sim.step()) if (e.type === 'pickup' || e.type === 'drop') events.push(e.type);
+      }
+      expect(player.weapon?.id).toBe('machete');
+      expect(events.filter((e) => e === 'pickup').length).toBe(1);
+    }
+  });
+
+  it('with the left forearm gone, a reach for a weapon skips the two-handers for one it can hold', () => {
+    const { sim, player } = duel(null, 4);
+    (sim as unknown as { sever(f: Fighter, b: string): void }).sever(player, 'foreArmL');
+    player.state = 'idle';
+    for (let i = 0; i < 30; i++) sim.step();
+    sim.addDrop(WEAPONS.axe, 0.3, 0);
+    sim.addDrop(WEAPONS.machete, 0.8, 0);
+    player.pickupRequest = 12;
+    for (let i = 0; i < 120; i++) sim.step();
+    expect(player.weapon?.id).toBe('machete');
+  });
+
+  it('shoved out of reach mid-squat, the hand closes on nothing', () => {
+    const { sim, player } = duel(null, 4);
+    sim.addDrop(WEAPONS.axe, 0.4, 0);
+    player.pickupRequest = 12;
+    sim.step();
+    expect(player.state).toBe('pickup');
+    for (let i = 0; i < 4; i++) sim.step();
+    player.pos.set(-1.2, 0, 0);
+    for (let i = 0; i < 2; i++) sim.step();
+    player.pos.set(-1.2, 0, 0);
+    while (player.state === 'pickup') sim.step();
+    expect(player.weapon).toBeNull();
+    expect(sim.drops.length).toBe(1);
+  });
+
   it('armed buttons: Q is the quick strike, E the heavy one', () => {
     for (const [w, light, heavy] of [['machete', 'slash', 'chop'], ['gladius', 'thrust', 'slash'], ['bat', 'sweep', 'overhead']] as const) {
       const { sim, player } = duel(w, 3);
@@ -283,11 +328,14 @@ describe('strikes stop at the body', () => {
   });
 
   it('too close for the edge: the haft knocks, it does not cut', () => {
-    const { sim, player, enemy } = duel('axe', 0.85);
-    const [h] = hits(swing(sim, player, 'sweep'));
-    expect(h).toBeDefined();
-    expect(h.weapon).toBeNull();
-    expect(h.wound).toBeNull();
-    expect(enemy.wounds.length).toBe(0);
+    // (Whatever the opponent's hands happen to be doing at the time.)
+    for (let n = 0; n < 6; n++) {
+      const { sim, player, enemy } = duel('axe', 0.85);
+      const [h] = hits(swing(sim, player, 'sweep'));
+      expect(h).toBeDefined();
+      expect(h.weapon).toBeNull();
+      expect(h.wound).toBeNull();
+      expect(enemy.wounds.length).toBe(0);
+    }
   });
 });

@@ -57,7 +57,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   machete: { id: 'machete', name: 'Machete', style: 'oneHand', edge: 'blade', length: 0.6, strikeFrom: 0.14, radius: 0.06, damageMul: 1.2, cut: 0.9, cleave: 0.45, bite: 9, tempo: 1, mass: 0.6, choke: 0, ...ONE_HAND_CUTS },
   gladius: { id: 'gladius', name: 'Gladius', style: 'oneHand', edge: 'blade', length: 0.64, strikeFrom: 0.14, radius: 0.06, damageMul: 1.3, cut: 0.85, cleave: 0.5, bite: 10, tempo: 0.95, mass: 0.9, choke: 0, light: 'thrust', heavy: 'slash', chain: { thrust: 'thrust', slash: 'backslash' } },
   pan: { id: 'pan', name: 'Frying Pan', style: 'oneHand', edge: 'blunt', length: 0.46, strikeFrom: 0.24, radius: 0.11, damageMul: 1.25, cut: 0, cleave: 0, bite: 0, tempo: 1, mass: 1.6, choke: 0, ...ONE_HAND_CUTS },
-  axe: { id: 'axe', name: 'Battle Axe', style: 'twoHand', edge: 'blade', length: 0.98, strikeFrom: 0.45, radius: 0.1, damageMul: 1.6, cut: 1, cleave: 1, bite: 18, tempo: 1.15, mass: 2.6, choke: 0.42, ...TWO_HAND },
+  axe: { id: 'axe', name: 'Battle Axe', style: 'twoHand', edge: 'blade', length: 0.98, strikeFrom: 0.7, radius: 0.1, damageMul: 1.6, cut: 1, cleave: 1, bite: 18, tempo: 1.15, mass: 2.6, choke: 0.42, ...TWO_HAND },
   bat: { id: 'bat', name: 'Baseball Bat', style: 'twoHand', edge: 'blunt', length: 0.88, strikeFrom: 0.3, radius: 0.07, damageMul: 1.45, cut: 0, cleave: 0, bite: 0, tempo: 1, mass: 1.0, choke: 0.12, ...TWO_HAND },
   chair: { id: 'chair', name: 'Folding Chair', style: 'twoHand', edge: 'blunt', length: 0.66, strikeFrom: 0.2, radius: 0.16, damageMul: 1.35, cut: 0, cleave: 0, bite: 0, tempo: 1.1, mass: 3.4, choke: 0, ...TWO_HAND },
   club: { id: 'club', name: 'Spiked Club', style: 'twoHand', edge: 'blunt', length: 1.0, strikeFrom: 0.35, radius: 0.11, damageMul: 1.6, cut: 0.3, cleave: 0, bite: 6, tempo: 1.2, mass: 2.6, choke: 0.3, ...TWO_HAND },
@@ -69,7 +69,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   katana: { id: 'katana', name: 'Katana', style: 'twoHand', edge: 'blade', length: 0.98, strikeFrom: 0.22, radius: 0.05, damageMul: 1.5, cut: 1, cleave: 0.85, bite: 5, tempo: 0.95, mass: 1.1, choke: 0, ...TWO_HAND },
   bokken: { id: 'bokken', name: 'Bokken', style: 'twoHand', edge: 'blunt', length: 0.95, strikeFrom: 0.3, radius: 0.05, damageMul: 1.3, cut: 0, cleave: 0, bite: 0, tempo: 0.9, mass: 0.6, choke: 0, ...TWO_HAND },
   pipe: { id: 'pipe', name: 'Lead Pipe', style: 'oneHand', edge: 'blunt', length: 0.72, strikeFrom: 0.25, radius: 0.045, damageMul: 1.3, cut: 0, cleave: 0, bite: 0, tempo: 1, mass: 1.4, choke: 0, ...ONE_HAND_CUTS },
-  fireaxe: { id: 'fireaxe', name: 'Fire Axe', style: 'twoHand', edge: 'blade', length: 0.9, strikeFrom: 0.42, radius: 0.09, damageMul: 1.5, cut: 1, cleave: 0.95, bite: 16, tempo: 1.1, mass: 2.8, choke: 0.42, ...TWO_HAND },
+  fireaxe: { id: 'fireaxe', name: 'Fire Axe', style: 'twoHand', edge: 'blade', length: 0.9, strikeFrom: 0.68, radius: 0.09, damageMul: 1.5, cut: 1, cleave: 0.95, bite: 16, tempo: 1.1, mass: 2.8, choke: 0.42, ...TWO_HAND },
 };
 
 
@@ -203,10 +203,25 @@ export function selectWeaponMove(button: Button, w: WeaponDef, counter: DefenseK
   return button === 'lpunch' ? w.light : w.heavy;
 }
 
-/** How an armed enemy fights: keeps the weapon's own range (scaled by its size later). */
+/**
+ * How an armed enemy fights (distances scaled by its size later): it stands where the
+ * middle of the striking part — the head of an axe, not its handle — meets the body,
+ * swings from as far as the tip reaches, and only counts as crowded when even the
+ * near end of the head can't land.
+ */
 export function weaponPlan(w: WeaponDef): AIPlan {
-  const range = 0.85 + w.length * 0.8;
-  return { moves: [[w.light, 4], [w.heavy, 2]], range, attackRange: range + 0.25, punish: w.light, chains: { [w.light]: w.chain[w.light] ?? w.light } };
+  // Arms out in a swing, the grip is ~0.5 m in front of the body's centre, and the
+  // target's surface is ~0.15 m in front of its centre.
+  const body = 0.65;
+  const range = body + (w.strikeFrom + w.length) / 2;
+  return {
+    moves: [[w.light, 4], [w.heavy, 2]],
+    range,
+    attackRange: body + w.length + 0.1,
+    crowded: body - 0.2 + w.strikeFrom,
+    punish: w.light,
+    chains: { [w.light]: w.chain[w.light] ?? w.light },
+  };
 }
 
 // ---------------------------------------------------------------------------

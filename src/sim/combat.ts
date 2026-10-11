@@ -1,7 +1,7 @@
 import { Vector3 } from 'three';
 import { type BoneName, bonePoint, fistPoint, footPoint, SKELETON } from '../body/skeleton';
 import type { PoseName } from '../body/poses';
-import { AIDirector, BrawlerAI } from './ai';
+import { AIDirector, BrawlerAI, MAX_HEFT } from './ai';
 import { type Fighter } from './fighter';
 import { RectWalkable, type Walkable } from '../world/collision';
 import { bodyCapsules, overlap as capsuleOverlap, segDist as segDistance, strikingLimbs } from './bodyShapes';
@@ -43,6 +43,8 @@ export type CombatEvent =
       bone: BoneName;
       /** Weapon used (null for fists and feet). */
       weapon: WeaponDef | null;
+      /** How hard it drove the body (mass ratio × what was behind it), see pushScale. */
+      push: number;
       /** A new cut, if the weapon has an edge. */
       wound: Wound | null;
       /** A limb (or the head) cut off. */
@@ -115,8 +117,26 @@ const LUNGE_STOP = 0.74;
  */
 export function pushScale(a: Fighter, d: Fighter, weapon: WeaponDef | null, power = 1): number {
   const bodies = Math.pow((a.scale * a.scale) / (d.scale * d.scale * d.scale), 0.7);
-  const tool = weapon ? 0.75 + 0.18 * weapon.mass * Math.max(0.3, Math.min(1, power)) : 1;
+  // A bare fist is the baseline; anything in the hand only adds mass behind the blow.
+  const tool = weapon ? 1 + 0.15 * weapon.mass * Math.max(0.3, Math.min(1, power)) : 1;
   return Math.max(0.15, Math.min(3, bodies * tool));
+}
+
+/**
+ * How likely a fighter is to read a strike in time and react to it. Fresh, facing one
+ * man and his first punch, most are seen coming; tired, rattled by the last one, the
+ * second and third of a string, a quick jab, or a second man swinging at the same time,
+ * more and more get through.
+ */
+export function readChance(f: Fighter, o: Fighter, opponents: Fighter[]): number {
+  let p = 0.82;
+  p *= 0.5 + 0.5 * f.stamina;
+  if (f.framesSinceHit < 40) p *= 0.6;
+  if (f.framesSinceDefend < 24) p *= 0.75;
+  const m = o.move!;
+  p *= Math.max(0.8, Math.min(1.1, 0.75 + m.startup * 0.02));
+  for (const x of opponents) if (x !== o && x.state === 'attack' && !x.hitThisAttack) p *= 0.55;
+  return Math.max(0.12, Math.min(0.95, p));
 }
 
 /** Something to block with: at least one forearm left. */
@@ -239,6 +259,7 @@ export class CombatSim {
     f.framesSinceBlock++;
     f.framesSinceHit++;
     f.framesSinceLanded++;
+    f.framesSinceDefend++;
     if (f.framesSinceBlock > 60 && f.guard < f.stats.maxGuard) f.guard = Math.min(f.stats.maxGuard, f.guard + 0.35);
     if (f.framesSinceHit > 50 && f.poise < f.stats.maxPoise) f.poise = Math.min(f.stats.maxPoise, f.poise + 0.8);
     if (f.target && f.target.state !== 'hitstun' && f.target.state !== 'guardbreak' && f.target.state !== 'knockdown') {
@@ -347,12 +368,19 @@ export class CombatSim {
       // slip), rather than snapping out of the way in the last 60 ms.
       const def = DEFENSES[kind];
       if (fta <= Math.round(def.startup * REACT_LEAD) + 1) {
+        // Nobody reads everything: one look at it, and a miss is a miss.
+        if (serial === f.misreadSerial) continue;
+        if (!this.rng.chance(readChance(f, o, this.opponents(f)))) {
+          f.misreadSerial = serial;
+          continue;
+        }
         // Slip away from the line the arm (or leg) is coming in on.
         const shoulder = o.rig[o.move.limb === 'handL' ? 'upperArmL' : o.move.limb === 'handR' ? 'upperArmR' : o.move.limb === 'footL' ? 'thighL' : 'thighR'].pos;
         const dx = shoulder.x - f.pos.x;
         const dz = shoulder.z - f.pos.z;
         const localX = dx * Math.cos(f.yaw) - dz * Math.sin(f.yaw);
         f.startDefense(kind, serial, localX > 0 ? -1 : 1, Math.max(def.startup, fta));
+        f.framesSinceDefend = 0;
         this.events.push({ type: 'defend', f, kind });
         return;
       }
@@ -834,7 +862,9 @@ export class CombatSim {
     d.buffer = null;
     d.counter = null;
 
-    const kb = m.knockback * a.stats.knockbackMul * pushScale(a, d, w ?? null, power);
+    // The haft carries the weapon's mass too, just less of the swing's speed.
+    const push = pushScale(a, d, m.weapon ? a.weapon : null, power * (haft ? 0.6 : 1));
+    const kb = m.knockback * a.stats.knockbackMul * push;
     let ko = false;
     let knockdown = false;
     if (d.hp <= 0) {
@@ -907,6 +937,7 @@ export class CombatSim {
       combo: a.combo,
       bone,
       weapon: w,
+      push,
       wound,
       sever,
     });
@@ -989,24 +1020,34 @@ export class CombatSim {
   /** Grab (or swap for) the nearest weapon in reach; with none in reach, drop yours. */
   private tryPickup(f: Fighter) {
     if (f.pickupRequest <= 0) return;
+    // Already going down for one: a second press doesn't queue another grab (or a drop).
+    if (f.state === 'pickup') {
+      f.pickupRequest = 0;
+      return;
+    }
     f.pickupRequest--;
     if (!f.free || !f.alive || f.isSevered('foreArmR')) return;
     f.pickupRequest = 0;
     let best: Drop | null = null;
     let bestD = 1.15 * f.scale;
+    let twoHandOnly = false;
     for (const d of this.drops) {
       const dist = Math.hypot(d.pos.x - f.pos.x, d.pos.z - f.pos.z);
-      if (dist < bestD) {
-        bestD = dist;
-        best = d;
+      if (dist >= bestD) continue;
+      // (The AI doesn't go for what it can't swing.)
+      if (f.team !== 'player' && heft(d.weapon, f.scale) > MAX_HEFT) continue;
+      // Two-handed weapons need both hands.
+      if (d.weapon.style === 'twoHand' && f.isSevered('foreArmL')) {
+        twoHandOnly = true;
+        continue;
       }
+      bestD = dist;
+      best = d;
     }
     if (!best) {
-      if (f.team === 'player') this.dropWeapon(f);
+      if (f.team === 'player' && !twoHandOnly) this.dropWeapon(f);
       return;
     }
-    // Two-handed weapons need both hands.
-    if (best.weapon.style === 'twoHand' && f.isSevered('foreArmL')) return;
     // Going down for it takes time — more the heavier it is for you.
     f.startPickup(best, Math.round(18 + 7 * heft(best.weapon, f.scale)));
   }
@@ -1030,7 +1071,10 @@ export class CombatSim {
       }
       if (f.stateFrame === t.grabAt) {
         const drop = this.drops.find((x) => x.pos === t.pos && x.weapon === t.weapon);
-        if (drop && !f.isSevered('foreArmR')) {
+        // Still in reach of the hands, and still with the hands it needs.
+        const reach = d < 0.85 * f.scale;
+        const hands = !f.isSevered('foreArmR') && !(t.weapon.style === 'twoHand' && f.isSevered('foreArmL'));
+        if (drop && reach && hands) {
           this.drops.splice(this.drops.indexOf(drop), 1);
           const old = f.weapon;
           f.weapon = drop.weapon;

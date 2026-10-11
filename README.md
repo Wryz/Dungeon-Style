@@ -174,6 +174,10 @@ and faces bruise. Toggle it in **Settings → Options → Blood effects**.
 attack's height, shape and timing: high straights → weave, hooks → duck, mid body blows →
 block (costs guard), low sweeps → slide. A successful dodge opens a short **counter
 window** (gold fists + ring) — attack inside it for the counter move.
+It's a read, not a guarantee. Fresh, against one opponent's first strike, most are seen
+coming. Each of these lets more get through: tiredness, being rattled by the last hit,
+the second and third strikes of a string, quick jabs, and a second attacker swinging
+at the same time. Standing still against a brawler, about one strike in five lands.
 
 **The skill is timing.** Defense only works while you are free. If you are committed to
 your own attack's wind-up or recovery when the enemy's strike lands, you get hit. Fast
@@ -261,6 +265,20 @@ each other or the scenery.
 - **Dodges:** a dodge only counts if the strike was really coming.
 - **Same-frame hits:** a second contact on the same frame can't land on someone already
   down. `tests/review.test.ts` covers these.
+- **Armed spacing:** an armed enemy stands where the head of its weapon meets you, not
+  the handle. It only counts as crowded when even the near end of the head can't land.
+  Backing off, it circles away from walls and corners instead of backing into them.
+  When pinned anyway, it shoves or swings short with the haft.
+- **Size:** distances allow for a bigger body's bulk. A small creature doesn't throw at
+  a giant's head (it can't reach it); it goes for the legs.
+- **Weapons on the floor:** enemies only bend down for one when you're out of reach,
+  down or busy. They leave what they couldn't fight with (an imp won't take a
+  sledgehammer).
+- **Stamina:** a gassed enemy gives ground and gets its breath back before going
+  again. An armless one mixes teeps and low kicks rather than only sweeping.
+- **Axe edges:** an axe cuts only with its head. The handle knocks, and a hit on the
+  haft still carries the weapon's mass. Light weapons push at least as hard as a fist.
+  `tests/fightAI.test.ts` covers these.
 
 ## Architecture
 

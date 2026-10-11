@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import { WeaponEdge } from '../src/body/weaponEdge';
 import { CombatSim } from '../src/sim/combat';
 import { createEnemy } from '../src/sim/enemies';
-import type { Fighter } from '../src/sim/fighter';
 import { createPlayer } from '../src/sim/roster';
 import { WEAPONS } from '../src/sim/weapons';
 import { RectWalkable } from '../src/world/collision';
@@ -99,16 +98,23 @@ describe('a heavy axe head', () => {
     expect(twist()).toBeLessThan(0.1);
   });
 
-  it('never twists faster than the wrists can turn it, whatever the fighter does', () => {
-    const { sim, p, step, twist } = setup(1.8);
-    const me = { f: p as Fighter };
-    for (let i = 0; i < 600; i++) {
-      if (i % 70 === 10 && p.free) p.startMove(p.moveDef(i % 140 === 10 ? 'sweep' : 'overhead')!);
-      p.moveInput.set(Math.sin(i / 40), 0, Math.cos(i / 55));
-      step();
+  it('after any amount of fighting, at a render rate that skips steps, the head settles back upright', () => {
+    const { sim, p, edge } = setup(1.8);
+    let worstRest = 0;
+    let i = 0;
+    while (i < 900) {
+      // A render frame covers one to three sim steps.
+      const n = 1 + (i % 3);
+      for (let k = 0; k < n; k++, i++) {
+        if (i < 600 && i % 70 === 10 && p.free) p.startMove(p.moveDef(i % 140 === 10 ? 'sweep' : 'overhead')!);
+        p.moveInput.set(i < 600 ? Math.sin(i / 40) : 0, 0, i < 600 ? Math.cos(i / 55) : 0);
+        sim.step();
+      }
+      const e = edge.update(p, n);
+      const b = p.pose.blade.clone().normalize();
+      if (i > 700 && Math.abs(b.y) < 0.9) worstRest = Math.max(worstRest, tilt(b, e));
     }
-    expect(me.f.weapon).toBeTruthy();
-    expect(sim.frame).toBeGreaterThan(0);
-    expect(twist()).toBeLessThan(0.1);
+    expect(p.state).not.toBe('attack');
+    expect(worstRest).toBeLessThan(0.2);
   });
 });
