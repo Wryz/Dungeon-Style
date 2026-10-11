@@ -219,7 +219,8 @@ export class Ragdoll {
       const body = this.bodies[b];
       const m = body.mass();
       body.applyImpulse({ x: impulse.x * m, y: impulse.y * m, z: impulse.z * m }, true);
-      body.applyTorqueImpulse({ x: (Math.random() - 0.5) * m * 0.4, y: (Math.random() - 0.5) * m * 0.4, z: (Math.random() - 0.5) * m * 0.4 }, true);
+      // A tumble that depends on the cut, not on Math.random (keeps replays identical).
+      body.applyTorqueImpulse({ x: (impulse.z - impulse.y) * m * 0.02, y: (impulse.x - impulse.z) * m * 0.02, z: (impulse.y - impulse.x) * m * 0.02 }, true);
     }
   }
 
@@ -355,8 +356,11 @@ export class Ragdoll {
         const rootGain = f.state === 'attack' ? Math.max(T.rootGain, 0.7) : T.rootGain;
         angularCorrection(rot, target.rot, rootGain, _w);
         // Feed-forward target velocity + positional correction, at the joint origin.
+        // (Scaled by 1 - gain: with the full target velocity on top of the positional
+        // correction the body settles a whole frame ahead of its target.)
         _vd.subVectors(target.pos, this.prevRootTarget).divideScalar(DT);
         if (_vd.lengthSq() > 400) _vd.set(0, 0, 0); // teleport
+        _vd.multiplyScalar(1 - rootGain);
         _vd.addScaledVector(_v.subVectors(target.pos, pos), rootGain / DT);
         // Convert to centre-of-mass velocity.
         _vd.add(_v.crossVectors(_w, _v2.subVectors(_com, pos)));

@@ -4,6 +4,9 @@ export type Surface = 'canvas' | 'asphalt' | 'tile' | 'sand' | 'wood' | 'concret
 export type Ambience = 'ring' | 'street' | 'grocery' | 'colosseum' | 'warehouse' | 'bar' | 'dojo' | 'rooftop';
 export type Material = 'wood' | 'metal' | 'pan' | 'axe' | 'glass';
 
+/** Exponential ramps can't reach (or start from) zero: a quiet sound is just very quiet. */
+const pos = (v: number) => (Number.isFinite(v) ? Math.max(0.0001, v) : 0.0001);
+
 /** Procedural impact sounds (no assets): noise bursts + pitched thumps through a compressor. */
 export class Sfx {
   private ctx: AudioContext | null = null;
@@ -303,11 +306,11 @@ export class Sfx {
     const f = ctx.createBiquadFilter();
     f.type = type;
     f.frequency.setValueAtTime(freq, t);
-    if (sweepTo) f.frequency.exponentialRampToValueAtTime(sweepTo, t + attack + decay);
+    if (sweepTo) f.frequency.exponentialRampToValueAtTime(pos(sweepTo), t + attack + decay);
     f.Q.value = q;
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(gain, t + attack);
+    g.gain.exponentialRampToValueAtTime(pos(gain), t + attack);
     g.gain.exponentialRampToValueAtTime(0.0001, t + attack + decay);
     src.connect(f).connect(g).connect(this.master);
     src.start(t, Math.random() * 0.5);
@@ -320,9 +323,9 @@ export class Sfx {
     const o = ctx.createOscillator();
     o.type = type;
     o.frequency.setValueAtTime(from, t);
-    o.frequency.exponentialRampToValueAtTime(to, t + decay);
+    o.frequency.exponentialRampToValueAtTime(pos(to), t + decay);
     const g = ctx.createGain();
-    g.gain.setValueAtTime(gain, t);
+    g.gain.setValueAtTime(pos(gain), t);
     g.gain.exponentialRampToValueAtTime(0.0001, t + decay);
     o.connect(g).connect(this.master);
     o.start(t);

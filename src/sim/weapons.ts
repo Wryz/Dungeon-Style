@@ -71,7 +71,7 @@ const BODY: Aim = { id: 'body', weight: 2, offset: [0.02, -0.32, -0.04], height:
 const LEGS: Aim = { id: 'legs', weight: 1, offset: [0.04, -0.62, -0.08], height: 'low', add: { root: [0, -0.12, 0], abdomen: [0.3, 0, 0] } };
 
 const keys = (wind: PoseName, ext: PoseName, follow: PoseName, recover: PoseName, windAt = 0.55): Key[] => [
-    { at: ['s', windAt], pose: wind, ease: 'out' },
+    { at: ['s', windAt], pose: wind, ease: 'inOut' },
     { at: ['a', 0], pose: ext, ease: 'linear' },
     { at: ['a', 1], pose: follow, ease: 'out' },
     { at: ['r', 0.6], pose: recover, ease: 'inOut' },

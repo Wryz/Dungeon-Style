@@ -96,7 +96,7 @@ export const FACING = {
   /** ...and stays locked until further than this (no flip-flopping at the edge). */
   unlockRange: 3.2,
   /** Turn rate while walking freely (rad/frame). */
-  freeTurnRate: 0.2,
+  freeTurnRate: 0.11,
 };
 
 const _want = new Vector3();
@@ -104,6 +104,10 @@ const MIN_SEPARATION = 0.66;
 /** Collision radius of a standing fighter against walls. */
 export const BODY_RADIUS = 0.3;
 const LUNGE_STOP = 0.74;
+/** Something to block with: at least one forearm left. */
+const canGuard = (f: Fighter) => !(f.isSevered('foreArmL') && f.isSevered('foreArmR'));
+/** How far ahead of a strike landing (in multiples of the defence's startup) people react. */
+const REACT_LEAD = 2.5;
 const _strike = new Vector3();
 const _c = new Vector3();
 
@@ -163,7 +167,7 @@ export class CombatSim {
     for (const f of fs) this.retarget(f);
     for (const f of fs) this.tickTimers(f);
     for (const f of fs) this.advance(f);
-    for (const f of fs) this.ais.get(f)?.think(f, f.target);
+    for (const f of fs) this.ais.get(f)?.think(f, f.target, this.walkable);
     for (const f of fs) this.autoDefend(f);
     for (const f of fs) this.tryBufferedAttack(f);
     for (const f of fs) this.tryPickup(f);
@@ -249,7 +253,9 @@ export class CombatSim {
         if (d.phase === 'startup' && f.stateFrame >= d.def.startup) d.phase = 'active';
         if (d.phase === 'active' || d.phase === 'startup') {
           if (this.threatOver(f)) {
-            if (!d.success) this.markDodge(f, null);
+            // Only a strike that was actually coming counts as dodged (not one that hit a
+            // pillar on the way, or was stopped by getting hit).
+            if (!d.success && this.threatReachedUs(f)) this.markDodge(f, null);
             f.enterDefenseRecovery();
           }
         } else if (d.phase === 'recovery' && f.stateFrame >= d.def.recovery) {
@@ -278,6 +284,13 @@ export class CombatSim {
   }
 
   /** The attack a defense was answering has finished its active frames (or stopped). */
+  private threatReachedUs(f: Fighter): boolean {
+    const serial = f.defense!.threatSerial;
+    const o = this.opponents(f).find((x) => x.id * 100000 + x.attackSerial === serial);
+    if (!o || o.state !== 'attack' || !o.move || o.attackEnd) return false;
+    return f.distanceTo(o) <= (o.move.reach + o.stats.reach) * o.scale + 0.3;
+  }
+
   private threatOver(f: Fighter): boolean {
     const serial = f.defense!.threatSerial;
     for (const o of this.opponents(f)) {
@@ -305,13 +318,16 @@ export class CombatSim {
       if (f.distanceTo(o) > (o.move.reach + o.stats.reach) * o.scale + 0.45) continue;
       const kind = chooseDefense(f, o.move, fta, o.strikeHeight);
       if (!kind) continue;
-      if (fta <= DEFENSES[kind].startup + 1) {
+      // People read a strike and start moving a beat before it lands (~150-200 ms for a
+      // slip), rather than snapping out of the way in the last 60 ms.
+      const def = DEFENSES[kind];
+      if (fta <= Math.round(def.startup * REACT_LEAD) + 1) {
         // Slip away from the line the arm (or leg) is coming in on.
         const shoulder = o.rig[o.move.limb === 'handL' ? 'upperArmL' : o.move.limb === 'handR' ? 'upperArmR' : o.move.limb === 'footL' ? 'thighL' : 'thighR'].pos;
         const dx = shoulder.x - f.pos.x;
         const dz = shoulder.z - f.pos.z;
         const localX = dx * Math.cos(f.yaw) - dz * Math.sin(f.yaw);
-        f.startDefense(kind, serial, localX > 0 ? -1 : 1);
+        f.startDefense(kind, serial, localX > 0 ? -1 : 1, Math.max(def.startup, fta));
         this.events.push({ type: 'defend', f, kind });
         return;
       }
@@ -447,6 +463,9 @@ export class CombatSim {
     if (desired === null) return;
     const d = angleDelta(f.yaw, desired);
     if (Math.abs(d) <= deadzone) return;
+    // Walking, a sharp turn slows while the legs are crossed over the planted feet, so
+    // the steps keep up (people turn step by step, not by spinning on crossed legs).
+    if (f.free && f.motion.gait > 0.5 && f.footwork.legsCrossed(f)) rate = Math.min(rate, 0.04);
     f.yaw = approachAngle(f.yaw, desired - Math.sign(d) * deadzone, rate);
   }
 
@@ -579,8 +598,9 @@ export class CombatSim {
     const tip = m.limb === 'handL' ? 'fistL' : m.limb === 'handR' ? 'fistR' : m.limb === 'footL' ? 'shinL' : 'shinR';
     const mine = bodyCapsules(a).limbs.filter((c) => c.bone === tip);
     for (const d of this.opponents(a)) {
-      // (Someone already reacting to it gets their defence in first.)
-      if (!d.alive || d.state === 'knockdown' || d.state === 'getup' || d.state === 'defend') continue;
+      // (Someone already reacting gets their defence in if it's in place; if not, it's
+      // arrived before they got out of the way.)
+      if (!d.alive || d.state === 'knockdown' || d.state === 'getup') continue;
       for (const x of mine) for (const y of bodyCapsules(d).torso) if (capsuleOverlap(x, y) > 0.02) return true;
     }
     return false;
@@ -678,6 +698,9 @@ export class CombatSim {
   }
 
   private applyStrike({ attacker: a, defender: d, move: m, height, point, zone, bone, power = 1, haft = false }: Contact) {
+    // Two contacts in one frame: the first may already have dropped them, or cut off the
+    // arm the second was coming from.
+    if (!d.alive || d.state === 'knockdown' || d.state === 'ko' || !a.canUse(m)) return;
     const dir = new Vector3(d.pos.x - a.pos.x, 0, d.pos.z - a.pos.z);
     if (dir.lengthSq() < 1e-6) dir.copy(a.forward);
     dir.normalize();
@@ -689,7 +712,7 @@ export class CombatSim {
         this.markDodge(d, a, point);
         return;
       }
-      if (inPosition && m.blockable && def.blocks.includes(height)) {
+      if (inPosition && m.blockable && def.blocks.includes(height) && canGuard(d)) {
         this.block(a, d, m, point, dir);
         return;
       }
@@ -701,7 +724,7 @@ export class CombatSim {
         return;
       }
     }
-    if (d.state === 'blockstun' && m.blockable && height !== 'low') {
+    if (d.state === 'blockstun' && m.blockable && height !== 'low' && canGuard(d)) {
       this.block(a, d, m, point, dir);
       return;
     }
@@ -890,7 +913,8 @@ export class CombatSim {
     const stump: Wound = { bone: parent, local: [o[0], o[1], o[2]], angle: 0, length: 0, bleed: 1, floor: 0.3, stump: bone };
     d.wounds.push(stump);
     for (const w of d.wounds) if (limbBones(bone).includes(w.bone)) w.bleed = w.floor = 0;
-    if (bone === 'foreArmR' || bone === 'upperArmR') this.dropWeapon(d);
+    // No right hand: the weapon falls. No left hand: a two-hander can't be held either.
+    if (bone === 'foreArmR' || bone === 'upperArmR' || (d.weapon?.style === 'twoHand' && (bone === 'foreArmL' || bone === 'upperArmL'))) this.dropWeapon(d);
   }
 
   /** Bleeding: every open cut drains a little health; enough of it and they go down. */

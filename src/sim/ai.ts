@@ -1,3 +1,5 @@
+import { Vector3 } from 'three';
+import type { Walkable } from '../world/collision';
 import type { Drop } from './combat';
 import type { Fighter } from './fighter';
 import type { Rng } from './math';
@@ -62,10 +64,16 @@ export class AIDirector {
 }
 
 /** Simple brawler: keeps punching range, throws telegraphed attacks, sometimes blocks. */
+const _probe = new Vector3();
+
 export class BrawlerAI {
   private cooldown = 70;
   private strafe = 0;
   private strafeTimer = 0;
+  /** Going round something: which way (+1 left / -1 right), and for how much longer. */
+  private detourSide: 1 | -1 = 1;
+  private detourFrames = 0;
+  private walkable: Walkable | null = null;
   private chain: string | null = null;
   private decidedSerial = -1;
   private willBlock = false;
@@ -81,7 +89,8 @@ export class BrawlerAI {
     public director: AIDirector | null = null,
   ) {}
 
-  think(self: Fighter, target: Fighter | null) {
+  think(self: Fighter, target: Fighter | null, walkable: Walkable | null = null) {
+    this.walkable = walkable;
     self.moveInput.set(0, 0, 0);
     if (!self.alive) return;
     if (!target || !target.alive || this.cfg.passive) return;
@@ -109,7 +118,11 @@ export class BrawlerAI {
       target.move &&
       target.framesToActive <= 4 &&
       target.framesToActive >= 0 &&
-      dist <= target.move.reach + 0.4
+      dist <= target.move.reach + 0.4 &&
+      // Only what a guard can stop, with arms to stop it.
+      target.move.blockable &&
+      (target.strikeHeight === 'high' || target.strikeHeight === 'mid') &&
+      !(self.isSevered('foreArmL') && self.isSevered('foreArmR'))
     ) {
       self.startDefense('block', target.id * 100000 + target.attackSerial);
       this.willBlock = false;
@@ -166,6 +179,7 @@ export class BrawlerAI {
       mz /= ml;
     }
     self.moveInput.set(mx, 0, mz).multiplyScalar(0.75);
+    this.steer(self);
 
     if (downed) return;
 
@@ -227,12 +241,75 @@ export class BrawlerAI {
     const dx = best.pos.x - self.pos.x;
     const dz = best.pos.z - self.pos.z;
     self.moveInput.set(dx / bd, 0, dz / bd);
+    this.steer(self);
     return true;
   }
 
+  /**
+   * Walk round props rather than into them: look a stride ahead along where we want to
+   * go; if a crate, car or shelf is there, fan out to one side until the way is clear,
+   * and keep to that side until we're past it (no dithering at the corner).
+   */
+  private steer(self: Fighter) {
+    const w = this.walkable;
+    const mi = self.moveInput;
+    const mag = Math.hypot(mi.x, mi.z);
+    if (!w || mag < 0.05) return;
+    const ux = mi.x / mag;
+    const uz = mi.z / mag;
+    const clear = (x: number, z: number) => {
+      for (const d of [0.45, 0.9]) {
+        const px = self.pos.x + x * d * self.scale;
+        const pz = self.pos.z + z * d * self.scale;
+        if (!w.isWalkable(px, pz)) return false;
+        _probe.set(px, 0.3, pz);
+        if (w.solidAt?.(_probe, 0.3 * self.scale)) return false;
+      }
+      return true;
+    };
+    if (this.detourFrames > 0) this.detourFrames--;
+    if (clear(ux, uz)) return;
+    for (const side of [this.detourSide, -this.detourSide] as (1 | -1)[]) {
+      for (const deg of [30, 55, 80, 105, 130]) {
+        const a = (deg * Math.PI) / 180 * side;
+        const c = Math.cos(a);
+        const sn = Math.sin(a);
+        const x = ux * c - uz * sn;
+        const z = ux * sn + uz * c;
+        if (clear(x, z)) {
+          this.detourSide = side;
+          this.detourFrames = 45;
+          mi.set(x * mag, 0, z * mag);
+          return;
+        }
+      }
+      // Committed to a side: only try the other one once the commitment runs out.
+      if (this.detourFrames > 0) break;
+    }
+  }
+
   private start(self: Fighter, id: string) {
-    const m = self.moveDef(id);
-    if (!m || !self.canUse(m)) return;
+    let m = self.moveDef(id);
+    if (!m || !self.canUse(m)) {
+      // That arm (or leg) is gone: throw something it still has — from the plan, or
+      // failing that, a kick.
+      const plan = this.planFor(self);
+      const usable = plan.moves.filter(([mid]) => {
+        const d = self.moveDef(mid);
+        return d && self.canUse(d);
+      });
+      const fallback = ['teep', 'kLowKick', 'frontKick', 'lowKick'].find((k) => {
+        const d = self.moveDef(k);
+        return d && self.canUse(d);
+      });
+      const pick = usable.length ? this.rng.pickWeighted<string>(usable) : fallback;
+      m = pick ? self.moveDef(pick) : undefined;
+      if (!m || !self.canUse(m)) {
+        this.cooldown = this.rng.range(30, 60);
+        return;
+      }
+      id = pick!;
+    }
     self.startMove(m);
     this.director?.claim();
     const next = this.planFor(self).chains[id];

@@ -15,6 +15,8 @@ import {
   type Rig,
   type BoneName,
   DEFAULT_BLADE,
+  FIST_OFFSET,
+  SKELETON,
   slerpDir,
   solveArm,
   solveLegs,
@@ -219,6 +221,7 @@ export class Fighter {
   ) {
     this.stats = { ...DEFAULT_STATS, ...stats };
     this.rng = new Rng(this.id * 7919 + 13);
+    this.anim.source = this.pose;
     this.footwork = new Footwork({ ...style.footwork });
     this.idle = new IdleBehavior({ ...style.idle }, this.rng);
     this.hp = this.stats.maxHp;
@@ -281,7 +284,7 @@ export class Fighter {
   impact(mode: 'stick' | 'rebound', hold: number, retract: number) {
     if (this.state !== 'attack') return;
     const sf = this.stateFrame;
-    copyPose(this.anim.out, this.impactPose);
+    copyPose(this.pose, this.impactPose);
     this.stuckUntil = mode === 'stick' ? sf + hold : 0;
     this.attackEnd = sf + hold + retract;
     const back = getPose(this.weapon ? (this.weapon.style === 'oneHand' ? 'wGuard1' : 'wGuard2') : 'guard');
@@ -301,7 +304,9 @@ export class Fighter {
 
   /** A move by id: own moves, plus weapon techniques while armed. */
   moveDef(id: string): MoveDef | undefined {
-    return this.moves[id] ?? (this.weapon ? WEAPON_MOVES[id] : undefined);
+    // Armed, the weapon's technique wins a name clash ('sweep' is a weapon swing, not
+    // the leg sweep).
+    return (this.weapon && !this.isSevered('foreArmR') ? WEAPON_MOVES[id] : undefined) ?? this.moves[id];
   }
 
   /** Is this bone (or a bone above it) cut off? */
@@ -370,10 +375,14 @@ export class Fighter {
     const dy = Math.max(-0.75, Math.min(0.45, this.heightGap(move, this.aim)));
     this.swingJitter = jitter;
     this.swingDy = dy;
-    this.anim.play(moveKeys(move, this.aim, jitter, dy, this.reachFit(move), this.weaponFit(move, this.aim)));
+    const keys = moveKeys(move, this.aim, jitter, dy, this.reachFit(move), this.weaponFit(move, this.aim));
+    // Re-aiming later keeps the same shape of swing (same keys), only pointed anew.
+    this.swingViaMid = keys.length > move.keys.length;
+    this.anim.play(keys);
   }
 
   private swingJitter: [number, number, number] = [0, 0, 0];
+  private swingViaMid = false;
   private swingDy = 0;
 
   /**
@@ -387,7 +396,7 @@ export class Fighter {
     const l = m.lunge;
     const left = l ? Math.max(0, Math.min(1, (l.to - this.stateFrame) / Math.max(1, l.to - l.from))) : 0;
     const fit = this.weaponFit(m, this.aim, left);
-    if (fit) this.anim.retarget(moveKeys(m, this.aim, this.swingJitter, this.swingDy, Infinity, fit));
+    if (fit) this.anim.retarget(moveKeys(m, this.aim, this.swingJitter, this.swingDy, Infinity, fit, this.swingViaMid));
   }
 
   private pickAim(move: MoveDef, aimId?: string): Aim | null {
@@ -458,7 +467,8 @@ export class Fighter {
   }
 
   /** @param slipSide for a weave: +1 slips to our left, -1 to our right (default: alternate). */
-  startDefense(kind: DefenseKind, threatSerial: number, slipSide?: 1 | -1) {
+  /** @param arriveIn frames until the strike lands: the move is timed to be there by then. */
+  startDefense(kind: DefenseKind, threatSerial: number, slipSide?: 1 | -1, arriveIn?: number) {
     const def = DEFENSES[kind];
     this.setState('defend');
     if (kind === 'weave') this.weaveSide = slipSide ?? (this.weaveSide === 1 ? -1 : 1);
@@ -467,7 +477,8 @@ export class Fighter {
     this.stamina = Math.max(0, this.stamina - 0.015);
     this.defenseCooldown[kind] = def.cooldown;
     this.idle.interrupt();
-    this.anim.play([{ f: def.startup, pose: getPose(defensePose(kind, this.weaveSide)), ease: 'out' }]);
+    const f = Math.max(def.startup, Math.min(Math.round(def.startup * 2.5), arriveIn ?? def.startup + 3));
+    this.anim.play([{ f, pose: getPose(defensePose(kind, this.weaveSide)), ease: 'out' }]);
   }
 
   enterDefenseRecovery() {
@@ -488,9 +499,12 @@ export class Fighter {
     const home = getPose(this.weapon ? (this.weapon.style === 'oneHand' ? 'wGuard1' : 'wGuard2') : 'guard');
     const k = Math.max(0.2, Math.min(1, intensity));
     const peak = k >= 0.99 ? getPose(reaction) : blendPose(home, getPose(reaction), k, this.reactPose);
+    // The head goes with the blow at once (the ragdoll takes the impulse); the rest of
+    // the body follows over ~70-100 ms, not in two frames.
+    const at = Math.min(Math.max(2, Math.floor(frames * 0.3)), k > 0.7 ? 4 : 5);
     this.anim.play([
-      { f: 2, pose: peak, ease: 'out' },
-      { f: Math.max(3, Math.floor(frames * (0.35 + 0.2 * k))), pose: peak },
+      { f: at, pose: peak, ease: 'linear' },
+      { f: Math.max(at + 1, Math.floor(frames * (0.35 + 0.2 * k))), pose: peak },
       { f: frames, pose: home, ease: 'inOut' },
     ]);
   }
@@ -577,7 +591,11 @@ export class Fighter {
     this.idle.tick(engaged, still);
 
     const handStrike = this.state === 'attack' && this.move?.layer === 'upper';
-    const driven = this.anim.isProcedural || (handStrike && this.moveBlend > 0.25);
+    // Rocked, blocking, slipping: the upper body reacts, but the feet stay where they're
+    // planted (and step to recover) rather than gliding to the pose's stance.
+    // (A slide is the exception: the feet do slide.)
+    const legsUnder = this.state === 'hitstun' || this.state === 'blockstun' || this.state === 'guardbreak' || (this.state === 'defend' && this.defense?.def.kind !== 'slide');
+    const driven = this.anim.isProcedural || (handStrike && this.moveBlend > 0.25) || legsUnder;
     const [offX, offZ] = this.anim.isProcedural ? this.idle.stanceOffset() : [0, 0];
     if (driven) this.footwork.update(this, offX, offZ, localDirX, localDirZ, speedFrac);
 
@@ -587,14 +605,17 @@ export class Fighter {
     copyPose(this.anim.out, this.pose);
 
     // Hand strikes thrown on the move: keep the legs stepping under the punching torso.
-    if (handStrike && driven) {
+    if ((handStrike && driven) || legsUnder) {
       const L = this.layered;
       copyPose(this.anim.out, L);
-      const [wx, wz] = this.footwork.weightShift(this, 0, 0);
-      L.root.x = this.anim.out.root.x + wx * 0.5;
-      L.root.z = this.anim.out.root.z + wz * 0.5;
+      if (handStrike) {
+        const [wx, wz] = this.footwork.weightShift(this, 0, 0);
+        L.root.x = this.anim.out.root.x + wx * 0.5;
+        L.root.z = this.anim.out.root.z + wz * 0.5;
+      }
       solveLegs(L, { at: this.footwork.localTarget('L', this, 0), hint: KNEE_HINT.L }, { at: this.footwork.localTarget('R', this, 0), hint: KNEE_HINT.R });
-      blendPose(this.anim.out, L, this.moveBlend, this.pose);
+      if (legsUnder) copyPose(L, this.pose);
+      else blendPose(this.anim.out, L, this.moveBlend, this.pose);
     }
     if (this.weapon && !this.isSevered('foreArmR')) {
       forwardKinematics(this.pose, this.rig, this.pos, this.yaw, this.scale);
@@ -666,13 +687,25 @@ export class Fighter {
 
   /** Two-handed grip: the lead hand holds the haft just below the rear hand. */
   private gripWithBothHands() {
-    // Kicks and reactions leave the hands where the animation has them.
-    const swinging = this.state === 'attack' && !!this.move?.weapon;
-    if (!swinging && this.state !== 'idle' && this.state !== 'walk' && this.state !== 'defend' && this.state !== 'blockstun') return;
+    // Both hands stay on the haft whatever the body is doing — kicking, rocked by a
+    // blow — until it's knocked flat.
+    if (this.state === 'knockdown' || this.state === 'ko' || this.state === 'getup') return;
     forwardKinematics(this.pose, _localRig);
     bladeFrame({ rig: _localRig, pose: this.pose, yaw: 0, scale: 1 }, _grip, _dir);
-    _grip.addScaledVector(_dir, -SECOND_HAND);
-    solveArm(this.pose, 'L', { at: [_grip.x, _grip.y, _grip.z], hint: [0.5, -1, -0.2] });
+    // The lead hand rides the haft: normally a hand's width below the rear one, but it
+    // slides up or down the handle to wherever the left arm can reach (a turned
+    // shoulder, an overhead wind-up) instead of hanging straight in mid-air.
+    const sh = _localRig.upperArmL.pos;
+    const reach = SKELETON.upperArmL.length + SKELETON.foreArmL.length + FIST_OFFSET - 0.02;
+    // Points of the haft the hand can reach form a stretch around the point nearest the
+    // shoulder; take the one in it nearest the usual grip (moves smoothly, never jumps).
+    _q.subVectors(sh, _grip);
+    const tc = _q.dot(_dir);
+    const room = reach * reach - (_q.lengthSq() - tc * tc);
+    const half = room > 0 ? Math.sqrt(room) : 0;
+    const best = Math.max(-0.38, Math.min(0.3, Math.max(tc - half, Math.min(tc + half, -SECOND_HAND))));
+    _p.copy(_grip).addScaledVector(_dir, best);
+    solveArm(this.pose, 'L', { at: [_p.x, _p.y, _p.z], hint: [0.5, -1, -0.2] });
   }
 
   /** Re-evaluates the fight context and eases the movement profile toward it. */
@@ -742,10 +775,12 @@ export class Fighter {
     const footL = this.footwork.localTarget('L', this, raise);
     const footR = this.footwork.localTarget('R', this, raise);
     // Walking arm swing: each hand swings with the opposite foot.
-    const swing = Math.max(-0.35, Math.min(0.35, footR[2] - footL[2])) * g;
+    const swing = Math.max(-0.35, Math.min(0.35, footR[2] - footL[2])) * g * (this.weapon?.style === 'twoHand' ? 0.25 : 1);
     // Running: elbows locked near 90°, arms pumping hard from the shoulder.
     const run = this.footwork.run * g;
-    const pump = Math.max(-1, Math.min(1, (footR[2] - footL[2]) / 0.55));
+    // Hands on a two-handed haft can't pump (or swing): the shoulders stay square to it.
+    const twoHand = this.weapon?.style === 'twoHand' ? 0.25 : 1;
+    const pump = Math.max(-1, Math.min(1, (footR[2] - footL[2]) / 0.55)) * twoHand;
     const G = this.weapon ? POSE_SPECS[this.weapon.style === 'oneHand' ? 'wGuard1' : 'wGuard2'] : GUARD;
     const guardL = guardHand(G.handL!, M.guardY + back * 0.02 * m, M.guardZ);
     const guardR = guardHand(G.handR!, M.guardY + back * 0.02 * m, M.guardZ * 0.6);
@@ -802,13 +837,17 @@ export class Fighter {
   }
 }
 
-const _timed = new Map<string, MoveDef>();
+// Keyed by the move itself: different moves can share an id (the player's hook and an
+// enemy's haymaker are both 'hook').
+const _timed = new WeakMap<MoveDef, Map<string, MoveDef>>();
 
 /** A move with its frame data stretched (>1 slower) — cached per move and tempo. */
 export function timed(m: MoveDef, tempo: number): MoveDef {
   if (Math.abs(tempo - 1) < 0.03) return m;
-  const key = `${m.id}@${tempo.toFixed(2)}`;
-  let t = _timed.get(key);
+  const key = tempo.toFixed(2);
+  let byTempo = _timed.get(m);
+  if (!byTempo) _timed.set(m, (byTempo = new Map()));
+  let t = byTempo.get(key);
   if (!t) {
     const f = (n: number) => Math.round(n * tempo);
     t = {
@@ -821,7 +860,7 @@ export function timed(m: MoveDef, tempo: number): MoveDef {
       evades: m.evades && { ...m.evades, from: f(m.evades.from), to: f(m.evades.to) },
       cancel: m.cancel && { ...m.cancel, from: f(m.cancel.from), to: f(m.cancel.to) },
     };
-    _timed.set(key, t);
+    byTempo.set(key, t);
   }
   return t;
 }
@@ -880,9 +919,10 @@ export interface WeaponFit {
 const REAR_SHOULDER: V3 = [-0.2, 1.43, 0.12];
 const ARM_REACH = 0.58;
 
-export function moveKeys(m: MoveDef, aim: Aim | null = null, jitter: V3 = [0, 0, 0], dy = 0, reachZ = Infinity, wfit: WeaponFit | null = null): TrackKey[] {
+/** @param viaMid weapon swings: force (true) or forbid (false) the mid-arc key; default decides. */
+export function moveKeys(m: MoveDef, aim: Aim | null = null, jitter: V3 = [0, 0, 0], dy = 0, reachZ = Infinity, wfit: WeaponFit | null = null, viaMid?: boolean): TrackKey[] {
   const keys = buildKeys(m, aim, jitter, dy, reachZ, wfit);
-  if (!wfit || !m.weapon) return keys;
+  if (!wfit || !m.weapon || viaMid === false) return keys;
   // Re-aiming the strike mustn't make it turn the other way round: an overhead goes up
   // and over the top even when it's aimed down at a short opponent, rather than the
   // head swinging forward under the hands (through the wielder's own head). If the
@@ -895,7 +935,7 @@ export function moveKeys(m: MoveDef, aim: Aim | null = null, jitter: V3 = [0, 0,
   const fitted = keys[ci].pose.blade;
   const turnAuthored = _ta.crossVectors(from, authored);
   const turnFitted = _tb.crossVectors(from, fitted);
-  if (turnAuthored.dot(turnFitted) >= 0 && from.dot(fitted) > -0.95) return keys;
+  if (viaMid !== true && turnAuthored.dot(turnFitted) >= 0 && from.dot(fitted) > -0.95) return keys;
   const a = keys[ci - 1];
   const b = keys[ci];
   const mid = blendPose(a.pose, b.pose, 0.5, makePose());

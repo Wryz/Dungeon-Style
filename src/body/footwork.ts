@@ -23,6 +23,8 @@ export interface Foot {
   height: number;
   /** Walking/running: seconds of travel the landing spot leads the stance home. */
   lead: number;
+  /** A walking/running gait step (timed by the cadence, not by how far off it is). */
+  gait: boolean;
 }
 
 interface Body {
@@ -51,7 +53,7 @@ const _home = new Vector3();
 const _v = new Vector3();
 
 function makeFoot(side: Side): Foot {
-  return { side, pos: new Vector3(), from: new Vector3(), to: new Vector3(), stepping: false, t: 0, dur: 1, height: 0, lead: 0 };
+  return { side, pos: new Vector3(), from: new Vector3(), to: new Vector3(), stepping: false, t: 0, dur: 1, height: 0, lead: 0, gait: false };
 }
 
 /** World point → fighter-local (authored, unscaled) coordinates. */
@@ -101,6 +103,9 @@ export class Footwork {
   private phase = 0;
   private wasGait = false;
   private initialized = false;
+  /** Last frame's gait swing length / landing lead (a step in flight adapts to them). */
+  private gaitDur = 30;
+  private gaitLead = 0;
 
   constructor(public style: FootworkStyle) {}
 
@@ -169,10 +174,47 @@ export class Footwork {
     // Progress active steps, re-aiming at the moving home (the body keeps turning/moving).
     for (const f of [this.L, this.R]) {
       if (!f.stepping) continue;
+      // Speeding up from a standstill: a stride lifted at walking pace quickens with the
+      // cadence instead of aiming ever further ahead at the new speed (a lurch).
+      if (f.gait && this.wasGait) {
+        f.dur = Math.max(4, Math.min(f.dur, this.gaitDur));
+        f.lead = Math.min(f.lead, this.gaitLead);
+      }
       f.t = Math.min(1, f.t + 1 / f.dur);
       f.to.copy(homes[f.side]).addScaledVector(body.walkVel, ((1 - f.t) * f.dur) / 60 + f.lead);
+      // Never further from the stance home than a leg can reach.
+      const hx = f.to.x - homes[f.side].x;
+      const hz = f.to.z - homes[f.side].z;
+      const hl = Math.hypot(hx, hz);
+      const maxReach = 0.62 * (body.scale ?? 1);
+      if (hl > maxReach) {
+        f.to.x = homes[f.side].x + (hx / hl) * maxReach;
+        f.to.z = homes[f.side].z + (hz / hl) * maxReach;
+      }
       const u = f.t * f.t * (3 - 2 * f.t);
       f.pos.lerpVectors(f.from, f.to, u);
+      // The swinging foot goes round the planted one, not through it (turning, stepping
+      // across, reversing).
+      const other = this.foot(f.side === 'L' ? 'R' : 'L');
+      if (!other.stepping && f.t < 1) {
+        const gap = 0.2 * (body.scale ?? 1);
+        let ox = f.pos.x - other.pos.x;
+        let oz = f.pos.z - other.pos.z;
+        let ol = Math.hypot(ox, oz);
+        if (ol < gap) {
+          if (ol < 1e-4) {
+            // Dead on top: go round on the foot's own side.
+            const c = Math.cos(body.yaw);
+            const sn = Math.sin(body.yaw);
+            const side = f.side === 'L' ? 1 : -1;
+            ox = c * side;
+            oz = -sn * side;
+            ol = 1;
+          }
+          f.pos.x = other.pos.x + (ox / ol) * gap;
+          f.pos.z = other.pos.z + (oz / ol) * gap;
+        }
+      }
       if (f.t >= 1) {
         f.stepping = false;
         f.pos.copy(f.to);
@@ -195,12 +237,16 @@ export class Footwork {
     const swingSec = period - stanceSec;
     const walkDur = Math.max(6, Math.round(swingSec * 60));
     const walkLead = Math.max(0, stanceSec / 2 - STEP_LEAD);
+    this.gaitDur = walkDur;
+    this.gaitLead = walkLead;
     // Crossing guard: if the feet are lining up (fast turns), force a corrective step.
     const lL = toLocal(this.L.pos, body, new Vector3());
     const lR = toLocal(this.R.pos, body, new Vector3());
+    let crossed: Side | null = null;
     if (lL.x - lR.x < (walking ? 0.06 : 0.12)) {
       const worse: Side = errors.L >= errors.R ? 'L' : 'R';
       errors[worse] = Math.max(errors[worse], FORCE_THRESHOLD + 0.01);
+      crossed = worse;
     }
 
     // Who should step first?
@@ -220,7 +266,7 @@ export class Footwork {
     const thr = ((moving ? MOVING_THRESHOLD : IDLE_THRESHOLD) + speed * 0.06) * stride;
 
     if (gaitOn) {
-      this.updateGait(body, homes, errors, walkDur, walkLead, run, period, stanceSec);
+      this.updateGait(body, homes, errors, walkDur, walkLead, run, period, stanceSec, crossed);
       this.wasGait = true;
       return;
     }
@@ -236,6 +282,7 @@ export class Footwork {
       f.from.copy(f.pos);
       f.t = 0;
       f.lead = 0;
+      f.gait = false;
       f.dur = forced ? Math.max(4, dur - 2) : dur;
       f.height = this.style.stepHeight * this.mods.stepHeight * (retreat ? 0.6 : 1) * (0.6 + 0.6 * speedFrac) * Math.min(1, errors[side] / (0.15 * stride));
       // Aim where the home will be when the foot lands.
@@ -266,7 +313,7 @@ export class Footwork {
    * steady: each foot lifts once per cycle, half a cycle apart, swings for `dur` frames
    * and lands `lead` seconds of travel ahead of its home — under the hips mid-stance.
    */
-  private updateGait(body: Body, homes: Record<Side, Vector3>, errors: Record<Side, number>, dur: number, lead: number, run: number, period: number, stanceSec: number) {
+  private updateGait(body: Body, homes: Record<Side, Vector3>, errors: Record<Side, number>, dur: number, lead: number, run: number, period: number, stanceSec: number, crossedLegs: Side | null = null) {
     const sc = body.scale ?? 1;
     const speed = Math.hypot(body.walkVel.x, body.walkVel.z) / sc;
     if (!this.wasGait) {
@@ -284,6 +331,7 @@ export class Footwork {
       f.t = 0;
       f.dur = dur;
       f.lead = lead;
+      f.gait = true;
       f.height = (0.045 + 0.02 * speed + 0.07 * run) * Math.min(1.4, this.mods.stepHeight);
       f.to.copy(homes[side]).addScaledVector(body.walkVel, dur / 60 + lead);
       f.stepping = true;
@@ -306,13 +354,21 @@ export class Footwork {
       const dz = (f.pos.z - homes[side].z) / sc;
       const behind = -(dx * vx + dz * vz);
       const aside = Math.abs(dx * vz - dz * vx);
-      const wayOff = errors[side] > FORCE_THRESHOLD + 0.3;
+      // Turning over planted feet has crossed the legs: step out of it now.
+      const wayOff = errors[side] > FORCE_THRESHOLD + 0.3 || side === crossedLegs;
       if (side === this.lastStepper && !wayOff) continue;
       if (behind > limit || aside > 0.3 || wayOff) {
         lift(side);
         this.phase = side === 'L' ? 0 : 0.5;
       }
     }
+  }
+
+  /** Are the feet on the wrong sides of each other (relative to where the body faces)? */
+  legsCrossed(body: Body): boolean {
+    const l = toLocal(this.L.pos, body, _v).x;
+    const r = toLocal(this.R.pos, body, _v).x;
+    return l - r < 0.04;
   }
 
   /** Ankle IK target in fighter-local space, including step lift and an extra raise (toes). */
@@ -348,6 +404,8 @@ export class Footwork {
     this.shiftTarget.z = tz;
     const [hlx, hlz] = this.homeLocal('L', offX, offZ);
     const [hrx, hrz] = this.homeLocal('R', offX, offZ);
-    return [cx - (hlx + hrx) / 2 + offX, cz - (hlz + hrz) / 2 + offZ];
+    // The hips stay over the feet, but never get thrown far off the body's own centre.
+    const lim = 0.2;
+    return [Math.max(-lim, Math.min(lim, cx - (hlx + hrx) / 2)) + offX, Math.max(-lim, Math.min(lim, cz - (hlz + hrz) / 2)) + offZ];
   }
 }

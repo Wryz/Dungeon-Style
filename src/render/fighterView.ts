@@ -356,7 +356,8 @@ export class FighterView {
    * opponent. Worked out in the fighter's frame from the posed weapon direction, so
    * body sway, footwork or size never twist it around the haft.
    */
-  updateWeapon(f: Fighter, _length: number) {
+  /** @param simDt sim time advanced since the last call (0 on a render-only frame). */
+  updateWeapon(f: Fighter, _length: number, simDt = 1 / 60) {
     const w = this.weaponMesh;
     if (!w) return;
     const fore = this.bones.foreArmR;
@@ -366,11 +367,18 @@ export class FighterView {
     w.scale.setScalar(f.scale);
 
     const b = _lb.copy(f.pose.blade);
-    const turn = _mv.subVectors(b, this.prevBlade);
     const fresh = this.prevBlade.lengthSq() === 0;
+    // The edge only re-decides when the sim moved: on a high-refresh screen the frames in
+    // between see no change and would otherwise flip it to "at rest" every other frame.
+    if (simDt <= 0 && !fresh && this.edge.lengthSq() > 0) {
+      this.orientWeapon(f, b, w);
+      return;
+    }
+    const turn = _mv.subVectors(b, this.prevBlade);
     this.prevBlade.copy(b);
     turn.addScaledVector(b, -turn.dot(b));
-    const swinging = !fresh && turn.length() > 0.03;
+    const steps = Math.max(1, simDt * 60);
+    const swinging = !fresh && turn.length() / steps > 0.03;
     let want: Vector3;
     if (swinging) want = turn.normalize();
     else {
@@ -380,9 +388,16 @@ export class FighterView {
       want.normalize();
     }
     if (this.edge.lengthSq() === 0 || fresh) this.edge.copy(want);
-    else this.edge.lerp(want, swinging ? 0.35 : 0.12);
+    else this.edge.lerp(want, 1 - Math.pow(1 - (swinging ? 0.35 : 0.12), steps));
     this.edge.addScaledVector(b, -this.edge.dot(b));
     if (this.edge.lengthSq() < 1e-6) this.edge.copy(want);
+    this.edge.normalize();
+    this.orientWeapon(f, b, w);
+  }
+
+  private orientWeapon(f: Fighter, b: Vector3, w: Group) {
+    this.edge.addScaledVector(b, -this.edge.dot(b));
+    if (this.edge.lengthSq() < 1e-6) return;
     this.edge.normalize();
 
     // Fighter frame -> world (yaw about Y).

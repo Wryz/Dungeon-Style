@@ -15,15 +15,18 @@ export function ease(kind: Ease, t: number): number {
   switch (kind) {
     case 'linear':
       return t;
+    // Quadratic rather than cubic: a cubic crams most of a short segment into its first
+    // or last frame, which drove fists and feet to 30-40 m/s for a frame (real punches
+    // peak around 7-12 m/s, kicks 12-17).
     case 'in':
-      return t * t * t;
+      return t * t;
     case 'out':
-      return 1 - Math.pow(1 - t, 3);
+      return 1 - (1 - t) * (1 - t);
     case 'inOut':
       return smoothstep(t);
     case 'snap':
-      // Very fast start, used for strikes: most of the travel happens in the first third.
-      return 1 - Math.pow(1 - t, 5);
+      // Fast start, used for strikes: most of the travel happens early.
+      return 1 - Math.pow(1 - t, 3);
   }
 }
 

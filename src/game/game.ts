@@ -1236,7 +1236,7 @@ export class Game {
     for (const [f, view] of this.views) {
       view.setWeapon(f.isSevered('foreArmR') ? null : f.weapon);
       if (f.weapon) {
-        view.updateWeapon(f, f.weapon.length);
+        view.updateWeapon(f, f.weapon.length, simDt);
         // A bloodied blade drips for a while.
         if (simDt > 0 && view.weaponBlood > 0.08 && this.blood.enabled) {
           view.weaponBlood *= 0.999;

@@ -196,6 +196,33 @@ one still standing, so they fall against them, not through them. `tests/collisio
 runs AI-vs-AI fights across arenas and fails if bodies, limbs or weapons pass through
 each other or the scenery.
 
+**Human timing and motion.**
+- **Defence:** people read a strike and start moving a beat before it lands (~150–200 ms),
+  timed to arrive with it, rather than snapping out of the way in the last frames.
+- **Hit reactions:** the head goes with the blow at once (the ragdoll takes the impulse),
+  and the rest of the body follows over ~70–100 ms.
+- **Strike speed:** strike keyframes ease in and out smoothly, so fists and feet peak
+  around real speeds instead of jumping in a single frame.
+- **Footwork:** a stride lifted at walking pace quickens with the cadence when you break
+  into a run (no lurch). Feet step round each other when turning, and they stay planted
+  and step to recover under a hit reaction (no gliding). The turn slows while the legs
+  are crossed.
+- **Arms:** the limb solver keeps an arm's roll and elbow plane continuous, so elbows
+  don't flip from frame to frame. Elbows go back when the hands are low, out and
+  forward when they're raised.
+- **Two-handed weapons:** the lead hand slides along the haft to wherever it can reach,
+  and running with one doesn't pump the shoulders.
+
+**Fighting logic.**
+- **Steering:** enemies walk round props instead of pressing into them.
+- **Blocking:** enemies only block what a guard can stop, and need an arm to do it. An
+  armless enemy kicks.
+- **Armed moves:** a weapon technique wins a name clash with an unarmed move ('sweep'
+  is an axe swing when armed, not a leg sweep).
+- **Dodges:** a dodge only counts if the strike was really coming.
+- **Same-frame hits:** a second contact on the same frame can't land on someone already
+  down. `tests/review.test.ts` covers these.
+
 ## Architecture
 
 ```

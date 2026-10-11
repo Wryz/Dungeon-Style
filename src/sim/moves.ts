@@ -102,8 +102,10 @@ const HEAD: Aim = { id: 'head', weight: 3 };
 
 const strike = (wind: PoseName, ext: PoseName, recover: PoseName = 'guard', follow?: PoseName): Key[] => {
   const keys: Key[] = [
-    { at: ['s', 0.55], pose: wind, ease: 'out' },
-    { at: ['a', 0], pose: ext, ease: 'out' },
+    // Smooth in and out of each key: the fist gathers, then accelerates through the
+    // line and arrives (no segment starting at full speed from a standstill).
+    { at: ['s', 0.55], pose: wind, ease: 'inOut' },
+    { at: ['a', 0], pose: ext, ease: 'inOut' },
   ];
   if (follow) keys.push({ at: ['a', 1], pose: follow, ease: 'out' });
   else keys.push({ at: ['a', 1], pose: ext });
@@ -151,9 +153,9 @@ export const PLAYER_MOVES: Record<string, MoveDef> = {
     cancel: { into: ['cross', 'lowKick'], from: 15, to: 33 },
     aims: [HEAD, { ...BODY_PUNCH(0.38), id: 'liver' }],
     keys: [
-      { at: ['s', 0.45], pose: 'hookWind', ease: 'out' },
-      { at: ['s', 0.85], pose: 'hookMid', ease: 'in' },
-      { at: ['a', 0], pose: 'hookExt', ease: 'linear' },
+      { at: ['s', 0.4], pose: 'hookWind', ease: 'inOut' },
+      { at: ['s', 0.72], pose: 'hookMid', ease: 'in' },
+      { at: ['a', 0], pose: 'hookExt', ease: 'out' },
       { at: ['a', 1], pose: 'hookFollow', ease: 'out' },
       { at: ['r', 0.6], pose: 'guard', ease: 'out' },
     ],
@@ -170,7 +172,7 @@ export const PLAYER_MOVES: Record<string, MoveDef> = {
     cancel: { into: ['cross', 'lowKick'], from: 13, to: 30 },
     aims: [HEAD, { ...BODY_PUNCH(0.38), id: 'liver' }],
     keys: [
-      { at: ['s', 0.4], pose: 'hookWind', ease: 'out' },
+      { at: ['s', 0.4], pose: 'hookWind', ease: 'inOut' },
       { at: ['s', 0.85], pose: 'hookMid', ease: 'in' },
       { at: ['a', 0], pose: 'hookExt', ease: 'linear' },
       { at: ['a', 1], pose: 'hookFollow', ease: 'out' },
@@ -200,7 +202,7 @@ export const PLAYER_MOVES: Record<string, MoveDef> = {
     blockable: true,
     keys: [
       { at: ['s', 0.3], pose: 'upperWind', ease: 'out' },
-      { at: ['a', 0], pose: 'upperExt', ease: 'snap' },
+      { at: ['a', 0], pose: 'upperExt', ease: 'inOut' },
       { at: ['a', 1], pose: 'upperExt' },
       { at: ['r', 0.6], pose: 'guard', ease: 'out' },
     ],
@@ -235,7 +237,7 @@ export const PLAYER_MOVES: Record<string, MoveDef> = {
     ],
     keys: [
       { at: ['s', 0.6], pose: 'kickChamber', ease: 'out' },
-      { at: ['a', 0], pose: 'kickExt', ease: 'snap' },
+      { at: ['a', 0], pose: 'kickExt', ease: 'inOut' },
       { at: ['a', 1], pose: 'kickExt' },
       { at: ['r', 0.4], pose: 'kickChamber', ease: 'inOut' },
       { at: ['r', 0.95], pose: 'guard', ease: 'inOut' },
@@ -256,8 +258,8 @@ export const PLAYER_MOVES: Record<string, MoveDef> = {
       { id: 'ribs', weight: 2.5, offset: [0.04, 0.58, -0.02], height: 'mid', add: { root: [0, 0.03, 0], pelvis: [0, 0.3, 0], abdomen: [0, 0, -0.16] } },
     ],
     keys: [
-      { at: ['s', 0.45], pose: 'lowKickWind', ease: 'out' },
-      { at: ['s', 0.85], pose: 'lowKickTurn', ease: 'inOut' },
+      { at: ['s', 0.35], pose: 'lowKickWind', ease: 'inOut' },
+      { at: ['s', 0.62], pose: 'lowKickTurn', ease: 'in' },
       { at: ['a', 0], pose: 'lowKickExt', ease: 'out' },
       { at: ['a', 1], pose: 'lowKickExt' },
       { at: ['r', 0.45], pose: 'lowKickRecover', ease: 'inOut' },
@@ -280,7 +282,7 @@ export const PLAYER_MOVES: Record<string, MoveDef> = {
     keys: [
       { at: ['s', 0.3], pose: 'flyCrouch', ease: 'out' },
       { at: ['s', 0.65], pose: 'flyAir', ease: 'out' },
-      { at: ['a', 0], pose: 'flyExt', ease: 'snap' },
+      { at: ['a', 0], pose: 'flyExt', ease: 'inOut' },
       { at: ['a', 1], pose: 'flyExt' },
       { at: ['r', 0.35], pose: 'flyLand', ease: 'in' },
       { at: ['r', 0.95], pose: 'guard', ease: 'inOut' },
@@ -296,7 +298,7 @@ export const PLAYER_MOVES: Record<string, MoveDef> = {
     evades: { from: 2, to: 18, heights: ['high'] },
     blockable: false,
     keys: [
-      { at: ['s', 0.6], pose: 'slideKickExt', ease: 'out' },
+      { at: ['s', 0.6], pose: 'slideKickExt', ease: 'inOut' },
       { at: ['a', 0], pose: 'slideKickExt' },
       { at: ['a', 1], pose: 'slideKickExt' },
       { at: ['r', 0.5], pose: 'kneel', ease: 'inOut' },
@@ -319,7 +321,7 @@ export const ENEMY_MOVES: Record<string, MoveDef> = {
     aims: [HEAD, { id: 'chin', weight: 1.5, offset: [0.03, -0.06, 0] }],
     keys: [
       { at: ['s', 0.7], pose: 'straightWind', ease: 'out' },
-      { at: ['a', 0], pose: 'straightExt', ease: 'snap' },
+      { at: ['a', 0], pose: 'straightExt', ease: 'inOut' },
       { at: ['a', 1], pose: 'straightExt' },
       { at: ['r', 0.85], pose: 'guard', ease: 'inOut' },
     ],
@@ -353,7 +355,7 @@ export const ENEMY_MOVES: Record<string, MoveDef> = {
     blockable: true,
     keys: [
       { at: ['s', 0.7], pose: 'bodyWind', ease: 'out' },
-      { at: ['a', 0], pose: 'bodyExt', ease: 'snap' },
+      { at: ['a', 0], pose: 'bodyExt', ease: 'inOut' },
       { at: ['a', 1], pose: 'bodyExt' },
       { at: ['r', 0.85], pose: 'guard', ease: 'inOut' },
     ],
@@ -383,10 +385,10 @@ ENEMY_MOVES.hookChain = { ...ENEMY_MOVES.hook, id: 'hookChain', startup: 17, arm
 const P = PLAYER_MOVES;
 const E = ENEMY_MOVES;
 // Rookie: a telegraphed jab and the straight / body shot.
-E.rookieJab = { ...P.jab, id: 'rookieJab', name: 'Jab', startup: 13, recovery: 15, damage: 5, reach: 1.45, cancel: undefined, aims: [{ id: 'head', weight: 3 }] };
+E.rookieJab = { ...P.jab, id: 'rookieJab', name: 'Jab', startup: 13, recovery: 15, damage: 5, reach: 1.45, cancel: { into: ['straight', 'body'], from: 15, to: 28 }, aims: [{ id: 'head', weight: 3 }] };
 // Kicker (Muay Thai): push kick, low kick, body roundhouse.
 E.teep = { ...P.frontKick, id: 'teep', name: 'Teep', startup: 19, recovery: 20, damage: 8, reach: 1.35, guardDamage: 30, aims: [{ id: 'stomach', weight: 1 }] };
-E.kLowKick = { ...P.lowKick, id: 'kLowKick', name: 'Low Kick', startup: 21, recovery: 20, damage: 9, poiseDamage: 40, aims: [{ id: 'thigh', weight: 1 }] };
+E.kLowKick = { ...P.lowKick, id: 'kLowKick', name: 'Low Kick', startup: 21, recovery: 20, damage: 9, poiseDamage: 40, cancel: { into: ['straight'], from: 24, to: 38 }, aims: [{ id: 'thigh', weight: 1 }] };
 E.roundhouse = {
   ...P.lowKick,
   id: 'roundhouse',
@@ -402,6 +404,8 @@ E.roundhouse = {
   impulse: 26,
   aims: [{ ...P.lowKick.aims![2], weight: 1 }],
   armor: [8, 25],
+  // To the ribs: an arm can take it (unlike a kick to the thigh).
+  blockable: true,
 };
 // Bruiser: slow, armored, hits like a truck.
 E.bruiserHook = { ...E.hook, id: 'bruiserHook', name: 'Sledge', startup: 31, recovery: 28, damage: 18, impulse: 34, knockback: 3.4, hitstop: 12, shake: 0.6, armor: [5, 31], poiseDamage: 70 };

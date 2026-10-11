@@ -96,6 +96,7 @@ export function blendPose(a: Pose, b: Pose, t: number, out: Pose): Pose {
 }
 
 const _dirAxis = new Vector3();
+const _back = new Vector3();
 const _from = new Vector3();
 const _q = new Quaternion();
 
@@ -264,11 +265,28 @@ function solveTwoBone(
   // gives an unstable plane, so bias it downward (elbows/knees default to hanging).
   _hint.copy(hint).normalize();
   _axis.crossVectors(_d, _hint);
-  if (_axis.lengthSq() < 0.12) {
+  const unstable = _axis.lengthSq();
+  if (unstable < 0.12) {
     // Prefer "down" (perpendicular to the reach); for a near-vertical reach use "back".
-    _axis.set(0, -1, 0).addScaledVector(_d, _d.y);
-    if (_axis.lengthSq() < 0.05) _axis.set(0, 0, -1).addScaledVector(_d, -_d.z);
-    _hint.addScaledVector(_axis.normalize(), 0.9).normalize();
+    // Fade the bias in as the hint lines up with the reach — switching it on at a hard
+    // threshold flips the limb's roll (and the elbow / knee plane) from one frame to the next.
+    // (Both blended, so a limb hanging straight down doesn't flip between them.)
+    if (bendSign < 0) {
+      // Arms: elbows go back when the hand is low, out and forward when it's raised
+      // (never back behind a hand held up by the face).
+      const sx = Math.sign(hint.x) || 1;
+      const up = (_d.y + 1) / 2;
+      _back.set(sx * (0.3 + 0.5 * up), 0, -1 + 1.6 * up);
+      _axis.copy(_back).addScaledVector(_d, -_d.dot(_back));
+    } else {
+      _axis.set(0, -1, 0).addScaledVector(_d, _d.y);
+      const down = _axis.lengthSq();
+      _back.set(0, 0, -1).addScaledVector(_d, _d.z);
+      _axis.addScaledVector(_back, Math.max(0, 1 - down / 0.3));
+    }
+    if (_axis.lengthSq() < 1e-6) _axis.set(1, 0, 0);
+    const w = 1 - unstable / 0.12;
+    _hint.addScaledVector(_axis.normalize(), 0.9 * w * w * (3 - 2 * w)).normalize();
     _axis.crossVectors(_d, _hint);
   }
   if (_axis.lengthSq() < 1e-6) {
@@ -286,8 +304,10 @@ function solveTwoBone(
 
   // Upper bone frame: local -Y along the bone, local +Z toward knee (legs) / away from elbow (arms).
   _yA.copy(_thighDir).negate();
-  // Perpendicular component of the hint.
-  _zA.copy(_hint).addScaledVector(_yA, -_hint.dot(_yA));
+  // In the bend plane, perpendicular to the bone, on the hint's side. (Taking the hint's
+  // own perpendicular component instead flips the bone's roll 180 degrees whenever the
+  // bend carries the bone past the hint.)
+  _zA.crossVectors(_axis, _thighDir);
   if (_zA.lengthSq() < 1e-6) _zA.set(0, 0, 1);
   _zA.normalize().multiplyScalar(bendSign);
   _xA.crossVectors(_yA, _zA).normalize();

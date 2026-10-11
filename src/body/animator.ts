@@ -18,9 +18,15 @@ export class Animator {
   private mode: 'track' | 'procedural' = 'procedural';
   private fadeLen = 6;
   private procT = 0;
+  /**
+   * The pose actually shown (after layers on top of the animation: legs stepping under
+   * a punch, the second hand on the haft, a blade kept clear). New tracks start from it,
+   * so nothing jumps on their first frame.
+   */
+  source: Pose | null = null;
 
   play(keys: TrackKey[]) {
-    copyPose(this.out, this.snapshot);
+    copyPose(this.source ?? this.out, this.snapshot);
     this.keys = keys;
     this.mode = 'track';
   }
@@ -32,7 +38,7 @@ export class Animator {
 
   /** Switch to a procedurally generated pose, cross-fading over `fadeLen` frames. */
   procedural(fadeLen = 6) {
-    copyPose(this.out, this.snapshot);
+    copyPose(this.source ?? this.out, this.snapshot);
     this.mode = 'procedural';
     this.fadeLen = Math.max(1, fadeLen);
     this.procT = 0;
