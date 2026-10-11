@@ -156,7 +156,8 @@ export class Footwork {
       homes[f.side].copy(_home);
       errors[f.side] = Math.hypot(_home.x - f.pos.x, _home.z - f.pos.z);
       errors[f.side] /= sc;
-      if (errors[f.side] > SNAP_THRESHOLD) {
+      // A foot already on its way only snaps after a real teleport (respawn, shove).
+      if (errors[f.side] > (f.stepping ? SNAP_THRESHOLD * 2.2 : SNAP_THRESHOLD * (this.mods.gait > 0.5 ? 1.5 : 1))) {
         f.pos.copy(_home);
         f.stepping = false;
         errors[f.side] = 0;
@@ -297,7 +298,7 @@ export class Footwork {
     for (const side of ['L', 'R'] as const) {
       const f = this.foot(side);
       const other = this.foot(side === 'L' ? 'R' : 'L');
-      if (f.stepping || (other.stepping && other.t < 0.45)) continue;
+      if (f.stepping || (other.stepping && other.t < 0.45 && errors[side] < 0.55)) continue;
       const dx = (f.pos.x - homes[side].x) / sc;
       const dz = (f.pos.z - homes[side].z) / sc;
       const behind = -(dx * vx + dz * vz);

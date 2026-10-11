@@ -78,9 +78,9 @@ export const FACING = {
   /** Offsets smaller than this are tolerated while standing still. */
   idleDeadzone: 0.14,
   /** Closer than this, the fighter squares up to its target (soft lock-on)... */
-  lockRange: 4.6,
+  lockRange: 2.7,
   /** ...and stays locked until further than this (no flip-flopping at the edge). */
-  unlockRange: 5.2,
+  unlockRange: 3.2,
   /** Turn rate while walking freely (rad/frame). */
   freeTurnRate: 0.2,
 };
@@ -321,7 +321,9 @@ export class CombatSim {
   private locomote(f: Fighter) {
     const lockT = f.target && f.target.alive ? f.target : null;
     const lockD = lockT ? f.distanceTo(lockT) : Infinity;
-    f.lockedOn = lockD < (f.lockedOn ? FACING.unlockRange : FACING.lockRange);
+    // Squaring up to a giant happens further out.
+    const big = lockT ? Math.max(f.scale, lockT.scale) : 1;
+    f.lockedOn = lockD < (f.lockedOn ? FACING.unlockRange : FACING.lockRange) * big;
     const external = this.externalKnockdown && (f.state === 'knockdown' || f.state === 'ko');
     if (!external) {
       f.pos.x += f.vel.x * DT;

@@ -4,14 +4,11 @@ import {
   Color,
   CylinderGeometry,
   Group,
-  Matrix4,
   Mesh,
   MeshStandardMaterial,
   RingGeometry,
-  Vector3,
 } from 'three';
-import { FIST_OFFSET, SKELETON } from '../body/skeleton';
-import { WRIST_ANGLE, type WeaponDef } from '../sim/weapons';
+import type { WeaponDef } from '../sim/weapons';
 
 const MATS: Record<string, { color: string; metalness?: number; roughness?: number }> = {
   steel: { color: '#eef2f5', metalness: 0.3, roughness: 0.25 },
@@ -98,24 +95,6 @@ export function buildWeapon(def: WeaponDef): Group {
     }
   }
   return g;
-}
-
-const _m = new Matrix4();
-
-/**
- * Mounts a weapon on the right forearm group: at the fist, running along the same
- * direction the sim uses for hit detection (see `bladeFrame`).
- */
-export function mountWeapon(group: Group) {
-  const c = Math.cos(WRIST_ANGLE);
-  const s = Math.sin(WRIST_ANGLE);
-  // Forearm frame: -Y along the bone; the blade leans from it toward -Z.
-  const yw = new Vector3(0, -c, -s);
-  const xw = new Vector3(1, 0, 0);
-  const zw = new Vector3().crossVectors(xw, yw);
-  _m.makeBasis(xw, yw, zw);
-  group.quaternion.setFromRotationMatrix(_m);
-  group.position.set(0, -(SKELETON.foreArmR.length + FIST_OFFSET), 0);
 }
 
 /** A weapon lying on the floor, with a soft glow ring so it reads as a pickup. */

@@ -41,7 +41,7 @@ describe('footwork', () => {
 
   const firstStep = (dir: [number, number]) => {
     // Inside lock range: boxing footwork (out of range the fighter just walks).
-    const { sim, player } = setup(3);
+    const { sim, player } = setup(2.2);
     player.footwork.steps = 0;
     player.footwork.firstStepper = null;
     // Player faces +X: forward = +X, the fighter's left (+X local) = world -Z.

@@ -14,10 +14,11 @@ import {
   resolvePose,
   type Rig,
   type BoneName,
+  DEFAULT_BLADE,
   solveArm,
   solveLegs,
 } from '../body/skeleton';
-import { bladeFrame, WEAPON_MOVES, type WeaponDef, type Wound } from './weapons';
+import { bladeFrame, SECOND_HAND, WEAPON_MOVES, type WeaponDef, type Wound } from './weapons';
 
 export interface FighterStyle {
   footwork: FootworkStyle;
@@ -431,8 +432,8 @@ export class Fighter {
     const swinging = this.state === 'attack' && !!this.move?.weapon;
     if (!swinging && this.state !== 'idle' && this.state !== 'walk' && this.state !== 'defend' && this.state !== 'blockstun') return;
     forwardKinematics(this.pose, _localRig);
-    bladeFrame({ rig: _localRig, scale: 1 }, _grip, _dir);
-    _grip.addScaledVector(_dir, -0.15);
+    bladeFrame({ rig: _localRig, pose: this.pose, yaw: 0, scale: 1 }, _grip, _dir);
+    _grip.addScaledVector(_dir, -SECOND_HAND);
     solveArm(this.pose, 'L', { at: [_grip.x, _grip.y, _grip.z], hint: [0.5, -1, -0.2] });
   }
 
@@ -442,8 +443,9 @@ export class Fighter {
       !!t && t.state === 'attack' && !!t.move && t.stateFrame < t.move.startup + t.move.active && dist <= t.move.reach + 0.5;
     const { weights, mods } = targetProfile(
       {
-        // Locked on, you never break into a run: fighting footwork whatever the range.
-        dist: this.lockedOn ? Math.min(dist, ZONE_RANGES.outside) : dist,
+        // Locked on: fighting footwork whatever the range. Not locked on: you just walk
+        // (or run) like a person, however close someone is.
+        dist: this.lockedOn ? Math.min(dist, ZONE_RANGES.outside) : Math.max(dist, ZONE_RANGES.outsideBlend),
         hpFrac: this.hp / this.stats.maxHp,
         guardFrac: this.guard / this.stats.maxGuard,
         framesSinceHit: this.framesSinceHit,
@@ -533,6 +535,9 @@ export class Fighter {
       handR: { at: mix(guardR.at, relaxedR), hint: mix(guardR.hint ?? [-0.35, -1, 0], hintR) },
       footL: { at: footL, hint: KNEE_HINT.L },
       footR: { at: footR, hint: kneeR },
+      // Weapon: on guard in a fight; walking or running, a one-hander hangs point-down
+      // and forward at the side, a two-hander is carried across the body.
+      blade: this.weapon ? mix(G.blade ?? DEFAULT_BLADE, this.weapon.style === 'oneHand' ? [0.05, -0.55, 0.83] : (G.blade ?? DEFAULT_BLADE)) : undefined,
     };
     this.idle.apply(spec, (1 - m * 0.7) * f);
     return resolvePose(spec, this.locoPose);

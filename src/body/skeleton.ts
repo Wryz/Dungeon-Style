@@ -68,23 +68,32 @@ export interface Pose {
   root: Vector3;
   /** Local rotation of each bone relative to its parent (pelvis: relative to fighter). */
   rot: Record<BoneName, Quaternion>;
+  /** Direction a held weapon points from the rear fist (fighter-local, unit). */
+  blade: Vector3;
 }
+
+/** Weapon held up and forward when a pose doesn't say otherwise. */
+export const DEFAULT_BLADE: V3 = [0.1, 0.72, 0.68];
 
 export function makePose(): Pose {
   const rot = {} as Record<BoneName, Quaternion>;
   for (const b of BONES) rot[b] = new Quaternion();
-  return { root: new Vector3(0, STAND_HEIGHT, 0), rot };
+  return { root: new Vector3(0, STAND_HEIGHT, 0), rot, blade: new Vector3(...DEFAULT_BLADE).normalize() };
 }
 
 export function copyPose(src: Pose, out: Pose): Pose {
   out.root.copy(src.root);
   for (const b of BONES) out.rot[b].copy(src.rot[b]);
+  out.blade.copy(src.blade);
   return out;
 }
 
 export function blendPose(a: Pose, b: Pose, t: number, out: Pose): Pose {
   out.root.lerpVectors(a.root, b.root, t);
   for (const n of BONES) out.rot[n].slerpQuaternions(a.rot[n], b.rot[n], t);
+  out.blade.lerpVectors(a.blade, b.blade, t);
+  if (out.blade.lengthSq() < 1e-4) out.blade.copy(b.blade);
+  out.blade.normalize();
   return out;
 }
 
@@ -180,6 +189,8 @@ export interface PoseSpec {
   footR?: LimbTarget;
   /** Direct rotations for limbs (used by limp / ragdoll-ish poses instead of IK). */
   rot?: Partial<Record<BoneName, V3>>;
+  /** Where a held weapon points from the rear fist (fighter-local direction). */
+  blade?: V3;
 }
 
 const _e = new Euler();
@@ -277,6 +288,7 @@ function solveTwoBone(
 export function resolvePose(spec: PoseSpec, out: Pose = makePose()): Pose {
   const r = spec.root ?? [0, STAND_HEIGHT, 0];
   out.root.set(r[0], r[1], r[2]);
+  out.blade.set(...(spec.blade ?? DEFAULT_BLADE)).normalize();
   setEuler(out.rot.pelvis, spec.pelvis);
   setEuler(out.rot.abdomen, spec.abdomen);
   setEuler(out.rot.chest, spec.chest);

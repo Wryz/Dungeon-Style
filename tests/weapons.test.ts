@@ -47,9 +47,9 @@ describe('weapons', () => {
   });
 
   it('a weapon outreaches a fist', () => {
-    const { sim, player } = duel('machete', 1.75);
-    expect(hits(swing(sim, player, 'slash')).length).toBe(1);
-    const unarmed = duel(null, 1.75);
+    const { sim, player } = duel('machete', 1.85);
+    expect(hits(swing(sim, player, 'chop')).length).toBe(1);
+    const unarmed = duel(null, 1.85);
     unarmed.player.press('rpunch');
     const ev: CombatEvent[] = [];
     for (let i = 0; i < 40; i++) ev.push(...unarmed.sim.step());

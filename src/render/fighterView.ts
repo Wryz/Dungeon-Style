@@ -1,9 +1,11 @@
-import { BoxGeometry, BufferGeometry, Color, Group, Mesh, MeshStandardMaterial, Vector3 } from 'three';
+import { BoxGeometry, BufferGeometry, Color, Group, Matrix4, Mesh, MeshStandardMaterial, Vector3 } from 'three';
 import type { Ragdoll } from '../body/ragdoll';
 import { type BoneName, BONES, SKELETON } from '../body/skeleton';
 import type { Fighter } from '../sim/fighter';
 import type { WeaponDef, Wound } from '../sim/weapons';
-import { buildWeapon, mountWeapon } from './weaponView';
+import { buildWeapon } from './weaponView';
+import { bladeFrame } from '../sim/weapons';
+import { FIST_OFFSET } from '../body/skeleton';
 
 export interface Palette {
   skin: string;
@@ -274,10 +276,49 @@ export class FighterView {
     }
     if (!def) return;
     const holder = new Group();
-    mountWeapon(holder);
     holder.add(buildWeapon(def));
-    this.bones.foreArmR.add(holder);
+    this.root.add(holder);
     this.weaponMesh = holder;
+    this.edge.set(0, 0, 0);
+  }
+
+  private readonly edge = new Vector3();
+  private readonly prevTip = new Vector3();
+
+  /**
+   * Places the weapon in the (rendered) rear fist, pointing where the pose says, with
+   * the edge turned to lead the swing.
+   */
+  updateWeapon(f: Fighter, length: number) {
+    const w = this.weaponMesh;
+    if (!w) return;
+    bladeFrame(f, _grip, _dir);
+    const fore = this.bones.foreArmR;
+    fore.updateMatrixWorld();
+    fore.localToWorld(_grip.set(0, -(SKELETON.foreArmR.length + FIST_OFFSET), 0));
+    w.position.copy(_grip);
+    w.scale.setScalar(f.scale);
+    // Edge leads the motion of the tip; at rest it faces the way the fighter faces.
+    const tip = _tip.copy(_grip).addScaledVector(_dir, length * f.scale);
+    const move = _mv.subVectors(tip, this.prevTip);
+    this.prevTip.copy(tip);
+    move.addScaledVector(_dir, -move.dot(_dir));
+    let want: Vector3;
+    if (move.lengthSq() > 0.004 * 0.004 && this.edge.lengthSq() > 0) want = move.normalize();
+    else {
+      want = _fw.set(Math.sin(f.yaw), 0, Math.cos(f.yaw));
+      want.addScaledVector(_dir, -want.dot(_dir));
+      if (want.lengthSq() < 1e-4) want.set(0, 1, 0).addScaledVector(_dir, -_dir.y);
+      want.normalize();
+    }
+    if (this.edge.lengthSq() === 0) this.edge.copy(want);
+    else this.edge.lerp(want, 0.35);
+    this.edge.addScaledVector(_dir, -this.edge.dot(_dir));
+    if (this.edge.lengthSq() < 1e-6) this.edge.copy(want);
+    this.edge.normalize();
+    _x.crossVectors(_dir, this.edge).normalize();
+    _mat.makeBasis(_x, _dir, this.edge);
+    w.quaternion.setFromRotationMatrix(_mat);
   }
 
   /** World position of a wound (where it bleeds from). */
@@ -438,3 +479,11 @@ function surfacePoint(bone: BoneName, local: [number, number, number]): { p: [nu
   n[axis] = sgn;
   return { p, n };
 }
+
+const _grip = new Vector3();
+const _dir = new Vector3();
+const _tip = new Vector3();
+const _mv = new Vector3();
+const _fw = new Vector3();
+const _x = new Vector3();
+const _mat = new Matrix4();

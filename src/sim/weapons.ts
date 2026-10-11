@@ -43,8 +43,6 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   club: { id: 'club', name: 'Spiked Club', style: 'twoHand', edge: 'blunt', length: 1.0, strikeFrom: 0.35, radius: 0.11, damageMul: 1.6, cut: 0.3, cleave: 0 },
 };
 
-/** Angle (rad) the blade leans away from the line of the forearm, toward the thumb. */
-export const WRIST_ANGLE = 0.55;
 
 const HEAD: Aim = { id: 'head', weight: 3 };
 const BODY: Aim = { id: 'body', weight: 2, offset: [0.02, -0.32, -0.04], height: 'mid', add: { root: [0, -0.06, 0], abdomen: [0.12, 0, 0] } };
@@ -76,7 +74,7 @@ export const WEAPON_MOVES: Record<string, MoveDef> = {
     startup: 10, active: 5, recovery: 17,
     height: 'high', kind: 'hook', weight: 'medium',
     damage: 8, guardDamage: 14, poiseDamage: 22, hitstun: 22, blockstun: 14,
-    knockback: 1.4, impulse: 16, hitstop: 7, shake: 0.24, radius: 0, reach: 1.8,
+    knockback: 1.4, impulse: 16, hitstop: 7, shake: 0.24, radius: 0, reach: 1.6,
     lunge: { from: 2, to: 10, distance: 0.2 },
     cancel: { into: ['backslash', 'chop', 'frontKick', 'lowKick'], from: 13, to: 30 },
     aims: [HEAD, BODY],
@@ -88,7 +86,7 @@ export const WEAPON_MOVES: Record<string, MoveDef> = {
     startup: 8, active: 5, recovery: 17,
     height: 'high', kind: 'hook', weight: 'medium',
     damage: 7, guardDamage: 12, poiseDamage: 20, hitstun: 22, blockstun: 12,
-    knockback: 1.4, impulse: 15, hitstop: 7, shake: 0.22, radius: 0, reach: 1.65,
+    knockback: 1.4, impulse: 15, hitstop: 7, shake: 0.22, radius: 0, reach: 1.55,
     lunge: { from: 1, to: 8, distance: 0.16 },
     cancel: { into: ['chop', 'frontKick', 'lowKick'], from: 11, to: 28 },
     aims: [HEAD, BODY],
@@ -166,26 +164,28 @@ export function weaponPlan(w: WeaponDef): AIPlan {
 // Geometry
 // ---------------------------------------------------------------------------
 
-const _along = new Vector3();
-const _thumb = new Vector3();
-
 interface Rigged {
   rig: import('../body/skeleton').Rig;
+  pose: import('../body/skeleton').Pose;
+  yaw: number;
   scale: number;
 }
 
 /**
- * The weapon in hand: grip (right fist) and the direction from grip to tip, from the
- * right forearm's pose — the blade sits in the forearm's bend plane, leaning out from
- * the line of the arm toward the thumb like a hammer grip.
+ * The weapon in hand: grip (rear fist) and the direction from grip to tip. Each key
+ * pose says where the weapon points (the wrist does the rest), so guards, chambers
+ * and follow-throughs hold it the way a person would.
  */
 export function bladeFrame(f: Rigged, grip: Vector3, dir: Vector3) {
   fistPoint(f.rig, 'R', grip);
-  const q = f.rig.foreArmR.rot;
-  _along.set(0, -1, 0).applyQuaternion(q);
-  _thumb.set(0, 0, -1).applyQuaternion(q);
-  dir.copy(_along).multiplyScalar(Math.cos(WRIST_ANGLE)).addScaledVector(_thumb, Math.sin(WRIST_ANGLE)).normalize();
+  const b = f.pose.blade;
+  const c = Math.cos(f.yaw);
+  const s = Math.sin(f.yaw);
+  dir.set(b.x * c + b.z * s, b.y, -b.x * s + b.z * c).normalize();
 }
+
+/** How far down the haft the second hand sits on a two-handed weapon (m). */
+export const SECOND_HAND = 0.2;
 
 /** Sample points along the striking part of the weapon (world). */
 export function bladePoints(f: Rigged, w: WeaponDef, out: Vector3[] = []): Vector3[] {

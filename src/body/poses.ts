@@ -504,7 +504,8 @@ export const POSE_SPECS = {
   wGuard1: {
     ...GUARD,
     handL: { at: [0.1, 1.45, 0.32], hint: [0.35, -1, 0] },
-    handR: { at: [-0.22, 1.32, 0.22], hint: [-0.6, -1, -0.4] },
+    handR: { at: [-0.16, 1.2, 0.32], hint: [-0.6, -1, -0.4] },
+    blade: [0.12, 0.72, 0.68],
   },
   // Forehand slash: load the rear hip and shoulder, weapon high behind the ear...
   wSlashWind: {
@@ -515,7 +516,8 @@ export const POSE_SPECS = {
     chest: [0.02, -0.35, 0],
     head: [-0.04, 0.6, 0],
     handL: { at: [0.18, 1.4, 0.34], hint: [0.35, -1, 0] },
-    handR: { at: [-0.36, 1.72, -0.08], hint: [-0.5, 0.2, -1] },
+    handR: { at: [-0.32, 1.68, -0.02], hint: [-0.5, 0.2, -1] },
+    blade: [-0.25, 0.55, -0.8],
   },
   // ...whip the hips through, edge leads at full extension...
   wSlashExt: {
@@ -528,6 +530,7 @@ export const POSE_SPECS = {
     handR: { at: [0.04, 1.42, 0.84], hint: [-0.4, -1, 0.3] },
     footL: { at: [0.13, A, 0.34] },
     footR: { at: [-0.12, A + 0.05, -0.18], hint: [0.35, 0, 1] },
+    blade: [0.5, -0.15, 0.85],
   },
   // ...and follow through across the body, low on the far side.
   wSlashFollow: {
@@ -540,6 +543,7 @@ export const POSE_SPECS = {
     handR: { at: [0.36, 1.02, 0.38], hint: [-0.2, -1, 0.4] },
     footL: { at: [0.13, A, 0.34] },
     footR: { at: [-0.1, A + 0.06, -0.16], hint: [0.35, 0, 1] },
+    blade: [0.75, -0.55, -0.35],
   },
   // Backhand: from across the body, the arm unwinds back out to the rear side.
   wBackWind: {
@@ -549,7 +553,8 @@ export const POSE_SPECS = {
     chest: [0.1, 0.5, 0],
     head: [0, -0.3, 0],
     handL: { at: [0.3, 1.25, 0.08], hint: [0.5, -1, -0.3] },
-    handR: { at: [0.34, 1.38, 0.24], hint: [0.6, -0.4, -0.6] },
+    handR: { at: [0.3, 1.38, 0.24], hint: [0.6, -0.4, -0.6] },
+    blade: [0.85, 0.25, -0.45],
   },
   wBackExt: {
     ...GUARD,
@@ -560,6 +565,7 @@ export const POSE_SPECS = {
     handL: { at: [0.22, 1.3, 0.15], hint: [0.5, -1, -0.3] },
     handR: { at: [-0.14, 1.45, 0.84], hint: [0.4, -0.3, 0.6] },
     footL: { at: [0.13, A, 0.33] },
+    blade: [-0.5, -0.05, 0.86],
   },
   wBackFollow: {
     ...GUARD,
@@ -569,6 +575,7 @@ export const POSE_SPECS = {
     head: [-0.04, 0.55, 0],
     handL: { at: [0.18, 1.38, 0.3], hint: [0.35, -1, 0] },
     handR: { at: [-0.45, 1.3, 0.28], hint: [-0.2, -0.3, -1] },
+    blade: [-0.85, 0.0, -0.5],
   },
   // Overhead chop: rise up and raise the weapon above the head, then drop the body
   // weight into it as it comes down.
@@ -581,6 +588,7 @@ export const POSE_SPECS = {
     head: [-0.12, 0.4, 0],
     handL: { at: [0.15, 1.48, 0.35], hint: [0.35, -1, 0] },
     handR: { at: [-0.16, 1.98, -0.06], hint: [-0.6, 0.4, -1] },
+    blade: [-0.08, 0.35, -0.93],
   },
   wChopExt: {
     ...GUARD,
@@ -592,6 +600,7 @@ export const POSE_SPECS = {
     handL: { at: [0.22, 1.15, 0.2], hint: [0.5, -1, 0] },
     handR: { at: [-0.04, 1.3, 0.82], hint: [-0.3, -1, 0.1] },
     ...feet(0.02, 0.14, 0),
+    blade: [0.05, 0.12, 0.99],
   },
   wChopFollow: {
     ...GUARD,
@@ -603,6 +612,7 @@ export const POSE_SPECS = {
     handL: { at: [0.22, 1.05, 0.18], hint: [0.5, -1, 0] },
     handR: { at: [-0.02, 0.9, 0.5], hint: [-0.3, -1, 0.2] },
     ...feet(0.02, 0.14, 0),
+    blade: [0.05, -0.88, 0.45],
   },
   // Two-handed guard: weapon across the body at the rear shoulder, both hands on it.
   wGuard2: {
@@ -610,9 +620,10 @@ export const POSE_SPECS = {
     pelvis: [0, -0.45, 0],
     chest: [0.06, -0.25, 0],
     head: [-0.04, 0.55, 0],
-    handR: { at: [-0.18, 1.32, 0.2], hint: [-0.6, -1, -0.4] },
+    handR: { at: [-0.14, 1.15, 0.24], hint: [-0.6, -1, -0.4] },
     handL: { at: [-0.08, 1.2, 0.22], hint: [0.3, -1, 0] },
     ...feet(0.02),
+    blade: [0.4, 0.85, 0.35],
   },
   // Horizontal sweep: big hip and shoulder coil, swing flat through the target.
   wSweepWind: {
@@ -621,9 +632,10 @@ export const POSE_SPECS = {
     pelvis: [0, -0.75, 0],
     chest: [0.04, -0.55, 0],
     head: [-0.04, 0.8, 0],
-    handR: { at: [-0.5, 1.45, -0.18], hint: [-0.4, -1, -0.6] },
+    handR: { at: [-0.42, 1.38, -0.12], hint: [-0.4, -1, -0.6] },
     handL: { at: [-0.4, 1.35, -0.05], hint: [0.3, -1, 0] },
     ...feet(0.03),
+    blade: [-0.7, 0.45, -0.55],
   },
   wSweepExt: {
     ...GUARD,
@@ -635,6 +647,7 @@ export const POSE_SPECS = {
     handL: { at: [0.02, 1.3, 0.5], hint: [0.3, -1, 0] },
     footL: { at: [0.15, A, 0.34] },
     footR: { at: [-0.12, A + 0.05, -0.18], hint: [0.35, 0, 1] },
+    blade: [0.3, 0.0, 0.95],
   },
   wSweepFollow: {
     ...GUARD,
@@ -646,6 +659,7 @@ export const POSE_SPECS = {
     handL: { at: [0.42, 1.28, 0.25], hint: [0.3, -1, 0] },
     footL: { at: [0.15, A, 0.34] },
     footR: { at: [-0.1, A + 0.06, -0.16], hint: [0.35, 0, 1] },
+    blade: [0.85, 0.05, -0.5],
   },
   wSweepBackWind: {
     ...GUARD,
@@ -653,8 +667,9 @@ export const POSE_SPECS = {
     pelvis: [0, 0.35, 0],
     chest: [0.1, 0.6, 0],
     head: [0, -0.3, 0],
-    handR: { at: [0.48, 1.38, 0.18], hint: [0, -1, 0.6] },
+    handR: { at: [0.45, 1.38, 0.18], hint: [0, -1, 0.6] },
     handL: { at: [0.4, 1.32, 0.22], hint: [0.3, -1, 0] },
+    blade: [0.8, 0.3, -0.5],
   },
   wSweepBackExt: {
     ...GUARD,
@@ -665,6 +680,7 @@ export const POSE_SPECS = {
     handR: { at: [-0.05, 1.35, 0.8], hint: [0.3, -1, 0.3] },
     handL: { at: [0.02, 1.3, 0.5], hint: [0.3, -1, 0] },
     footL: { at: [0.15, A, 0.32] },
+    blade: [-0.3, 0.0, 0.95],
   },
   wSweepBackFollow: {
     ...GUARD,
@@ -674,6 +690,7 @@ export const POSE_SPECS = {
     head: [-0.04, 0.8, 0],
     handR: { at: [-0.52, 1.35, 0.1], hint: [-0.4, -1, -0.5] },
     handL: { at: [-0.44, 1.3, 0.15], hint: [0.3, -1, 0] },
+    blade: [-0.85, 0.05, -0.5],
   },
   // Overhead smash: weapon all the way up behind the head, whole body comes down with it.
   wOverheadWind: {
@@ -685,6 +702,7 @@ export const POSE_SPECS = {
     head: [-0.2, 0.3, 0],
     handR: { at: [-0.08, 2.05, -0.15], hint: [-0.6, 0.3, -1] },
     handL: { at: [0.0, 1.95, -0.1], hint: [0.6, 0.3, -1] },
+    blade: [0.0, 0.2, -0.98],
   },
   wOverheadExt: {
     ...GUARD,
@@ -696,6 +714,7 @@ export const POSE_SPECS = {
     handR: { at: [-0.08, 1.42, 0.8], hint: [0, -1, 0.1] },
     handL: { at: [0.0, 1.3, 0.5], hint: [0.3, -1, 0] },
     ...feet(0.03, 0.18, 0),
+    blade: [0.0, 0.28, 0.96],
   },
   wOverheadFollow: {
     ...GUARD,
@@ -707,6 +726,7 @@ export const POSE_SPECS = {
     handR: { at: [-0.06, 0.8, 0.6], hint: [0, -1, 0.1] },
     handL: { at: [0.05, 0.7, 0.45], hint: [0.3, -1, 0] },
     ...feet(0.03, 0.18, 0),
+    blade: [0.0, -0.9, 0.42],
   },
 } satisfies Record<string, PoseSpec>;
 

@@ -1023,6 +1023,7 @@ export class Game {
   private updateWeaponsAndWounds(simDt: number) {
     for (const [f, view] of this.views) {
       view.setWeapon(f.isSevered('foreArmR') ? null : f.weapon);
+      if (f.weapon) view.updateWeapon(f, f.weapon.length);
       for (const w of f.wounds) {
         if (!this.shownWounds.has(w)) {
           this.shownWounds.add(w);
