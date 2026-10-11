@@ -41,6 +41,8 @@ export class Cinematics {
   /** Cooldown so frequent small moments don't keep cutting away. */
   private quiet = 0;
   onChange: ((active: boolean) => void) | null = null;
+  /** Is the line from a camera spot to what it looks at obstructed? (Set by the game.) */
+  blocked: ((cam: Vector3, look: Vector3) => boolean) | null = null;
 
   get active() {
     return this.shot !== null;
@@ -70,10 +72,40 @@ export class Cinematics {
     if (this.side.lengthSq() < 1e-6) this.side.set(0, 0, 1);
     this.side.normalize();
     this.look.copy(shot.focus());
+    this.clearAngle(shot);
     prev?.onEnd?.();
     if (!prev) this.onChange?.(true);
     this.place(0);
     return true;
+  }
+
+  /**
+   * Swing the shot round to an angle whose whole orbit keeps a clear view (nearest the
+   * one asked for), so it never films through a pillar or from inside the scenery.
+   */
+  private clearAngle(s: Shot) {
+    if (!this.blocked) return;
+    const base = this.side.clone();
+    const spot = new Vector3();
+    const dir = new Vector3();
+    for (const k of [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6, 7, -7]) {
+      let clear = true;
+      for (const u of [0, 0.25, 0.5, 0.75, 1]) {
+        const t = s.duration * u;
+        dir.copy(base).applyAxisAngle(_up, k * 0.4 + (s.orbit ?? 0) * t);
+        const d = Math.max(0.6, s.distance + (s.dolly ?? 0) * t);
+        spot.copy(this.look).addScaledVector(dir, d);
+        spot.y = Math.max(0.15, this.look.y + s.height);
+        if (this.blocked(spot, this.look)) {
+          clear = false;
+          break;
+        }
+      }
+      if (clear) {
+        this.side.copy(base).applyAxisAngle(_up, k * 0.4);
+        return;
+      }
+    }
   }
 
   stop() {

@@ -61,6 +61,7 @@ const FLOOR: Record<ThemeId, Surface> = { ring: 'canvas', street: 'asphalt', gro
 const PLAYER_BASE: FighterStats = { ...DEFAULT_STATS, maxHp: 100, walkSpeed: 2.6 };
 /** Enemies stand still for this long while the round is announced (real seconds). */
 const INTRO_HOLD = 1.6;
+const _los = new Vector3();
 
 type Mode = 'gauntlet' | 'training';
 type Phase = 'play' | 'clear' | 'shop' | 'down';
@@ -223,6 +224,17 @@ export class Game {
     this.hud.showCoins(this.mode === 'gauntlet');
 
     this.cine.onChange = (on) => this.hud.cinematic(on);
+    // Cut cameras keep a clear line to the action: no shooting through a column, a car
+    // or a shelf, and never from out in the stands.
+    this.cine.blocked = (cam, look) => {
+      const w = this.sim.walkable;
+      if (!w.isWalkable(cam.x, cam.z)) return true;
+      for (let i = 1; i < 12; i++) {
+        _los.lerpVectors(cam, look, i / 12);
+        if (w.solidAt?.(_los, 0.12)) return true;
+      }
+      return false;
+    };
     window.addEventListener('resize', () => this.resize());
     this.resize();
   }
@@ -1083,17 +1095,27 @@ export class Game {
     // Close and almost frozen, over the shoulder of whoever did it.
     const by = this.lastHitBy.get(f) ?? this.player;
     const at = point.clone();
+    // A head that comes off is followed through the air (framed a little wider, so the
+    // body buckling below stays in the shot); a limb, the wound.
+    const head = bone === 'head' && rd ? rd.bodies.head : null;
+    const track = new Vector3();
     this.cut({
-      focus: () => at,
+      focus: head
+        ? () => {
+            const t = head.translation();
+            return track.set(t.x, t.y, t.z).lerp(at, 0.35);
+          }
+        : () => at,
       side: this.across(by.pos, f.pos, 0.45),
-      distance: 1.7 * Math.max(1, f.scale * 0.8),
-      height: 0.2,
+      distance: (head ? 2.5 : 1.7) * Math.max(1, f.scale * 0.8),
+      height: head ? 0.05 : 0.2,
       orbit: 0.45,
       dolly: -0.25,
       fov: 36,
-      duration: 1.5,
+      // Taking the head is the finishing blow: this is the finisher shot.
+      duration: head ? 2.3 : 1.5,
       slow: 0.1,
-      priority: 3,
+      priority: head ? 4 : 3,
     });
     const label = bone === 'head' ? 'DECAPITATED' : bone.startsWith('thigh') || bone.startsWith('shin') ? 'LEG OFF' : 'ARM OFF';
     if (this.cues) this.hud.popup(label, point, this.viewCamera, 'armor');
@@ -1138,7 +1160,8 @@ export class Game {
     }
     this.koAt.set(f, this.sim.frame);
     // The finishing blow: low and from the side, following them down.
-    if (this.enemies.every((e) => !e.alive) && this.player.alive) {
+    // (A decapitation already has its own shot, following the head.)
+    if (this.enemies.every((e) => !e.alive) && this.player.alive && !f.isSevered('head')) {
       const by = this.lastHitBy.get(f) ?? this.player;
       this.cut({ focus: this.pelvisOf(f), side: this.across(by.pos, f.pos, 0.1), distance: 3.8 * Math.max(1, f.scale * 0.75), height: 0.55, orbit: 0.3, fov: 38, duration: 2.2, slow: 0.18, priority: 4 });
     }
