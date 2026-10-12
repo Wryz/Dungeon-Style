@@ -14,7 +14,7 @@ export interface InputFrame {
   keys: string[];
 }
 
-const META_KEYS = new Set(['Escape', 'KeyM', 'Enter', 'NumpadEnter', ...(DEV ? ['KeyL', 'KeyP', 'Period', 'KeyT', 'KeyH', 'Backspace'] : [])]);
+const META_KEYS = new Set(['Escape', 'KeyM', 'KeyB', 'Enter', 'NumpadEnter', ...(DEV ? ['KeyL', 'KeyP', 'Period', 'KeyT', 'KeyH', 'Backspace'] : [])]);
 const ARROWS: Partial<Record<string, Action>> = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
 
 /** Keyboard (rebindable) + mouse + gamepad + touch, collapsed into one frame of intent. */

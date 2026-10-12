@@ -33,6 +33,7 @@ import { ARCHETYPES, coinDrop, createEnemy, type EnemyKind, type EnemyMods } fro
 import { type Button, DEFAULT_STATS, type Fighter, type FighterStats } from '../sim/fighter';
 import { DT, Rng } from '../sim/math';
 import { createPlayer } from '../sim/roster';
+import { BattleLog } from '../ui/battleLog';
 import { DeathScreen, type RunSummary } from '../ui/death';
 import { Hud } from '../ui/hud';
 import { keyLabel } from '../input/bindings';
@@ -45,6 +46,7 @@ import { DropView, ProjectileView } from '../render/weaponView';
 import { projectileDir, projectileGrip } from '../sim/projectiles';
 import { Cinematics, type Shot } from '../render/cinematics';
 import { OUTFITS, SUPPLIES } from './catalog';
+import { BattleRecorder } from './recorder';
 import { deathRewardParts, item, loadSave, NO_BUFFS, opponentGear, type RoundBuffs, type SaveData, SLOTS, staminaRegen, statsWithGear, useSupplies, writeSave } from './economy';
 import { type RoundSpec, roundSpec, type Spawn } from './gauntlet';
 import { Trauma } from './trauma';
@@ -161,6 +163,8 @@ export class Game {
   private downIn = -1;
   /** What the last run paid out when it ended. */
   private lastPay = 0;
+  private recorder!: BattleRecorder;
+  private battleLog!: BattleLog;
   /** Supplies in use this round. */
   private buffs: RoundBuffs = NO_BUFFS;
   private wornOutfit: string | null = null;
@@ -240,6 +244,7 @@ export class Game {
     this.blood.enabled = this.settings.prefs.blood;
     this.settings.onPrefs = (p) => {
       this.blood.enabled = p.blood;
+      if (this.recorder) this.recorder.enabled = p.record;
       if (!p.blood) {
         this.blood.clear();
         this.gibs.clear();
@@ -247,6 +252,15 @@ export class Game {
     };
     this.settings.onOpenChange = (open) => this.setMenuPause(open);
     this.hud.gearButton.addEventListener('click', () => this.settings.toggle());
+    // The battle log: every battle on video.
+    this.recorder = new BattleRecorder(this.renderer.domElement);
+    this.recorder.enabled = this.settings.prefs.record;
+    this.battleLog = new BattleLog(document.body, this.recorder);
+    this.battleLog.onClose = () => {
+      // (Back to whatever it was opened over: the shop or the defeat screen stay paused.)
+      if (!this.shop.isOpen && !this.death.isOpen && this.phase !== 'shop') this.setMenuPause(false);
+    };
+    this.hud.logButton.addEventListener('click', () => this.openLog());
     this.shop = new Shop(document.body, this.save);
     this.death = new DeathScreen(document.body);
     this.death.onTick = () => this.sfx.coin();
@@ -254,6 +268,8 @@ export class Game {
       this.hud.setCoins(this.save.coins, false);
       this.shop.open(this.round, this.lastPay);
     };
+    this.death.onReplay = () => this.openLog();
+    this.shop.onReplay = () => this.openLog();
     this.death.onAgain = () => {
       this.hud.setCoins(this.save.coins, false);
       this.setMenuPause(false);
@@ -665,6 +681,8 @@ export class Game {
       this.sim.ais.get(f)!.cfg.passive = true;
     });
     this.scatterWeapons();
+    // Rolling: this battle goes in the log.
+    this.recorder.start({ round: n, arena: this.theme.name, opponent: ARCHETYPES[spec.spawns[0].kind].name, boss: !!spec.boss });
     this.holdIn = INTRO_HOLD;
     this.hud.mood('');
     if (spec.boss) {
@@ -876,11 +894,12 @@ export class Game {
   private frame(realDt: number) {
     this.time += realDt;
     const inp = this.input.poll();
+    this.recorder?.tick(GAME_TUNING.paused);
     for (const k of inp.keys) this.metaKey(k);
 
     const fwd = this.camRig.groundForward;
     const right = this.camRig.groundRight;
-    const blocked = this.phase === 'shop' || this.phase === 'down' || this.settings.isOpen;
+    const blocked = this.phase === 'shop' || this.phase === 'down' || this.settings.isOpen || this.battleLog?.isOpen;
     this.player.moveInput.set(
       blocked ? 0 : right.x * inp.moveX + fwd.x * inp.moveY,
       0,
@@ -930,6 +949,7 @@ export class Game {
     }
     if (due(this.clearIn)) this.roundCleared();
     if (due(this.shopIn)) {
+      this.recorder.stop('won');
       this.phase = 'shop';
       this.setMenuPause(true);
       this.shop.open(this.round, null);
@@ -943,6 +963,7 @@ export class Game {
     if (due(this.downIn)) {
       if (this.mode === 'gauntlet') {
         // The run's over: how it went, what it paid — then gear up, or straight back in.
+        this.recorder.stop('lost');
         this.hud.hideBanner();
         this.phase = 'shop';
         this.setMenuPause(true);
@@ -967,6 +988,9 @@ export class Game {
         return;
       case 'KeyM':
         this.sfx.setVolume(this.sfx.volume > 0 ? 0 : GAME_TUNING.volume);
+        return;
+      case 'KeyB':
+        if (!this.settings.isOpen) this.openLog();
         return;
     }
     // Developer keys.
@@ -1054,6 +1078,7 @@ export class Game {
         }
         // Markers: what that blow did, where it landed.
         const dmg = Math.max(1, Math.round(e.damage));
+        this.logHit(e, dmg);
         if (byPlayer) this.marker(e.counter ? `COUNTER ${dmg}` : String(dmg), e.point, e.counter || e.damage >= 12 ? 'dmg big' : 'dmg');
         else if (e.defender === this.player) this.marker(`-${dmg}`, e.point, 'hurt');
         const big = e.attacker.scale > 1.3;
@@ -1134,9 +1159,11 @@ export class Game {
         } else this.effects.sparks(e.point, e.dir, e.guardBreak ? 8 : 4, '#dbe6ee', 1.5, 0.014);
         this.ragdolls.get(e.defender)?.applyBlock(e.dir, e.move);
         if (e.guardBreak) this.marker('GUARD BREAK', e.point, 'armor');
+        if (e.guardBreak) this.recorder.mark('down', e.defender === this.player ? 'Your guard broken' : 'Guard broken');
         else if (e.parry && e.perfect) {
           // Timed to the last instant: a beat of slow motion, and you're straight in.
           this.marker('PERFECT PARRY', e.point, 'parry big');
+          this.recorder.mark('parry', 'Perfect parry');
           this.slowmo = Math.max(this.slowmo, 0.35);
           this.camRig.zoomPunch(0.6);
           this.effects.ring(this.player.pos, 1.1, '#ffd36b', 0.5, () => this.player.pos);
@@ -1152,6 +1179,7 @@ export class Game {
         if (e.defender === this.player && e.perfect) {
           // Timed to the strike: a beat of slow motion, and the counter's yours.
           this.marker('PERFECT DODGE', e.point, 'parry big');
+          this.recorder.mark('parry', 'Perfect dodge');
           this.slowmo = Math.max(this.slowmo, 0.35);
           this.camRig.zoomPunch(0.6);
           this.effects.ring(this.player.pos, 1.1, '#ffd36b', 0.5, () => this.player.pos);
@@ -1670,6 +1698,27 @@ export class Game {
     this.hud.update(realDt, p, shown, this.label());
     this.updateMovePanel(realDt);
     this.renderer.render(this.scene, this.viewCamera);
+    this.recorder.afterRender();
+    this.hud.logButton.classList.toggle('rec', this.recorder.recording && this.recorder.enabled && this.recorder.canRecord);
+  }
+
+  /** The moments that go on the battle log's timeline. */
+  private logHit(e: Extract<CombatEvent, { type: 'hit' }>, dmg: number) {
+    const them = (f: Fighter) => (f === this.player ? 'You' : ARCHETYPES[this.enemyKind.get(f) ?? 'brawler']?.name ?? 'Them');
+    const what = e.weapon ? `${e.weapon.name} ${e.move.name.toLowerCase()}` : e.move.name;
+    if (e.fatal) this.recorder.mark('gore', `${them(e.attacker)}: ${e.fatal === 'split' ? 'skull split' : e.fatal === 'cleft' ? 'skull cleft' : 'skull crushed'}`);
+    else if (e.sever) this.recorder.mark('gore', `${them(e.attacker)}: ${e.sever === 'head' ? 'decapitation' : 'limb off'}`);
+    if (e.ko) this.recorder.mark(e.defender === this.player ? 'death' : 'ko', e.defender === this.player ? `Knocked out by ${them(e.attacker)}'s ${what.toLowerCase()}` : `KO — ${what}`);
+    else if (e.knockdown) this.recorder.mark('down', `${them(e.defender)} knocked down (${what.toLowerCase()})`);
+    else if (e.attacker === this.player && (dmg >= 12 || e.counter)) this.recorder.mark('hit', `${e.counter ? 'Counter ' : ''}${what} · ${dmg}`);
+    else if (e.defender === this.player && dmg >= 12) this.recorder.mark('hurt', `Hit by ${what.toLowerCase()} · -${dmg}`);
+  }
+
+  /** Opens the battle log (pausing the fight) on the latest battle. */
+  openLog() {
+    if (this.battleLog.isOpen) return;
+    this.setMenuPause(true);
+    this.battleLog.open();
   }
 
   /** Weapons in hand, new cuts on bodies, and blood dripping from every open wound. */

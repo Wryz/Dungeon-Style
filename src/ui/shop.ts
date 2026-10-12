@@ -83,6 +83,8 @@ export class Shop {
   /** Something couldn't be bought (not enough coins). */
   onDenied: (() => void) | null = null;
   onDone: (() => void) | null = null;
+  /** Open the battle log on the fight just finished. */
+  onReplay: (() => void) | null = null;
   /** Your stats as they stand (for the summary strip). */
   stats: (() => FighterStats) | null = null;
   private tab: Tab = 'armour';
@@ -171,7 +173,7 @@ export class Shop {
       <div class="store">
         <header class="store-head">
           <div class="store-title">${svg('coin', 'ico big')}<div><div class="brand">The Armoury</div>${head}</div></div>
-          <div class="wallet"><span class="coin"></span><b>${Math.floor(s.coins).toLocaleString()}</b></div>
+          <div class="store-right"><button class="replay" title="Battle log (B)">▶ Watch it back</button><div class="wallet"><span class="coin"></span><b>${Math.floor(s.coins).toLocaleString()}</b></div></div>
         </header>
         <div class="store-body">
           <nav class="tabs">${tabs}</nav>
@@ -192,6 +194,7 @@ export class Shop {
       b.addEventListener('click', () => this.purchase(b));
     }
     this.el.querySelector('.go')!.addEventListener('click', () => this.onDone?.());
+    this.el.querySelector('.replay')!.addEventListener('click', () => this.onReplay?.());
   }
 
   /** A card: icon, name, what it does, and its price (or state). */

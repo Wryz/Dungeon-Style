@@ -29,8 +29,8 @@ export const DEFAULT_BINDINGS: Bindings = {
   pickup: 'KeyG',
 };
 
-/** Keys reserved for the menu and mute; they can't be bound to actions. */
-export const RESERVED_KEYS = new Set(['Escape', 'KeyM']);
+/** Keys reserved for the menu, mute and the battle log; they can't be bound to actions. */
+export const RESERVED_KEYS = new Set(['Escape', 'KeyM', 'KeyB']);
 
 const STORAGE_KEY = 'brawler.bindings.v1';
 

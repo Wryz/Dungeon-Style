@@ -178,6 +178,14 @@ both of you are always in shot and they're never hidden behind you. It pulls bac
 separate (and for a giant), swings round on a spring as you circle, switches sides
 rather than backing into a wall, and goes up and wider when a wall squeezes it in.
 
+**Battle Log** (**B**, the *Log* button, or *Watch it back* on the shop and defeat
+screens): every battle this session is recorded off the game canvas as video, with the
+moments that mattered marked on its timeline — big hits, perfect parries, knockdowns,
+guard breaks, gore, the KO. Scrub, play at 0.25×–2×, step a frame at a time (←/→, Shift
+for 5 s), click a moment to jump just before it; then save the whole battle, or set a
+clip's start and end (I / O) and save just that. Recording can be turned off in
+Settings; in a browser that can't record video, the moments are still logged.
+
 When you fall, the **defeat screen** sums up the run — a rank (D to S) for how far you
 got, knockouts, damage, best combo, perfect parries, brutal kills, time — and counts the
 run's payout into your wallet; then gear up in the shop or go straight back in.

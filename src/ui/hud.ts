@@ -55,7 +55,7 @@ export class Hud {
       <div class="vignette"></div>
       <div class="letterbox top"></div>
       <div class="letterbox bottom"></div>
-      <button class="gear" title="Settings (Esc)">⚙</button>`;
+      <div class="hud-btns"><button class="logbtn" title="Battle log (B)"><i></i>Log</button><button class="gear" title="Settings (Esc)">⚙</button></div>`;
     root.appendChild(this.el);
     const q = <T extends HTMLElement>(s: string) => this.el.querySelector<T>(s)!;
     this.pHp = q('.left .hp .fill');
@@ -234,11 +234,16 @@ export class Hud {
       <span>${k(b.pickup)} grab / drop weapon</span>
       <span class="dim">blocking is automatic</span>
       <span class="dim"><b>Esc</b> settings</span>
+      <span class="dim"><b>B</b> battle log</span>
       <span class="dim"><b>M</b> mute</span>`;
   }
 
   get gearButton(): HTMLButtonElement {
     return this.el.querySelector('.gear')!;
+  }
+
+  get logButton(): HTMLButtonElement {
+    return this.el.querySelector('.logbtn')!;
   }
 
   showCombo(n: number) {

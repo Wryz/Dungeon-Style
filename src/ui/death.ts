@@ -32,6 +32,8 @@ export class DeathScreen {
   private readonly el: HTMLDivElement;
   onShop: (() => void) | null = null;
   onAgain: (() => void) | null = null;
+  /** Open the battle log on the fight just lost. */
+  onReplay: (() => void) | null = null;
   /** Each step of the payout count (for a coin tick). */
   onTick: (() => void) | null = null;
   private raf = 0;
@@ -83,6 +85,7 @@ export class DeathScreen {
           <div class="wallet-after">Wallet: <span class="coin"></span> <b class="n wallet" data-to="${Math.floor(r.coins)}" data-from="${Math.floor(r.coins - total)}">${Math.floor(r.coins - total)}</b> · gear and coins are kept</div>
         </div>
         <div class="death-actions">
+          <button class="replay">▶ Watch it back <small>battle log</small></button>
           <button class="again">Fight again <small>round 1</small></button>
           <button class="primary shop">Gear up <kbd>Enter</kbd></button>
         </div>
@@ -90,6 +93,7 @@ export class DeathScreen {
     this.el.classList.add('show');
     this.el.querySelector('.shop')!.addEventListener('click', () => this.finish(this.onShop));
     this.el.querySelector('.again')!.addEventListener('click', () => this.finish(this.onAgain));
+    this.el.querySelector('.replay')!.addEventListener('click', () => this.onReplay?.());
     this.keyHandler = (e) => {
       if (e.code === 'Enter' || e.code === 'NumpadEnter') {
         e.preventDefault();

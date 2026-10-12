@@ -23,11 +23,12 @@ export class SettingsMenu {
         <h2>Controls</h2>
         <p class="sub">Click a key, then press the new one. Blocking is automatic. Press a punch just as a strike lands to parry it — timed to the last instant, it's a perfect parry.</p>
         <div class="rows"></div>
-        <p class="sub small">Arrow keys also move · Mouse: left / right punch · Gamepad: X/Y punch, A/B kick · M mutes</p>
+        <p class="sub small">Arrow keys also move · Mouse: left / right punch · Gamepad: X/Y punch, A/B kick · M mutes · B battle log</p>
         <h2 class="opt-title">Options</h2>
         <div class="row"><span>Blood effects</span><button class="key blood-toggle"></button></div>
         <div class="row"><span>Combat cues (flashes, telegraphs, popups)</span><button class="key cues-toggle"></button></div>
         <div class="row"><span>Fight tips (what to do right now)</span><button class="key tips-toggle"></button></div>
+        <div class="row"><span>Record battles for the Battle Log</span><button class="key rec-toggle"></button></div>
         <div class="actions">
           <button class="reset">Reset to defaults</button>
           <button class="close primary">Resume</button>
@@ -60,6 +61,15 @@ export class SettingsMenu {
       this.prefs.tips = !this.prefs.tips;
       savePrefs(this.prefs);
       showTips();
+      this.onPrefs?.(this.prefs);
+    });
+    const rec = this.el.querySelector<HTMLButtonElement>('.rec-toggle')!;
+    const showRec = () => (rec.textContent = this.prefs.record ? 'On' : 'Off');
+    showRec();
+    rec.addEventListener('click', () => {
+      this.prefs.record = !this.prefs.record;
+      savePrefs(this.prefs);
+      showRec();
       this.onPrefs?.(this.prefs);
     });
     this.el.querySelector('.reset')!.addEventListener('click', () => this.apply({ ...DEFAULT_BINDINGS }));
