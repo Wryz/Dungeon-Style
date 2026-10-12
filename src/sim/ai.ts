@@ -3,6 +3,7 @@ import type { Walkable } from '../world/collision';
 import type { Drop } from './combat';
 import type { Fighter } from './fighter';
 import type { Rng } from './math';
+import { ENEMY_MIN_STARTUP } from './fighter';
 import { heft, type WeaponId, weaponPlan } from './weapons';
 
 export interface AIConfig {
@@ -365,7 +366,7 @@ export class BrawlerAI {
     if (incoming(target)) {
       // ...unless there's a gap: a quick shot that lands before theirs does.
       const q = this.quickest(self, plan);
-      const startup = q ? q.startup * Math.sqrt(self.scale) : Infinity;
+      const startup = q ? Math.max(self.team === 'enemy' ? ENEMY_MIN_STARTUP : 0, q.startup * Math.sqrt(self.scale)) : Infinity;
       if (q && startup < target.framesToActive - 1 && !wadingIn(target, Math.ceil(startup)) && dist < plan.attackRange && this.rng.chance(0.6 * this.cfg.aggression)) {
         self.startMove(q);
         this.director?.claim();

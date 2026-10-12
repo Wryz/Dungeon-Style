@@ -447,7 +447,10 @@ export class Fighter {
     // Timing fits the body and the tool: big bodies move their limbs slower (like a
     // longer pendulum), small ones quicker; heavy weapons take longer to bring round.
     // Tired arms are slow arms.
-    const tempo = Math.sqrt(this.scale) * (move.weapon && this.weapon ? weaponTempo(this.weapon, this.scale) : 1) * (1 + (1 - this.stamina) * 0.6) * (this.perks.has('quickHands') ? 0.9 : 1);
+    let tempo = Math.sqrt(this.scale) * (move.weapon && this.weapon ? weaponTempo(this.weapon, this.scale) : 1) * (1 + (1 - this.stamina) * 0.6) * (this.perks.has('quickHands') ? 0.9 : 1);
+    // An opponent's strike always gives you a fair look at it: never less than a
+    // quarter-second of wind-up (anything quicker is slowed — recovery and all).
+    if (this.team === 'enemy') tempo = Math.max(tempo, ENEMY_MIN_STARTUP / move.startup);
     // Gassed, a punch is an arm with nothing behind it.
     this.swingStamina = this.stamina;
     // Swinging a heavy weapon costs the breath it looks like it costs.
@@ -1011,6 +1014,9 @@ export class Fighter {
 // Keyed by the move itself: different moves can share an id (the player's hook and an
 // enemy's haymaker are both 'hook').
 const _timed = new WeakMap<MoveDef, Map<string, MoveDef>>();
+
+/** The least wind-up (frames) an opponent's strike gets: enough to see it and react. */
+export const ENEMY_MIN_STARTUP = 15;
 
 /** A move with its frame data stretched (>1 slower) — cached per move and tempo. */
 export function timed(m: MoveDef, tempo: number): MoveDef {
