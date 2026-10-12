@@ -536,10 +536,26 @@ export const POSE_SPECS = {
     root: [0, 0.95, 0],
     abdomen: [-0.05, 0, 0],
     chest: [-0.05, -0.1, 0],
-    head: [-0.15, 0.3, 0],
-    handL: { at: [0.3, 1.25, 0.12], hint: [0.5, -1, -0.3] },
-    handR: { at: [-0.25, 2.0, 0.1], hint: [-1, 0, 0] },
+    head: [-0.15, 0.1, 0],
+    // Both arms up in a V, each hand out over its own shoulder: clear of the head and body.
+    handL: { at: [0.3, 1.98, 0.1], hint: [1, 0, 0] },
+    handR: { at: [-0.3, 1.98, 0.1], hint: [-1, 0, 0] },
     ...feet(0.02, -0.05, 0.1),
+  },
+  // With a heavy two-handed tool: both hands on the handle, held up overhead over the
+  // middle of the head (elbows out to the sides), so neither arm crosses the body.
+  victory2: {
+    ...GUARD,
+    root: [0, 0.95, 0],
+    abdomen: [-0.05, 0, 0],
+    chest: [-0.08, 0, 0],
+    head: [-0.15, 0.1, 0],
+    handL: { at: [0.22, 1.98, 0.12], hint: [1, 0.1, 0] },
+    handR: { at: [-0.24, 1.98, 0.12], hint: [-1, 0.1, 0] },
+    // Held up level across the top of the head, lead hand slid up the handle.
+    blade: [1, 0.12, 0.05],
+    slide: 1,
+    ...feet(0.04, -0.05, 0.1),
   },
 
   // ---- Weapons (weapon in the rear / right hand) ------------------------------

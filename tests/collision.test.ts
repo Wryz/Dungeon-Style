@@ -151,6 +151,25 @@ describe('collisions', () => {
     expect(highest).toBeGreaterThan(0.6);
   });
 
+  it('celebrating, both arms go up clear of the head and body, whatever is in hand', () => {
+    for (const w of [null, ...(Object.keys(WEAPONS) as WeaponId[])]) {
+      const sim = new CombatSim(1);
+      const p = createPlayer();
+      p.weapon = w ? WEAPONS[w] : null;
+      sim.add(p);
+      for (let i = 0; i < 10; i++) sim.step();
+      p.celebrate();
+      for (let i = 0; i < 60; i++) sim.step();
+      expect(p.state, `${w}`).toBe('celebrate');
+      const { torso, limbs } = bodyCapsules(p);
+      let worst = 0;
+      for (const l of limbs) if (/Arm|fist/.test(l.bone)) for (const t of torso) worst = Math.max(worst, overlap(l, t));
+      // (Where the upper arm meets the shoulder they always touch a little.)
+      expect(worst, `${w}`).toBeLessThan(0.03);
+      for (const side of ['fistL', 'fistR']) expect(limbs.find((l) => l.bone === side)!.a.y, `${w} ${side}`).toBeGreaterThan(1.85);
+    }
+  });
+
   it('fighters standing toe to toe are pushed apart by their bodies, not just their centres', () => {
     const sim = new CombatSim(4);
     sim.walkable = new RectWalkable(-20, 20, -20, 20);

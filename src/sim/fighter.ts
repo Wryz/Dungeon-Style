@@ -683,11 +683,23 @@ export class Fighter {
   celebrate(frames = 150) {
     this.setState('celebrate');
     this.stunFrames = frames;
+    const up = this.liftsWithBothHands() ? 'victory2' : 'victory';
     this.anim.play([
-      { f: 14, pose: getPose('victory'), ease: 'out' },
-      { f: frames - 24, pose: getPose('victory') },
+      { f: 14, pose: getPose(up), ease: 'out' },
+      { f: frames - 24, pose: getPose(up) },
       { f: frames, pose: getPose(this.weapon ? (this.weapon.style === 'oneHand' ? 'wGuard1' : 'wGuard2') : 'guard'), ease: 'inOut' },
     ]);
+  }
+
+  /**
+   * A heavy two-handed tool (axe, sledgehammer, club) goes up level overhead in both
+   * hands, the lead hand slid up the handle. Anything lighter — a sword, a bat — is
+   * raised in the one hand, the other fist up beside it: gripped with both, the second
+   * hand would end up right in front of the face.
+   */
+  private liftsWithBothHands(): boolean {
+    const w = this.weapon;
+    return !!w && w.style === 'twoHand' && w.choke > 0 && w.mass >= 2 && !this.isSevered('foreArmL');
   }
 
   enterLocomotion(fade = 6) {
@@ -840,6 +852,7 @@ export class Fighter {
     // Both hands stay on the haft whatever the body is doing — kicking, rocked by a
     // blow — until it's knocked flat.
     if (this.state === 'knockdown' || this.state === 'ko' || this.state === 'getup') return;
+    if (this.state === 'celebrate' && !this.liftsWithBothHands()) return;
     forwardKinematics(this.pose, _localRig);
     const w = this.weapon!;
     bladeFrame({ rig: _localRig, pose: this.pose, yaw: 0, scale: 1 }, _grip, _dir);
