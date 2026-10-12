@@ -73,11 +73,11 @@ demons and giant bosses.
   leave lasting cuts that keep bleeding (and slowly drain health — enough of them and
   your opponent bleeds out); heavy edges take arms and legs off, and the limb flies
   free as a physics body while the stump pumps blood. **Where and how a blade meets the
-  head matters:** chopped straight down onto the crown, a big edge (battle axe, fire axe,
-  katana) splits the skull open — the halves fall apart from the jaw; a shorter blade
-  (machete, cleaver, gladius, ninjato) buries itself in it; real mass (sledgehammer,
+  head matters:** chopped straight down onto the crown, only a heavy edge (battle axe, fire axe)
+  splits the skull open — the halves fall apart from the jaw; a lighter blade (katana,
+  machete, cleaver, gladius, ninjato) buries itself in it; real mass (sledgehammer,
   spiked club) caves it in. Each kills anyone outright, you included. Only a level cut
-  across the neck takes the head off, and only the big edges can; a blow coming down
+  across the neck takes the head off, and only the big edges (axes, katana) can; a blow coming down
   off to one side shears off the ear. **What each weapon can do is set weapon by
   weapon** (`GORE` in `src/sim/weapons.ts`): the big edges take any limb or the head;
   the short blades a hand/forearm at most; a knife only slices; and the blunt weapons —
@@ -182,12 +182,16 @@ separate (and for a giant), swings round on a spring as you circle, switches sid
 rather than backing into a wall, and goes up and wider when a wall squeezes it in.
 
 **Battle Log** (**B**, the *Log* button, or *Watch it back* on the shop and defeat
-screens): every battle this session is recorded off the game canvas as video, with the
+screens): every battle this session is recorded off the game canvas as an MP4, with the
 moments that mattered marked on its timeline — big hits, perfect parries, knockdowns,
 guard breaks, gore, the KO. Scrub, play at 0.25×–2×, step a frame at a time (←/→, Shift
 for 5 s), click a moment to jump just before it; then save the whole battle, or set a
-clip's start and end (I / O) and save just that. Recording can be turned off in
-Settings; in a browser that can't record video, the moments are still logged.
+clip's start and end (I / O) and save just that — both as `.mp4`. Where the browser has
+a WebCodecs video encoder (current Chrome, Edge, Safari and Firefox), frames are encoded
+straight to H.264 and the MP4 is put together from them, so a clip is cut instantly (from
+the keyframe at or just before its start); otherwise the browser's MediaRecorder films it,
+as MP4 wherever it can. Recording can be turned off in Settings; in a browser that can't
+record video, the moments are still logged.
 
 When you fall, the **defeat screen** sums up the run — a rank (D to S) for how far you
 got, knockouts, damage, best combo, perfect parries, brutal kills, time — and counts the

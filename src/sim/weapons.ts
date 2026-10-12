@@ -86,7 +86,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
 export interface Gore {
   /**
    * Brought straight down onto the crown at full power: 'split' cleaves the head in two
-   * (a long, heavy edge), 'cleft' buries the blade in the skull (a shorter one), 'crush'
+   * (only a heavy edge), 'cleft' buries the blade in the skull (a lighter one), 'crush'
    * caves it in (only real mass will). Each kills; null: it hurts, and that's all.
    */
   crown: 'split' | 'cleft' | 'crush' | null;
@@ -101,10 +101,12 @@ export interface Gore {
 const NO_GORE: Gore = { crown: null, sever: 'none', decap: false, tear: false };
 
 export const GORE: Record<WeaponId, Gore> = {
-  // Big edges with the weight behind them: everything.
+  // Big edges with the weight behind them: everything. Only these split a skull in two.
   axe: { crown: 'split', sever: 'all', decap: true, tear: true },
   fireaxe: { crown: 'split', sever: 'all', decap: true, tear: true },
-  katana: { crown: 'split', sever: 'all', decap: true, tear: true },
+  // A long, keen edge takes limbs and heads, but it's too light to halve a skull: brought
+  // straight down, it cuts deep into it instead (which kills just the same).
+  katana: { crown: 'cleft', sever: 'all', decap: true, tear: true },
   // Short or light blades: deep, killing cuts into the skull, a hand or forearm off,
   // slices away flesh — but not a neck, a thigh or a whole skull in one blow.
   machete: { crown: 'cleft', sever: 'forearms', decap: false, tear: true },

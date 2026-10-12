@@ -56,6 +56,8 @@ export class BattleLog {
     if (!this.isOpen) return;
     cancelAnimationFrame(this.raf);
     this.video?.pause();
+    this.video?.removeAttribute('src');
+    this.selected?.video?.release();
     this.el.classList.remove('show');
     if (this.keyHandler) window.removeEventListener('keydown', this.keyHandler, true);
     this.keyHandler = null;
@@ -115,7 +117,9 @@ export class BattleLog {
     for (const it of Array.from(this.el.querySelectorAll<HTMLButtonElement>('.bl-item'))) {
       it.addEventListener('click', () => {
         this.video?.pause();
+        const was = this.selected;
         this.selected = battles.find((x) => x.id === Number(it.dataset.id)) ?? null;
+        if (was !== this.selected) was?.video?.release();
         this.resetClip();
         this.render();
       });
@@ -130,9 +134,9 @@ export class BattleLog {
     const moments = b.marks.length
       ? b.marks.map((m, i) => `<button class="bl-moment k-${m.kind}" data-i="${i}"><i>${MARK_ICON[m.kind]}</i>${esc(m.label)}<small>${fmt(m.t)}</small></button>`).join('')
       : '<span class="bl-dim">Nothing much happened.</span>';
-    const screen = b.url
-      ? `<video class="bl-video" src="${b.url}" playsinline muted preload="auto"></video>`
-      : `<div class="bl-novideo">${this.recorder.canRecord ? (this.recorder.enabled ? 'Finishing the recording…' : 'Recording is off (Settings).') : "This browser can't record video — the moments are still logged below."}</div>`;
+    const screen = b.video
+      ? `<video class="bl-video" src="${b.video.url()}" playsinline muted preload="auto"></video>`
+      : `<div class="bl-novideo">${this.noVideo(b)}</div>`;
     return `
       <div class="bl-screen">${screen}<div class="bl-big-play">▶</div></div>
       <div class="bl-controls">
@@ -159,8 +163,8 @@ export class BattleLog {
           <button class="bl-btn" data-clip="1" title="Set the clip's end to here (O)">End here <kbd>O</kbd></button>
         </div>
         <div class="bl-saves">
-          <button class="bl-save clip" ${b.url ? '' : 'disabled'}>✂ Save clip</button>
-          <button class="bl-save full" ${b.url ? '' : 'disabled'}>⤓ Save whole battle</button>
+          <button class="bl-save clip" ${b.video ? '' : 'disabled'}>✂ Save clip</button>
+          <button class="bl-save full" ${b.video ? '' : 'disabled'}>⤓ Save whole battle</button>
         </div>
         <div class="bl-status"></div>
       </div>`;
@@ -186,7 +190,7 @@ export class BattleLog {
     for (const s of Array.from(this.el.querySelectorAll<HTMLButtonElement>('[data-clip]'))) s.addEventListener('click', () => this.setClip(Number(s.dataset.clip) as 0 | 1));
     q('.play')?.addEventListener('click', () => this.togglePlay());
     q('.bl-screen')?.addEventListener('click', () => this.togglePlay());
-    q('.bl-save.full')?.addEventListener('click', () => b.url && download(b.url, `${fileName(b)}.${ext(b.mime)}`));
+    q('.bl-save.full')?.addEventListener('click', () => b.video && download(b.video.url(), `${fileName(b)}.${ext(b.video.mime)}`));
     q('.bl-save.clip')?.addEventListener('click', () => this.exportClip(b));
     const tl = q('.bl-timeline');
     if (tl) {
@@ -206,7 +210,7 @@ export class BattleLog {
     }
     if (v) {
       v.playbackRate = this.speed;
-      // (A freshly recorded WebM doesn't know how long it is until it's been read to the end.)
+      // (A recording straight off MediaRecorder may not know how long it is until it's been read to the end.)
       v.addEventListener('loadedmetadata', () => {
         if (!Number.isFinite(v.duration)) {
           const back = () => {
@@ -275,28 +279,47 @@ export class BattleLog {
     if (ct) ct.innerHTML = `${fmt(this.clip[0])} → ${fmt(this.clip[1])} <small>(${(this.clip[1] - this.clip[0]).toFixed(1)} s)</small>`;
   }
 
+  private noVideo(b: Battle) {
+    if (b.cleared) return 'This recording was cleared to make room for newer battles — the moments are still logged below.';
+    if (!this.recorder.canRecord) return "This browser can't record video — the moments are still logged below.";
+    if (!this.recorder.enabled) return 'Recording is off (Settings).';
+    return Date.now() - b.when.getTime() < 10_000 ? 'Finishing the recording…' : 'No recording of this battle.';
+  }
+
   /**
-   * Cuts the clip: the section is played back (off screen, in real time) into a new
-   * recording, which is then saved. Where the browser can't do that, the whole battle is.
+   * Cuts the clip. Encoded footage is cut straight out (instantly, from the keyframe at or
+   * just before the start). Otherwise the section is played back (off screen, in real time)
+   * into a new recording; where the browser can't do that, the whole battle is saved.
    */
   private async exportClip(b: Battle) {
-    if (this.exporting || !b.url) return;
+    const footage = b.video;
+    if (this.exporting || !footage) return;
     const status = this.el.querySelector<HTMLElement>('.bl-status');
     const say = (s: string) => {
       if (status) status.textContent = s;
     };
+    const [from, to] = this.clip;
+    const name = `${fileName(b)}-clip-${from.toFixed(0)}s`;
+    const cut = footage.cut(from, to);
+    if (cut) {
+      const url = URL.createObjectURL(cut);
+      download(url, `${name}.mp4`);
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      say('Clip saved (MP4).');
+      return;
+    }
     const v = document.createElement('video');
     v.muted = true;
     v.playsInline = true;
-    v.src = b.url;
+    v.src = footage.url();
     const cap = (v as HTMLVideoElement & { captureStream?: () => MediaStream; mozCaptureStream?: () => MediaStream }).captureStream?.bind(v) ?? (v as unknown as { mozCaptureStream?: () => MediaStream }).mozCaptureStream?.bind(v);
-    if (!cap || typeof MediaRecorder === 'undefined') {
+    const mime = typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(footage.mime) ? footage.mime : null;
+    if (!cap || !mime) {
       say("This browser can't cut clips — saving the whole battle instead.");
-      download(b.url, `${fileName(b)}.${ext(b.mime)}`);
+      download(footage.url(), `${fileName(b)}.${ext(footage.mime)}`);
       return;
     }
     this.exporting = true;
-    const [from, to] = this.clip;
     try {
       v.style.cssText = 'position:fixed;left:-9999px;width:640px;height:360px';
       document.body.appendChild(v);
@@ -307,7 +330,7 @@ export class BattleLog {
       v.currentTime = from;
       await new Promise<void>((res) => (v.onseeked = () => res()));
       const stream = cap();
-      const rec = new MediaRecorder(stream, { mimeType: b.mime || undefined, videoBitsPerSecond: 4_000_000 });
+      const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 4_000_000 });
       const chunks: Blob[] = [];
       rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
       const done = new Promise<void>((res) => (rec.onstop = () => res()));
@@ -324,8 +347,8 @@ export class BattleLog {
       v.pause();
       rec.stop();
       await done;
-      const url = URL.createObjectURL(new Blob(chunks, { type: b.mime || 'video/webm' }));
-      download(url, `${fileName(b)}-clip-${from.toFixed(0)}s.${ext(b.mime)}`);
+      const url = URL.createObjectURL(new Blob(chunks, { type: rec.mimeType || mime }));
+      download(url, `${name}.${ext(mime)}`);
       setTimeout(() => URL.revokeObjectURL(url), 30_000);
       say('Clip saved.');
     } catch {

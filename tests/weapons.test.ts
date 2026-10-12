@@ -87,7 +87,7 @@ describe('weapons', () => {
   });
 
   it('chopped straight down onto the crown, the head splits instead of coming off — and nobody survives it', () => {
-    for (const [w, fatal] of [['axe', 'split'], ['sledgehammer', 'crush']] as const) {
+    for (const [w, fatal] of [['axe', 'split'], ['katana', 'cleft'], ['sledgehammer', 'crush']] as const) {
       const { sim, player, enemy } = duel(w, 1.8);
       enemy.limbDamage.head = 999;
       expect(enemy.hp).toBe(enemy.stats.maxHp);
@@ -145,10 +145,13 @@ describe('weapons', () => {
         if (g.crown) expect(w.mass, w.id).toBeGreaterThanOrEqual(2.5);
       } else {
         expect(g.crown, w.id).not.toBe('crush');
-        if (g.decap || g.sever === 'all' || g.crown === 'split') expect(w.mass, w.id).toBeGreaterThanOrEqual(1);
+        if (g.decap || g.sever === 'all') expect(w.mass, w.id).toBeGreaterThanOrEqual(1);
+        // Halving a skull takes a heavy weapon; a light blade (a katana) cuts deep instead.
+        if (g.crown === 'split') expect(w.mass, w.id).toBeGreaterThanOrEqual(2.5);
       }
     }
     expect(GORE.pipe).toEqual({ crown: null, sever: 'none', decap: false, tear: false });
+    expect(GORE.katana.crown).toBe('cleft');
 
     // And in a fight: the same blows with each weapon, at the same places.
     type Hit = Extract<CombatEvent, { type: 'hit' }>;
