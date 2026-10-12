@@ -13,7 +13,7 @@ export function themeFor(round: number): ThemeId {
   const regular = round - Math.floor(round / 4) - 1;
   return ARENA_ORDER[regular % ARENA_ORDER.length];
 }
-const BOSS_ORDER: EnemyKind[] = ['champion', 'minotaur', 'cyclops'];
+const BOSS_ORDER: EnemyKind[] = ['champion', 'minotaur', 'cyclops', 'troll'];
 
 export interface Spawn extends EnemyMods {
   kind: EnemyKind;
@@ -62,6 +62,15 @@ function pool(round: number): [EnemyKind, number][] {
   const p: [EnemyKind, number][] = [['rookie', 3]];
   if (round >= 2) p.push(['brawler', 3]);
   if (round >= 3) p.push(['kicker', 3]);
+  if (round >= 3) p.push(['boxer', 2.5]);
+  if (round >= 4) p.push(['knifeFighter', 2.5]);
+  if (round >= 4) p.push(['nakmuay', 2.5]);
+  if (round >= 5) p.push(['wrestler', 2.5]);
+  if (round >= 5) p.push(['duelist', 2.5]);
+  if (round >= 6) p.push(['capoeira', 2.5]);
+  if (round >= 7) p.push(['berserker', 2.5]);
+  if (round >= 7) p.push(['monk', 2.5]);
+  if (round >= 8) p.push(['sumo', 2.5]);
   if (round >= 5) p.push(['bruiser', 2]);
   if (round >= 5) p.push(['samurai', 2.5]);
   if (round >= 6) p.push(['ninja', 2.5]);

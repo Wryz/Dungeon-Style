@@ -22,12 +22,15 @@ demons and giant bosses.
   up before going again. Your best round is saved.
 - **Opponents, each with a fighting style of its own** (see *Fighting styles* below):
   Rookie, Brawler, Kicker, Bruiser, **Samurai** (katana) and **Ninja** (ninjato and
-  throwing knives), and from round 6 mythical creatures: **Imps** (small acrobats) and
-  **Demons** (horned stalkers that pounce). Humans dress for the venue — trunks and
+  throwing knives); from round 3 the second wave joins — **The Boxer**, **Nak Muay**,
+  **Knife Fighter**, **The Wrestler**, **The Duelist** (gladius), **Capoeirista**,
+  **The Berserker** (fire axe), **The Monk** (staff) and **The Sumo**; and from round 6
+  mythical creatures: **Imps** (small acrobats) and **Demons** (horned stalkers that
+  pounce). Humans dress for the venue — trunks and
   gloves in the ring, hoodies on the street, aprons in the store, helmets in the
   colosseum; the samurai wears hakama and a topknot, the ninja black with a mask.
-- **Bosses (giants):** The Champion (1.6×), The Minotaur (1.75×, horns and snout) and
-  The Cyclops (1.85×). Size scales reach, step length, mass and hit weight.
+- **Bosses (giants):** The Champion (1.6×), The Minotaur (1.75×, horns and snout),
+  The Cyclops (1.85×) and The Troll (1.95×, sledgehammer). Size scales reach, step length, mass and hit weight.
 - **The shop — The Armoury:** KOs burst into coins and each cleared round pays a bonus;
   between rounds (and after a death) you spend them in a tabbed store, every card with a
   rarity colour (common → mythic), its stats and its price:
@@ -351,6 +354,16 @@ temperament, and particular ways with particular weapons.
 | Champion | pressure | combinations, **superman punch** |
 | Minotaur | berserk: angrier the more it's hurt | axe sweeps, overheads, **spinning cleave**, **axe throw** — then a head-down **charge** while he goes to get it back |
 | Cyclops | pressure | huge sweeps, pounding overheads, **stomp**, the odd **club throw** |
+| The Boxer | patient counter-puncher (loses patience if you won't come) | hands only: jab–straight–**check hook** combinations, the **uppercut** when you duck in, a check hook the instant you miss |
+| Nak Muay | pressure | walks forward behind **push kicks**, chops the legs with low kicks into body roundhouses, a **flying kick** to close in |
+| The Wrestler | pressure, relentless | shoots in with the **shoulder charge**, **sweeps** the legs, **dives** on you from out of reach |
+| Capoeirista | skirmish, never still (wide swaying ginga) | **spinning** and **jumping** kicks, **front flips**, a low **rasteira** slide, cartwheels away |
+| The Duelist | skirmish: lunge in, back out | gladius point first — **thrusts**, the **riposte** the instant you miss, a **dash slash** from range |
+| The Berserker | berserk | fire axe overheads again and again, **spinning cleave**, hurls the axe, wild haymakers when hurt |
+| Knife Fighter | sloppy and dirty | cleaver **hacks** in close, a **thrown knife** to make you flinch, goes for the legs |
+| The Monk | patient, almost never caught | bokken staff **sweeps**, flips away from attacks, one clean blow for every mistake you make |
+| The Sumo | pressure (1.3× size) | the **charge** off the line, a storm of open-hand **thrusts**, the **stamp** |
+| The Troll | berserk (boss, 1.95×) | the **sledgehammer** like a falling tree, ground-shaking **stomps**, charges if it loses the hammer |
 
 All of it is physical:
 - **Jumps and flips** follow a real ballistic arc: how high is set by how long they

@@ -677,3 +677,13 @@ export const DEFENSES: Record<DefenseKind, DefenseDef> = {
   weave: { kind: 'weave', startup: 4, recovery: 8, evades: ['high'], blocks: [], counterWindow: 26, cooldown: 0 },
   slide: { kind: 'slide', startup: 4, recovery: 12, evades: ['high', 'mid', 'low'], blocks: [], counterWindow: 30, cooldown: 40, retreat: 1.25 },
 };
+
+// ---- The second wave of opponents: their own takes on shared techniques ------
+// Boxer: a short, rising uppercut off the back hand; a check hook to answer a miss.
+E.eUppercut = { ...P.uppercut, id: 'eUppercut', name: 'Uppercut', startup: 16, recovery: 20, reach: 1.15, cancel: undefined };
+E.checkHook = { ...P.hook, id: 'checkHook', name: 'Check Hook', startup: 15, recovery: 18, damage: 9, cancel: undefined };
+// Nak muay: the straight push kick that keeps you off, and the flying knee-high kick.
+E.pushKick = { ...P.frontKick, id: 'pushKick', name: 'Push Kick', startup: 18, recovery: 18, damage: 9, guardDamage: 34, reach: 1.35, cancel: undefined };
+E.leapKick = { ...P.flyingKick, id: 'leapKick', name: 'Flying Kick', cancel: undefined };
+// Capoeirista: sliding in under it.
+E.rasteira = { ...P.slideKick, id: 'rasteira', name: 'Rasteira', cancel: undefined };

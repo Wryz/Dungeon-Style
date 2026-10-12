@@ -121,6 +121,9 @@ function wadingIn(t: Fighter, landsIn: number): boolean {
   return !!m.weapon && m.weight === 'heavy' && !!t.weapon && t.weapon.mass >= 1.5;
 }
 
+/** How long (frames) a patient fighter waits for you to come to them before going to you. */
+const PATIENCE = 150;
+
 /** The heaviest a weapon can be (for its body) and still be worth fighting with. */
 export const MAX_HEFT = 4.6;
 
@@ -152,6 +155,8 @@ export class BrawlerAI {
   /** Frames until each special can be tried again. */
   private readonly specialCool: Record<string, number> = {};
   private sinceOwnAttack = 999;
+  /** Frames a patient fighter has been waiting with nothing thrown either way. */
+  private waited = 0;
   private retreatFor = 0;
   private prevDist = Infinity;
   private pinned = 0;
@@ -261,7 +266,11 @@ export class BrawlerAI {
     let want = downed ? 1.7 : plan.range + (this.winded ? 0.7 * self.scale : 0);
     if (!downed) {
       // Waiting just outside reach for them to commit.
-      if (temper === 'patient' && !(target.state === 'attack' && target.stateFrame > (target.move?.startup ?? 0))) want = Math.max(want, plan.attackRange + 0.15 * self.scale);
+      // (But not for ever: against someone who won't come to them, they lose patience
+      // after a couple of seconds and take it to them.)
+      if (self.state === 'attack' || target.state === 'attack') this.waited = 0;
+      else this.waited++;
+      if (temper === 'patient' && this.waited < PATIENCE && !(target.state === 'attack' && target.stateFrame > (target.move?.startup ?? 0))) want = Math.max(want, plan.attackRange + 0.15 * self.scale);
       // In and straight back out again.
       // (Further, with knives left to throw.) Out until there, or until they've closed in
       // on you anyway.

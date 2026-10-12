@@ -23,6 +23,36 @@ export function lookFor(kind: EnemyKind, theme: ThemeId | null): { palette: Pale
       return { palette: { skin: '#5e3b24', shirt: '#5e3b24', pants: '#3a2414', gloves: '#2a1a10', boots: '#2a1a10', hair: '#2a1a10', sleeves: 'skin', bald: true, addons: { horns: 'bull', snout: true, eyes: '#ff4020', tail: true } }, gear: { legs: { material: 'iron', tier: 2 } } };
     case 'cyclops':
       return { palette: { skin: '#7d9468', shirt: '#7d9468', pants: '#5a4632', gloves: '#5a4632', boots: '#3a2c20', hair: '#2a2a1a', sleeves: 'skin', bald: true, addons: { cyclops: true, eyes: '#fff3a0' } }, gear: { chest: { material: 'leather', tier: 1 } } };
+    // ---- The second wave: each dresses the part, wherever you meet them. ----
+    case 'boxer':
+      // Shirtless, satin trunks, red gloves, high boots.
+      return { palette: { skin: '#c99068', shirt: '#c99068', pants: '#b8202a', gloves: '#c0392b', boots: '#f2f2f2', hair: '#1a1410', sleeves: 'skin', shins: '#c99068' } };
+    case 'nakmuay':
+      // Muay Thai shorts, bare shins, hand wraps.
+      return { palette: { skin: '#b07a52', shirt: '#b07a52', pants: '#2a62c9', gloves: '#e8e2d4', boots: '#b07a52', hair: '#111111', sleeves: 'skin', shins: '#b07a52', bald: true } };
+    case 'wrestler':
+      // Singlet and boots.
+      return { palette: { skin: '#d39a72', shirt: '#7a1f2b', pants: '#7a1f2b', gloves: '#d39a72', boots: '#1a1a1a', hair: '#2a1a10', sleeves: 'skin', shins: '#7a1f2b' }, gear: { helmet: { material: 'leather', tier: 1 } } };
+    case 'capoeira':
+      // White abadá trousers, bare chest, a coloured cord.
+      return { palette: { skin: '#8a5a3c', shirt: '#8a5a3c', pants: '#f2efe6', gloves: '#8a5a3c', boots: '#8a5a3c', hair: '#141414', sleeves: 'skin', shins: '#f2efe6' } };
+    case 'duelist':
+      // Fencing whites, a dark sash.
+      return { palette: { skin: '#e8c2a0', shirt: '#f4f1ea', pants: '#f4f1ea', gloves: '#2a2a30', boots: '#2a2a30', hair: '#6a4a2a', sleeves: 'shirt', shins: '#f4f1ea' } };
+    case 'berserker':
+      // Furs and leather, wild beard, iron cap.
+      return { palette: { skin: '#e0b08a', shirt: '#5a3a22', pants: '#3a2a1a', gloves: '#2a1a10', boots: '#2a1a10', hair: '#b4502a', sleeves: 'skin', bald: true }, gear: { helmet: { material: 'iron', tier: 1 }, cuffs: { material: 'leather', tier: 1 } } };
+    case 'knifeFighter':
+      // Hoodie, dark jeans, a mask over the face.
+      return { palette: { skin: '#d9a982', shirt: '#3a3f4a', pants: '#22283a', gloves: '#d9a982', boots: '#121212', hair: '#121212', sleeves: 'shirt', addons: { mask: '#1a1a1e' } } };
+    case 'monk':
+      // Saffron robes, shaved head.
+      return { palette: { skin: '#d8a678', shirt: '#e08a1e', pants: '#c26a12', gloves: '#d8a678', boots: '#6a4a2a', hair: '#d8a678', sleeves: 'shirt', shins: '#c26a12', bald: true } };
+    case 'sumo':
+      // The mawashi, and the topknot.
+      return { palette: { skin: '#e8b890', shirt: '#e8b890', pants: '#2a2a5a', gloves: '#e8b890', boots: '#e8b890', hair: '#121212', sleeves: 'skin', shins: '#e8b890', addons: { topknot: true } } };
+    case 'troll':
+      return { palette: { skin: '#6f7f86', shirt: '#6f7f86', pants: '#3a3226', gloves: '#3a3226', boots: '#2a241a', hair: '#2a2a22', sleeves: 'skin', bald: true, addons: { horns: 'small', eyes: '#c8ff6a', snout: true } }, gear: { cuffs: { material: 'iron', tier: 2 } } };
     default:
       break;
   }

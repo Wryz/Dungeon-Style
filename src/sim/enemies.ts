@@ -5,9 +5,30 @@ import type { Rng } from './math';
 import { ENEMY_MOVES } from './moves';
 import { BRAWLER_STYLE } from './roster';
 
-export type EnemyKind = 'rookie' | 'brawler' | 'kicker' | 'bruiser' | 'samurai' | 'ninja' | 'imp' | 'demon' | 'champion' | 'minotaur' | 'cyclops';
+export type EnemyKind =
+  | 'rookie'
+  | 'brawler'
+  | 'kicker'
+  | 'bruiser'
+  | 'samurai'
+  | 'ninja'
+  | 'imp'
+  | 'demon'
+  | 'champion'
+  | 'minotaur'
+  | 'cyclops'
+  | 'boxer'
+  | 'nakmuay'
+  | 'wrestler'
+  | 'capoeira'
+  | 'duelist'
+  | 'berserker'
+  | 'knifeFighter'
+  | 'monk'
+  | 'sumo'
+  | 'troll';
 
-export const BOSSES: EnemyKind[] = ['champion', 'minotaur', 'cyclops'];
+export const BOSSES: EnemyKind[] = ['champion', 'minotaur', 'cyclops', 'troll'];
 
 export interface Archetype {
   kind: EnemyKind;
@@ -388,6 +409,323 @@ Object.assign(ARCHETYPES, {
     ai: { blockChance: 0.2, aggression: 0.95, stringChance: 0 },
     coins: [100, 140],
     scale: 1.85,
+    boss: true,
+  },
+} satisfies Partial<Record<EnemyKind, Archetype>>);
+
+// ---- The second wave: ten more fighters, each with a way of fighting all its own ----
+
+const BOXER_STYLE: FighterStyle = {
+  // Up on the toes, bouncing, rolling the shoulders, head never still.
+  footwork: { stanceWidth: 0.9, stepFrames: 8, stepHeight: 0.05 },
+  idle: {
+    bounceHz: 2.4,
+    bounceAmp: 0.035,
+    swayAmp: 0.07,
+    feintEvery: [1.2, 2.4],
+    feintWeights: { jab: 4, shoulder: 3, level: 2, step: 1 },
+    shuffleEvery: [0.5, 1.1],
+    pawEvery: [0.7, 1.5],
+    shoulderRoll: 0.08,
+  },
+};
+
+const GINGA_STYLE: FighterStyle = {
+  // Capoeira's ginga: wide, low, always swaying side to side, never set.
+  footwork: { stanceWidth: 1.35, stepFrames: 10, stepHeight: 0.07 },
+  idle: {
+    bounceHz: 1.6,
+    bounceAmp: 0.04,
+    swayAmp: 0.12,
+    feintEvery: [1, 2],
+    feintWeights: { jab: 0, shoulder: 1, level: 3, step: 4 },
+    shuffleEvery: [0.4, 0.9],
+    pawEvery: [3, 5],
+    shoulderRoll: 0.02,
+  },
+};
+
+const FENCER_STYLE: FighterStyle = {
+  // Side-on, light on the feet, blade out in front: in and out on quick steps.
+  footwork: { stanceWidth: 1.15, stepFrames: 7, stepHeight: 0.03 },
+  idle: {
+    bounceHz: 1.8,
+    bounceAmp: 0.02,
+    swayAmp: 0.02,
+    feintEvery: [1, 2.2],
+    feintWeights: { jab: 3, shoulder: 0, level: 1, step: 4 },
+    shuffleEvery: [0.4, 0.9],
+    pawEvery: [5, 8],
+    shoulderRoll: 0,
+  },
+};
+
+const SUMO_STYLE: FighterStyle = {
+  // Low and wide, heavy on the feet; long still waits, then all at once.
+  footwork: { stanceWidth: 1.45, stepFrames: 15, stepHeight: 0.025 },
+  idle: {
+    bounceHz: 0.5,
+    bounceAmp: 0.008,
+    swayAmp: 0.03,
+    feintEvery: [4, 7],
+    feintWeights: { jab: 0, shoulder: 2, level: 3, step: 1 },
+    shuffleEvery: [2, 3.5],
+    pawEvery: [4, 7],
+    shoulderRoll: 0.05,
+  },
+};
+
+Object.assign(ARCHETYPES, {
+  boxer: {
+    kind: 'boxer',
+    read: 0.85,
+    name: 'The Boxer',
+    stats: { maxHp: 72, walkSpeed: 2.4, staggerResist: 0.15 },
+    style: BOXER_STYLE,
+    // A counter-puncher: hands only, waits for you to throw, slips it and makes you pay
+    // with a combination — jab, straight, hook, and the uppercut when you duck in.
+    plan: {
+      moves: [['quickJab', 30], ['straight', 22], ['checkHook', 18], ['body', 14], ['eUppercut', 12]],
+      range: 1.1,
+      attackRange: 1.35,
+      punish: 'straight',
+      chains: { quickJab: 'straight', straight: 'checkHook', body: 'eUppercut' },
+      counters: ['quickJab', 'checkHook'],
+      temper: 'patient',
+      specials: [
+        { move: 'checkHook', min: 0, max: 1.4, rate: 0.3, cooldown: 120, when: 'targetWhiffed' },
+        { move: 'eUppercut', min: 0, max: 1.1, rate: 0.25, cooldown: 140, when: 'targetEntered' },
+      ],
+    },
+    ai: { blockChance: 0.55, aggression: 0.95, stringChance: 0.6 },
+    coins: [10, 15],
+  },
+  nakmuay: {
+    kind: 'nakmuay',
+    read: 0.7,
+    name: 'Nak Muay',
+    stats: { maxHp: 82, walkSpeed: 2.0, staggerResist: 0.25 },
+    style: KICKER_STYLE,
+    // Thai boxing: walks forward behind push kicks, chops the legs out with low kicks,
+    // slams roundhouses into the ribs, and leaps in with a flying kick.
+    plan: {
+      moves: [['pushKick', 25], ['kLowKick', 28], ['roundhouse', 25], ['body', 12]],
+      range: 1.2,
+      attackRange: 1.5,
+      punish: 'pushKick',
+      chains: { kLowKick: 'roundhouse', body: 'kLowKick' },
+      temper: 'pressure',
+      specials: [
+        { move: 'pushKick', min: 0, max: 1.0, rate: 0.25, cooldown: 100, when: 'crowded' },
+        { move: 'leapKick', min: 1.8, max: 2.6, rate: 0.015, cooldown: 340 },
+      ],
+    },
+    ai: { blockChance: 0.35, aggression: 1.05, stringChance: 0.5 },
+    coins: [11, 16],
+  },
+  wrestler: {
+    kind: 'wrestler',
+    read: 0.5,
+    name: 'The Wrestler',
+    stats: { maxHp: 112, walkSpeed: 1.8, staggerResist: 0.45, defense: 0.08 },
+    style: HEAVY_STYLE,
+    // Wants you on the floor: shoots in shoulder-first, sweeps the legs, dives on you
+    // from out of reach, and keeps coming.
+    plan: {
+      moves: [['bruiserBody', 30], ['body', 20], ['sweep', 30], ['teep', 10]],
+      range: 0.95,
+      attackRange: 1.25,
+      punish: 'sweep',
+      chains: { body: 'sweep' },
+      temper: 'pressure',
+      specials: [
+        { move: 'shoulderCharge', min: 1.6, max: 3.6, rate: 0.05, cooldown: 220 },
+        { move: 'pounce', min: 1.8, max: 3.2, rate: 0.025, cooldown: 360 },
+      ],
+    },
+    ai: { blockChance: 0.3, aggression: 1.2, stringChance: 0.3 },
+    coins: [14, 20],
+  },
+  capoeira: {
+    kind: 'capoeira',
+    read: 0.75,
+    name: 'Capoeirista',
+    stats: { maxHp: 62, walkSpeed: 2.5 },
+    style: GINGA_STYLE,
+    // Never still: swaying, cartwheeling away, sliding in low, and spinning kicks from
+    // every angle.
+    plan: {
+      moves: [['roundhouse', 25], ['rasteira', 18], ['kLowKick', 20], ['teep', 12]],
+      range: 1.25,
+      attackRange: 1.5,
+      punish: 'kLowKick',
+      chains: { kLowKick: 'roundhouse' },
+      temper: 'skirmish',
+      specials: [
+        { move: 'backflip', min: 0, max: 1.5, rate: 0.25, cooldown: 150, when: 'targetAttacking' },
+        { move: 'spinBackKick', min: 0.6, max: 1.25, rate: 0.04, cooldown: 200 },
+        { move: 'frontFlipKick', min: 1.9, max: 2.7, rate: 0.02, cooldown: 280 },
+        { move: 'jumpKick', min: 1.5, max: 2.3, rate: 0.015, cooldown: 300 },
+      ],
+    },
+    ai: { blockChance: 0.1, aggression: 1.2 },
+    coins: [12, 17],
+  },
+  duelist: {
+    kind: 'duelist',
+    read: 0.9,
+    name: 'The Duelist',
+    weapon: 'gladius',
+    stats: { maxHp: 70, walkSpeed: 2.4, staggerResist: 0.15 },
+    style: FENCER_STYLE,
+    // A fencer: point first, always. Lunges in with the thrust, back out of reach, and
+    // the riposte the instant you miss.
+    plan: {
+      moves: [['rookieJab', 30], ['teep', 30], ['straight', 20]],
+      range: 1.15,
+      attackRange: 1.45,
+      punish: 'rookieJab',
+      chains: {},
+      counters: ['quickJab'],
+      temper: 'skirmish',
+      armed: [{ weapons: ['gladius', 'ninjato', 'katana', 'machete', 'cleaver', 'bokken'], moves: [['thrust', 5], ['slash', 2], ['backslash', 1]], punish: 'thrust' }],
+      specials: [
+        { move: 'thrust', min: 0, max: 1.9, rate: 0.35, cooldown: 90, when: 'targetWhiffed', weapons: ['gladius', 'ninjato', 'katana', 'machete', 'cleaver'] },
+        { move: 'dashSlash', min: 2.2, max: 3.1, rate: 0.035, cooldown: 220, when: 'armed' },
+      ],
+    },
+    ai: { blockChance: 0.45, aggression: 1.05, stringChance: 0 },
+    coins: [14, 20],
+  },
+  berserker: {
+    kind: 'berserker',
+    read: 0.4,
+    name: 'The Berserker',
+    weapon: 'fireaxe',
+    stats: { maxHp: 104, walkSpeed: 2.1, staggerResist: 0.35, defense: 0.05 },
+    style: HEAVY_STYLE,
+    // No defence to speak of, no fear: the axe comes down again and again, goes round
+    // in circles, and gets hurled at you if you run.
+    plan: {
+      moves: [['haymaker', 30], ['bruiserHook', 25], ['hookChain', 15]],
+      range: 1.0,
+      attackRange: 1.3,
+      punish: 'haymaker',
+      chains: { haymaker: 'hookChain' },
+      temper: 'berserk',
+      armed: [{ weapons: ['fireaxe', 'axe', 'club', 'sledgehammer', 'bat', 'chair'], moves: [['overhead', 3], ['sweep', 2], ['sweepBack', 2]] }],
+      specials: [
+        { move: 'spinCleave', min: 0.9, max: 1.35, rate: 0.03, cooldown: 200, weapons: ['fireaxe', 'axe', 'club', 'sledgehammer'] },
+        { move: 'throwHeavy', min: 2.4, max: 6, rate: 0.02, cooldown: 900, weapons: ['fireaxe', 'axe'] },
+        { move: 'haymaker', min: 0.6, max: 1.4, rate: 0.12, cooldown: 160, when: 'afterHit' },
+      ],
+    },
+    ai: { blockChance: 0.1, aggression: 1.3, stringChance: 0.4 },
+    coins: [16, 22],
+  },
+  knifeFighter: {
+    kind: 'knifeFighter',
+    read: 0.6,
+    name: 'Knife Fighter',
+    weapon: 'cleaver',
+    ammo: { weapon: 'kunai', count: 3 },
+    stats: { maxHp: 56, walkSpeed: 2.5 },
+    style: LIGHT_STYLE,
+    // Dirty and fast: flicks a knife at you to make you flinch, darts in hacking, and
+    // goes for the legs.
+    plan: {
+      moves: [['rookieJab', 30], ['kLowKick', 25], ['body', 20]],
+      range: 1.0,
+      attackRange: 1.3,
+      punish: 'rookieJab',
+      chains: { rookieJab: 'body' },
+      temper: 'sloppy',
+      armed: [{ weapons: ['cleaver', 'machete', 'kunai', 'bottle', 'pipe', 'crowbar'], moves: [['hack', 5], ['slash', 2], ['chop', 1]], punish: 'hack' }],
+      specials: [
+        { move: 'kunaiThrow', min: 2.5, max: 8, rate: 0.05, cooldown: 160, when: 'hasAmmo' },
+        { move: 'hack', min: 0, max: 1.4, rate: 0.2, cooldown: 120, when: 'targetEntered', weapons: ['cleaver', 'machete', 'kunai'] },
+      ],
+    },
+    ai: { blockChance: 0.15, aggression: 1.05, stringChance: 0.4 },
+    coins: [9, 14],
+  },
+  monk: {
+    kind: 'monk',
+    read: 0.95,
+    name: 'The Monk',
+    weapon: 'bokken',
+    stats: { maxHp: 74, walkSpeed: 2.2, staggerResist: 0.3 },
+    style: SAMURAI_STYLE,
+    // Calm, patient, almost never caught: turns your attacks aside, flips away, and
+    // answers each mistake with one clean blow from the staff.
+    plan: {
+      moves: [['straight', 30], ['pushKick', 25], ['eUppercut', 15]],
+      range: 1.2,
+      attackRange: 1.5,
+      punish: 'straight',
+      chains: {},
+      counters: ['checkHook'],
+      temper: 'patient',
+      armed: [{ weapons: ['bokken', 'cue', 'pipe', 'bat'], moves: [['sweep', 3], ['sweepBack', 2], ['overhead', 1]], punish: 'sweep' }],
+      specials: [
+        { move: 'backflip', min: 0, max: 1.4, rate: 0.2, cooldown: 170, when: 'targetAttacking' },
+        { move: 'sweep', min: 0, max: 2.0, rate: 0.3, cooldown: 110, when: 'targetWhiffed', weapons: ['bokken', 'cue', 'pipe', 'bat'] },
+        { move: 'spinBackKick', min: 0.6, max: 1.2, rate: 0.015, cooldown: 300, when: 'unarmed' },
+      ],
+    },
+    ai: { blockChance: 0.6, aggression: 0.85, stringChance: 0 },
+    coins: [15, 21],
+  },
+  sumo: {
+    kind: 'sumo',
+    read: 0.5,
+    name: 'The Sumo',
+    stats: { maxHp: 165, walkSpeed: 1.5, staggerResist: 0.55, defense: 0.1 },
+    style: SUMO_STYLE,
+    // All mass: the charge off the line, then a storm of open-hand thrusts driving you
+    // back, and the stamp of the foot.
+    plan: {
+      moves: [['straight', 35], ['teep', 25], ['bruiserBody', 20]],
+      range: 0.95,
+      attackRange: 1.25,
+      punish: 'straight',
+      chains: { straight: 'straight' },
+      temper: 'pressure',
+      specials: [
+        { move: 'shoulderCharge', min: 1.5, max: 3.4, rate: 0.05, cooldown: 240 },
+        { move: 'stomp', min: 0.4, max: 1.0, rate: 0.02, cooldown: 260 },
+      ],
+    },
+    ai: { blockChance: 0.3, aggression: 1.0, stringChance: 0.55 },
+    coins: [20, 28],
+    scale: 1.3,
+  },
+  troll: {
+    kind: 'troll',
+    read: 0.45,
+    name: 'The Troll',
+    weapon: 'sledgehammer',
+    stats: { maxHp: 420, walkSpeed: 1.3, staggerResist: 0.78, defense: 0.25 },
+    style: BOSS_STYLE,
+    // The biggest thing in the arena: the hammer comes down like a falling tree, the
+    // ground shakes when it stamps, and it charges if it's lost its hammer.
+    plan: {
+      moves: [['haymaker', 30], ['bruiserHook', 25], ['bruiserBody', 25]],
+      range: 1.0,
+      attackRange: 1.3,
+      punish: 'bruiserBody',
+      chains: {},
+      temper: 'berserk',
+      armed: [{ moves: [['overhead', 4], ['sweep', 2], ['sweepBack', 1]] }],
+      specials: [
+        { move: 'stomp', min: 0.3, max: 1.0, rate: 0.035, cooldown: 200 },
+        { move: 'throwHeavy', min: 2.4, max: 5, rate: 0.008, cooldown: 1200, weapons: ['sledgehammer'] },
+        { move: 'shoulderCharge', min: 1.6, max: 3.6, rate: 0.03, cooldown: 280, when: 'unarmed' },
+      ],
+    },
+    ai: { blockChance: 0.2, aggression: 1, stringChance: 0 },
+    coins: [110, 150],
+    scale: 1.95,
     boss: true,
   },
 } satisfies Partial<Record<EnemyKind, Archetype>>);
