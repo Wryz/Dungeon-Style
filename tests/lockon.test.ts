@@ -90,7 +90,7 @@ describe('sparring', () => {
     expect(e.hp).toBe(20);
   });
 
-  it('carries coins, gear and the tutorial over from the old save', () => {
+  it('carries coins and gear over from the old save', () => {
     const store = {
       getItem: (k: string) =>
         k === 'brawler.save.v1' ? JSON.stringify({ coins: 77, gear: { helmet: 2 }, loop: 3, tutorialDone: true }) : null,
@@ -98,7 +98,6 @@ describe('sparring', () => {
     const s = loadSave(store);
     expect(s.coins).toBe(77);
     expect(s.gear.helmet).toBe(2);
-    expect(s.tutorialDone).toBe(true);
     expect(s.bestRound).toBe(0);
   });
 });

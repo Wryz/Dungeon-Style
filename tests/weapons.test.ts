@@ -6,7 +6,7 @@ import { BLEED_DPS, type CombatEvent, CombatSim } from '../src/sim/combat';
 import { createEnemy } from '../src/sim/enemies';
 import { type Fighter } from '../src/sim/fighter';
 import { createBrawler, createPlayer } from '../src/sim/roster';
-import { bladePoints, WEAPON_MOVES, type WeaponId, WEAPONS } from '../src/sim/weapons';
+import { bladePoints, GORE, WEAPON_MOVES, type WeaponId, WEAPONS } from '../src/sim/weapons';
 import { RectWalkable } from '../src/world/collision';
 
 function duel(weapon: WeaponId | null, dist: number) {
@@ -75,14 +75,137 @@ describe('weapons', () => {
     expect(blunt.enemy.wounds.length).toBe(0);
   });
 
-  it('heavy edges take limbs off; losing the head ends the fight', () => {
+  it('a level cut through the neck takes the head off, and that ends the fight', () => {
     const { sim, player, enemy } = duel('axe', 1.8);
     enemy.limbDamage.head = 30;
-    const [h] = hits(swing(sim, player, 'overhead'));
+    const [h] = hits(swing(sim, player, 'sweep'));
     expect(h.bone).toBe('head');
     expect(h.sever).toBe('head');
+    expect(h.fatal).toBeNull();
     expect(enemy.alive).toBe(false);
     expect(enemy.isSevered('head')).toBe(true);
+  });
+
+  it('chopped straight down onto the crown, the head splits instead of coming off — and nobody survives it', () => {
+    for (const [w, fatal] of [['axe', 'split'], ['katana', 'cleft'], ['sledgehammer', 'crush']] as const) {
+      const { sim, player, enemy } = duel(w, 1.8);
+      enemy.limbDamage.head = 999;
+      expect(enemy.hp).toBe(enemy.stats.maxHp);
+      const [h] = hits(swing(sim, player, 'overhead'));
+      expect(h.bone, w).toBe('head');
+      expect(h.fatal, w).toBe(fatal);
+      expect(h.sever, w).toBeNull();
+      expect(enemy.alive, w).toBe(false);
+      expect(enemy.isSevered('head'), w).toBe(false);
+    }
+    // The same goes for you.
+    const sim = new CombatSim(5);
+    sim.walkable = new RectWalkable(-50, 50, -50, 50);
+    const player = createPlayer();
+    player.autoDefense = false;
+    const { fighter: e, ai } = createBrawler(sim.rng, { passive: true });
+    e.weapon = WEAPONS.axe;
+    player.yaw = Math.PI / 2;
+    e.pos.set(1.8, 0, 0);
+    e.yaw = -Math.PI / 2;
+    sim.add(player);
+    sim.add(e, ai);
+    for (let i = 0; i < 20; i++) sim.step();
+    const [h] = hits(swing(sim, e, 'overhead'));
+    expect(h.fatal).toBe('split');
+    expect(player.alive).toBe(false);
+  });
+
+  it('a glancing edge takes a piece with it — an ear only comes off once', () => {
+    const { sim, player, enemy } = duel('axe', 1.7);
+    const hit = (sim as unknown as { hit: (...a: unknown[]) => void }).hit.bind(sim);
+    const torn: string[] = [];
+    for (let i = 0; i < 12; i++) {
+      enemy.hp = enemy.stats.maxHp;
+      enemy.enterLocomotion(1);
+      // Down past the left side of the head.
+      const side = enemy.rig.head.pos.clone().add(new Vector3(0, 0.15, 0.14));
+      hit(player, enemy, WEAPON_MOVES.overhead, side, new Vector3(1, 0, 0), 'head', 'head', 1, false, WEAPONS.axe, new Vector3(0, -1, 0));
+      const ev = sim.events.filter((e) => e.type === 'hit').at(-1) as Extract<CombatEvent, { type: 'hit' }>;
+      if (ev?.tear) torn.push(ev.tear.piece);
+    }
+    expect(torn.filter((p) => p === 'earL').length).toBe(1);
+    expect(enemy.torn.has('earL')).toBe(true);
+  });
+
+  it('only weapons that really could do it split, cleave or crush a skull, take limbs or heads off, or slice pieces away', () => {
+    // The table itself: nothing blunt cuts anything off, and only real mass crushes.
+    for (const w of Object.values(WEAPONS)) {
+      const g = GORE[w.id];
+      if (w.edge === 'blunt') {
+        expect(g.sever, w.id).toBe('none');
+        expect(g.decap, w.id).toBe(false);
+        expect(g.tear, w.id).toBe(false);
+        expect([null, 'crush'], w.id).toContain(g.crown);
+        if (g.crown) expect(w.mass, w.id).toBeGreaterThanOrEqual(2.5);
+      } else {
+        expect(g.crown, w.id).not.toBe('crush');
+        if (g.decap || g.sever === 'all') expect(w.mass, w.id).toBeGreaterThanOrEqual(1);
+        // Halving a skull takes a heavy weapon; a light blade (a katana) cuts deep instead.
+        if (g.crown === 'split') expect(w.mass, w.id).toBeGreaterThanOrEqual(2.5);
+      }
+    }
+    expect(GORE.pipe).toEqual({ crown: null, sever: 'none', decap: false, tear: false });
+    expect(GORE.katana.crown).toBe('cleft');
+
+    // And in a fight: the same blows with each weapon, at the same places.
+    type Hit = Extract<CombatEvent, { type: 'hit' }>;
+    const blow = (id: WeaponId, at: 'crown' | 'neck' | 'thigh' | 'forearm') => {
+      const { sim, player, enemy } = duel(id, 1.6);
+      for (const k of Object.keys(enemy.limbDamage)) delete enemy.limbDamage[k as keyof typeof enemy.limbDamage];
+      for (const b of ['head', 'thighL', 'foreArmL'] as const) enemy.limbDamage[b] = 999;
+      const r = enemy.rig;
+      const point = at === 'crown' ? r.head.pos.clone().add(new Vector3(0, 0.27, 0))
+        : at === 'neck' ? r.head.pos.clone().add(new Vector3(-0.1, 0.03, 0))
+        : at === 'thigh' ? r.thighL.pos.clone().add(new Vector3(-0.08, -0.2, 0))
+        : r.foreArmL.pos.clone().add(new Vector3(-0.05, -0.1, 0));
+      const bone = at === 'crown' || at === 'neck' ? 'head' : at === 'thigh' ? 'thighL' : 'foreArmL';
+      const swing = at === 'crown' ? new Vector3(0, -1, 0) : new Vector3(0, 0, 1);
+      const hit = (sim as unknown as { hit: (...a: unknown[]) => void }).hit.bind(sim);
+      hit(player, enemy, WEAPON_MOVES.chop, point, new Vector3(1, 0, 0), at === 'thigh' ? 'legs' : 'head', bone, 1, false, WEAPONS[id], swing);
+      return sim.events.filter((e) => e.type === 'hit').at(-1) as Hit;
+    };
+    for (const w of Object.values(WEAPONS)) {
+      const g = GORE[w.id];
+      expect(blow(w.id, 'crown').fatal, `${w.id} crown`).toBe(g.crown);
+      expect(blow(w.id, 'neck').sever, `${w.id} neck`).toBe(g.decap ? 'head' : null);
+      expect(blow(w.id, 'thigh').sever, `${w.id} thigh`).toBe(g.sever === 'all' ? 'thighL' : null);
+      expect(blow(w.id, 'forearm').sever, `${w.id} forearm`).toBe(g.sever !== 'none' ? 'foreArmL' : null);
+      if (!g.tear) for (const at of ['crown', 'neck', 'thigh'] as const) expect(blow(w.id, at).tear, `${w.id} ${at} tear`).toBeNull();
+    }
+  });
+
+  it('a heavy weapon swung right hits like nothing else — and gets its head on them even when they crowd in', () => {
+    const land = (id: WeaponId, move: string, dist: number) => {
+      const { sim, player, enemy } = duel(id, dist);
+      enemy.minHp = 1;
+      const [h] = hits(swing(sim, player, move, 70));
+      return h;
+    };
+    const axe = land('axe', 'overhead', 1.8);
+    const machete = land('machete', 'chop', 1.4);
+    expect(axe.weapon?.id).toBe('axe');
+    expect(axe.damage).toBeGreaterThan(40);
+    expect(axe.damage).toBeGreaterThan(machete.damage * 3);
+    // Crowded at point-blank range: it gives ground winding up, so it's still the head
+    // of the axe that lands, not the haft.
+    const close = land('axe', 'overhead', 1.0);
+    expect(close.weapon?.id).toBe('axe');
+    expect(close.damage).toBeGreaterThan(40);
+    // Even taken on the guard, it costs far more of it than a light weapon's chop.
+    const guardCost = (id: WeaponId, move: string) => {
+      const { sim, player, enemy } = duel(id, 1.6);
+      const block = (sim as unknown as { block: (...a: unknown[]) => void }).block.bind(sim);
+      const g0 = enemy.guard;
+      block(player, enemy, WEAPON_MOVES[move], enemy.rig.chest.pos.clone(), new Vector3(1, 0, 0));
+      return g0 - enemy.guard;
+    };
+    expect(guardCost('sledgehammer', 'overhead')).toBeGreaterThan(WEAPON_MOVES.overhead.guardDamage * 1.4);
   });
 
   it('losing an arm takes its strikes away and drops the weapon', () => {
@@ -111,7 +234,8 @@ describe('weapons', () => {
     sim.add(e, ai);
     for (let i = 0; i < 20; i++) sim.step();
     player.limbDamage.head = 999;
-    e.startMove(WEAPON_MOVES.overhead, false, 'head');
+    player.limbDamage.upperArmL = 999;
+    e.startMove(WEAPON_MOVES.sweep, false, 'body');
     for (let i = 0; i < 45; i++) sim.step();
     expect(player.hp).toBeGreaterThan(0);
     expect(player.severed.size).toBe(0);
@@ -322,15 +446,17 @@ describe('strikes stop at the body', () => {
   it('only a blow that cuts clean through follows through', () => {
     const { sim, player, enemy } = duel('axe', 1.8);
     enemy.limbDamage.head = 30;
-    const [h] = hits(swing(sim, player, 'overhead', 30));
+    const [h] = hits(swing(sim, player, 'sweep', 30));
     expect(h.sever).toBe('head');
     expect(player.attackEnd).toBe(0);
   });
 
-  it('too close for the edge: the haft knocks, it does not cut', () => {
+  it('too close for the edge, with no room to back off: the haft knocks, it does not cut', () => {
     // (Whatever the opponent's hands happen to be doing at the time.)
     for (let n = 0; n < 6; n++) {
       const { sim, player, enemy } = duel('axe', 0.85);
+      // Back to the wall: nowhere to give ground.
+      sim.walkable = new RectWalkable(-0.2, 50, -50, 50);
       const [h] = hits(swing(sim, player, 'sweep'));
       expect(h).toBeDefined();
       expect(h.weapon).toBeNull();

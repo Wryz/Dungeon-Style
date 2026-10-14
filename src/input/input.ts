@@ -1,3 +1,4 @@
+import { DEV } from '../dev';
 import { type Button, BUTTONS } from '../sim/fighter';
 import { type Action, type Bindings, loadBindings, saveBindings } from './bindings';
 
@@ -8,11 +9,12 @@ export interface InputFrame {
   presses: Button[];
   /** Pick up / drop weapon pressed this frame. */
   pickup: boolean;
+
   /** Menu / debug keys pressed this frame (KeyboardEvent.code). */
   keys: string[];
 }
 
-const META_KEYS = new Set(['Escape', 'KeyL', 'KeyP', 'Period', 'KeyT', 'KeyH', 'Backspace', 'KeyM', 'Enter', 'NumpadEnter']);
+const META_KEYS = new Set(['Escape', 'KeyM', 'KeyB', 'Enter', 'NumpadEnter', ...(DEV ? ['KeyL', 'KeyP', 'Period', 'KeyT', 'KeyH', 'Backspace'] : [])]);
 const ARROWS: Partial<Record<string, Action>> = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
 
 /** Keyboard (rebindable) + mouse + gamepad + touch, collapsed into one frame of intent. */
@@ -20,6 +22,7 @@ export class Input {
   private readonly held = new Set<Action>();
   private presses: Button[] = [];
   private pickup = false;
+
   private keys: string[] = [];
   private gpPrev: boolean[] = [];
   private touchMove = { x: 0, y: 0 };
@@ -62,6 +65,7 @@ export class Input {
       this.onAnyInput?.();
       if (e.button === 0) this.presses.push('lpunch');
       else if (e.button === 2) this.presses.push('rpunch');
+
     });
     target.addEventListener('contextmenu', (e) => e.preventDefault());
     if ('ontouchstart' in window || navigator.maxTouchPoints > 0) this.buildTouch();

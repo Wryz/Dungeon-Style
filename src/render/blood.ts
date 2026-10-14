@@ -19,6 +19,8 @@ interface Drop {
 const MAX_DROPS = 500;
 const MAX_STAINS = 400;
 const _o = new Object3D();
+const _up = new Vector3(0, 1, 0);
+const _dir = new Vector3();
 
 /** Stylised low-poly blood: droplets that arc, fall and leave stains on the floor. */
 export class Blood {
@@ -59,7 +61,13 @@ export class Blood {
         .normalize()
         .multiplyScalar(speed * (0.5 + Math.random() * 0.8))
         .add(new Vector3((Math.random() - 0.5) * 1.4, 0.4 + Math.random() * 1.3, (Math.random() - 0.5) * 1.4));
-      this.drops.push({ pos: at.clone(), vel: v, size: 0.015 + Math.random() * 0.025 * (0.6 + amount), spin: Math.random() * 10 });
+      // Already on its way out when the shot freezes: each drop starts a little along its
+      // own path, so the spray reads as a spray — a fan of streaks — not a ball.
+      const t0 = 0.012 + Math.random() * 0.075;
+      const pos = at.clone().addScaledVector(v, t0);
+      pos.y -= 4.9 * t0 * t0;
+      v.y -= 9.8 * t0;
+      this.drops.push({ pos, vel: v, size: 0.015 + Math.random() * 0.025 * (0.6 + amount), spin: Math.random() * 10 });
     }
   }
 
@@ -113,9 +121,11 @@ export class Blood {
     let k = 0;
     for (const d of this.drops) {
       _o.position.copy(d.pos);
-      _o.rotation.set(d.spin, d.spin * 0.7, 0);
-      // Stretch along the fall for a liquid read.
-      _o.scale.set(d.size, d.size * (1 + Math.min(2, Math.abs(d.vel.y) * 0.4)), d.size);
+      // Stretched along the way it's flying, for a liquid read.
+      const speed = d.vel.length();
+      if (speed > 0.05) _o.quaternion.setFromUnitVectors(_up, _dir.copy(d.vel).divideScalar(speed));
+      else _o.rotation.set(d.spin, d.spin * 0.7, 0);
+      _o.scale.set(d.size, d.size * (1 + Math.min(3, speed * 0.45)), d.size);
       _o.updateMatrix();
       this.dropMesh.setMatrixAt(k++, _o.matrix);
     }

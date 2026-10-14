@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { CombatSim } from '../src/sim/combat';
-import { ARCHETYPES, coinDrop, createEnemy } from '../src/sim/enemies';
+import { ARCHETYPES, coinDrop, createEnemy, type EnemyKind } from '../src/sim/enemies';
+import { ENEMY_MIN_STARTUP } from '../src/sim/fighter';
+import { ENEMY_MOVES } from '../src/sim/moves';
 import { createPlayer } from '../src/sim/roster';
 import { Rng } from '../src/sim/math';
+import { WEAPON_MOVES } from '../src/sim/weapons';
 
 describe('enemy archetypes', () => {
   for (const kind of Object.keys(ARCHETYPES) as (keyof typeof ARCHETYPES)[]) {
@@ -20,7 +23,9 @@ describe('enemy archetypes', () => {
         if (fighter.state === 'attack' && fighter.move) used.add(fighter.move.id);
         if (!player.alive) break;
       }
-      const plan = new Set(ARCHETYPES[kind].plan.moves.map(([m]) => m));
+      // Its own moves: what it throws bare-handed, with its weapon, and its specials.
+      const a = ARCHETYPES[kind].plan;
+      const plan = new Set([...a.moves, ...(a.armed ?? []).flatMap((x) => x.moves)].map(([m]) => m).concat((a.specials ?? []).map((x) => x.move)));
       expect([...used].some((m) => plan.has(m))).toBe(true);
       expect(Number.isFinite(fighter.pos.x)).toBe(true);
     });
@@ -54,5 +59,24 @@ describe('enemy archetypes', () => {
     const { fighter, ai } = createEnemy('minotaur', new Rng(1));
     expect(fighter.scale).toBeGreaterThan(1.5);
     expect(ai.plan.attackRange).toBeGreaterThan(2);
+  });
+});
+
+describe('fair warning', () => {
+  it('no opponent strike winds up in under a quarter-second — samurai cuts and quick jabs included', () => {
+    for (const kind of Object.keys(ARCHETYPES) as EnemyKind[]) {
+      const sim = new CombatSim(1);
+      const { fighter: e } = createEnemy(kind, sim.rng);
+      const pl = ARCHETYPES[kind].plan;
+      const ids = new Set([...pl.moves.map(([m]) => m), ...(pl.armed ?? []).flatMap((a) => a.moves.map(([m]) => m)), ...(pl.specials ?? []).map((s) => s.move)]);
+      for (const id of ids) {
+        const m = e.moveDef(id) ?? ENEMY_MOVES[id] ?? WEAPON_MOVES[id];
+        if (!m || m.noHit) continue;
+        e.stamina = 1;
+        e.startMove(m);
+        expect(e.move!.startup, `${kind}: ${id}`).toBeGreaterThanOrEqual(ENEMY_MIN_STARTUP);
+        e.enterLocomotion(1);
+      }
+    }
   });
 });

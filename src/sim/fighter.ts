@@ -1,4 +1,5 @@
-import { Vector3 } from 'three';
+import type { PerkId } from './perks';
+import { Quaternion, Vector3 } from 'three';
 import { Animator, type TrackKey } from '../body/animator';
 import { Footwork, type FootworkStyle } from '../body/footwork';
 import { IdleBehavior, type IdleStyle } from '../body/idle';
@@ -143,6 +144,7 @@ export class Fighter {
   /** The weapon is stuck in the opponent until this state frame. */
   stuckUntil = 0;
   private readonly impactPose = makePose();
+  private readonly retractPose = makePose();
   private readonly reactPose = makePose();
   /** Head / chest pitch toward the opponent's face (smoothed; + = looking down). */
   private lookPitch = 0;
@@ -156,6 +158,9 @@ export class Fighter {
   hitThisAttack = false;
   /** The attack was a counter (thrown from a counter window). */
   isCounterAttack = false;
+  /** The counter window came from a perfect dodge (and this strike is that counter). */
+  perfectCounter = false;
+  isPerfectCounter = false;
   /** Target chosen for the current attack, and the height class it lands at. */
   aim: Aim | null = null;
   strikeHeight: Height = 'high';
@@ -164,6 +169,19 @@ export class Fighter {
   counter: Counter | null = null;
   lastDefendedSerial = -1;
   defenseCooldown: Record<DefenseKind, number> = { block: 0, duck: 0, weave: 0, slide: 0 };
+  /** Skills (from the shop) and the once-a-round ones already spent this round. */
+  perks = new Set<PerkId>();
+  perksUsed = new Set<PerkId>();
+  /** Getting your breath back faster than normal (training, supplies). */
+  staminaRegenMul = 1;
+  /** Extra damage with a weapon in hand (supplies). */
+  weaponDamageMul = 1;
+  /** The current defence was yours (Q / E met a strike), not the automatic guard. */
+  defenseManual = false;
+  /** The strike your parry / dodge was timed perfectly to (-1: none). */
+  perfectSerial = -1;
+  /** The strike your last parry / dodge got you out of the way of (it was reaching you). */
+  dodgedSerial = -1;
   weaveSide: 1 | -1 = 1;
 
   buffer: { button: Button; frames: number } | null = null;
@@ -184,18 +202,36 @@ export class Fighter {
   stamina = 1;
   /** Frames left on a request to pick up / drop a weapon. */
   pickupRequest = 0;
+  /** Throwing weapons carried on the belt (kunai), apart from whatever's in hand. */
+  ammo: { weapon: WeaponDef; count: number } | null = null;
+  /** In the air: the horizontal step per frame, fixed at take-off. */
+  readonly airStep = new Vector3();
   /** Weapon in hand (null = fists). */
   weapon: WeaponDef | null = null;
   /** Lasting cuts (each keeps bleeding a little). */
   readonly wounds: Wound[] = [];
   /** Bones cut off (with everything below them). */
   readonly severed = new Set<BoneName>();
+  /** Pieces torn away (an ear, scalp...): each only comes off once. */
+  readonly torn = new Set<string>();
   /** Cleaving damage taken per limb (enough of it and the limb comes off). */
   readonly limbDamage: Partial<Record<BoneName, number>> = {};
   hitReaction: PoseName = 'hitHigh';
 
-  /** Player gets automatic defense; enemies defend through their AI. */
+  /** Reads strikes coming in and reacts on its own (the player; enemies, by their skill). */
   autoDefense: boolean;
+  /** How well this fighter reads strikes coming in (1 = the player's own reactions). */
+  readSkill = 1;
+  /** Same strike as last time, again and again: how many in a row (predictable). */
+  repeatCount = 0;
+  /** The last strike this fighter started. */
+  lastMoveId = '';
+  /** Frames since this fighter last started an attack. */
+  sinceMoveStart = 999;
+  /** How much was left in the tank when the current strike was thrown. */
+  swingStamina = 1;
+  /** The current strike landed on a guard. */
+  wasBlocked = false;
   stats: FighterStats;
 
   readonly anim = new Animator();
@@ -254,8 +290,23 @@ export class Fighter {
     return this.move ? this.move.startup - this.stateFrame : Infinity;
   }
 
+  /** Off the ground in a jump or a flip. */
+  isAirborne(): boolean {
+    const a = this.state === 'attack' ? this.move?.air : undefined;
+    return !!a && this.stateFrame >= a.from && this.stateFrame < a.to;
+  }
+
+  /** How high the jump has carried the body (m): a ballistic arc set by the flight time. */
+  airHeight(): number {
+    if (!this.isAirborne()) return 0;
+    const a = this.move!.air!;
+    const t = (a.to - a.from) / 60;
+    const u = (this.stateFrame - a.from) / (a.to - a.from);
+    return ((GRAVITY * t * t) / 2) * u * (1 - u);
+  }
+
   inActiveFrames(): boolean {
-    if (this.state !== 'attack' || !this.move || this.attackEnd) return false;
+    if (this.state !== 'attack' || !this.move || this.attackEnd || this.move.noHit) return false;
     const f = this.stateFrame;
     return f >= this.move.startup && f < this.move.startup + this.move.active;
   }
@@ -266,7 +317,7 @@ export class Fighter {
    */
   inWeaponContact(): boolean {
     const m = this.move;
-    if (this.state !== 'attack' || !m?.weapon || !this.weapon || this.attackEnd) return false;
+    if (this.state !== 'attack' || !m?.weapon || !this.weapon || this.attackEnd || m.noHit) return false;
     const f = this.stateFrame;
     return f >= Math.floor(m.startup * 0.5) && f <= m.startup + m.active + Math.floor(m.recovery * 0.25);
   }
@@ -293,16 +344,27 @@ export class Fighter {
     this.stuckUntil = mode === 'stick' ? sf + hold : 0;
     this.attackEnd = sf + hold + retract;
     const back = getPose(this.weapon ? (this.weapon.style === 'oneHand' ? 'wGuard1' : 'wGuard2') : 'guard');
-    this.anim.play([
+    const keys: Parameters<typeof this.anim.play>[0] = [
       { f: sf, pose: this.impactPose },
       { f: sf + hold, pose: this.impactPose },
-      { f: this.attackEnd, pose: back, ease: mode === 'stick' ? 'in' : 'out' },
-    ]);
+    ];
+    if (this.weapon) {
+      // A weapon is brought back up and over, not dragged back through the body.
+      blendPose(this.impactPose, back, 0.5, this.retractPose);
+      this.retractPose.blade.y += 0.25;
+      this.retractPose.blade.normalize();
+      keys.push({ f: sf + hold + Math.round(retract / 2), pose: this.retractPose, ease: 'inOut' });
+    }
+    keys.push({ f: this.attackEnd, pose: back, ease: mode === 'stick' ? 'in' : 'out' });
+    this.anim.play(keys);
   }
 
   inCancelWindow(): boolean {
     const m = this.move;
     if (this.state !== 'attack' || !m?.cancel) return false;
+    // A punch that landed on a guard can't be rolled straight into the next: it has to
+    // come all the way back first.
+    if (this.state === 'attack' && this.wasBlocked) return false;
     if (this.stateFrame < this.stuckUntil) return false;
     return this.stateFrame >= m.cancel.from && this.stateFrame <= m.cancel.to && (!this.attackEnd || this.stateFrame < this.attackEnd);
   }
@@ -385,11 +447,21 @@ export class Fighter {
     // Timing fits the body and the tool: big bodies move their limbs slower (like a
     // longer pendulum), small ones quicker; heavy weapons take longer to bring round.
     // Tired arms are slow arms.
-    const tempo = Math.sqrt(this.scale) * (move.weapon && this.weapon ? weaponTempo(this.weapon, this.scale) : 1) * (1 + (1 - this.stamina) * 0.3);
+    let tempo = Math.sqrt(this.scale) * (move.weapon && this.weapon ? weaponTempo(this.weapon, this.scale) : 1) * (1 + (1 - this.stamina) * 0.6) * (this.perks.has('quickHands') ? 0.9 : 1);
+    // An opponent's strike always gives you a fair look at it: never less than a
+    // quarter-second of wind-up (anything quicker is slowed — recovery and all).
+    if (this.team === 'enemy') tempo = Math.max(tempo, ENEMY_MIN_STARTUP / move.startup);
+    // Gassed, a punch is an arm with nothing behind it.
+    this.swingStamina = this.stamina;
     // Swinging a heavy weapon costs the breath it looks like it costs.
     const lift = move.weapon && this.weapon ? 0.8 + 0.15 * heft(this.weapon, this.scale) : 1;
     const cost = (move.weight === 'light' ? 0.035 : move.weight === 'medium' ? 0.055 : 0.085) * lift * (isCounter ? 0.8 : 1);
     this.stamina = Math.max(0, this.stamina - cost);
+    // The same thing over and over is easy to see coming.
+    this.repeatCount = move.id === this.lastMoveId && this.sinceMoveStart < 100 ? this.repeatCount + 1 : 0;
+    this.lastMoveId = move.id;
+    this.sinceMoveStart = 0;
+    this.wasBlocked = false;
     move = timed(move, tempo);
     this.setState('attack');
     this.move = move;
@@ -398,6 +470,8 @@ export class Fighter {
     this.attackSerial++;
     this.hitThisAttack = false;
     this.isCounterAttack = isCounter;
+    this.isPerfectCounter = isCounter && this.perfectCounter;
+    this.perfectCounter = false;
     this.counter = null;
     this.buffer = null;
     this.idle.interrupt();
@@ -406,10 +480,14 @@ export class Fighter {
     // Natural scatter: no two strikes land on exactly the same spot.
     const jitter: [number, number, number] = aimId ? [0, 0, 0] : [this.rng.range(-0.04, 0.04), this.rng.range(-0.035, 0.035), 0];
     // Fit the strike to the opponent in front of us: up for a giant, down for a small one.
-    const dy = Math.max(-0.75, Math.min(0.45, this.heightGap(move, this.aim)));
+    // (Not a spin, a flip or a throw: there the body's turn or the flight does the aiming.)
+    const free = !!move.spin || !!move.air?.flip || !!move.throw;
+    // (A spin is still pitched at the height of whoever it's for: a giant brings its
+    // spinning axe down to a man's chest rather than sweeping over his head.)
+    const dy = free && !move.spin ? 0 : Math.max(-0.75, Math.min(0.45, this.heightGap(move, this.aim)));
     this.swingJitter = jitter;
     this.swingDy = dy;
-    const keys = moveKeys(move, this.aim, jitter, dy, this.reachFit(move), this.weaponFit(move, this.aim));
+    const keys = moveKeys(move, this.aim, jitter, dy, free ? Infinity : this.reachFit(move), free ? null : this.weaponFit(move, this.aim));
     // Re-aiming later keeps the same shape of swing (same keys), only pointed anew.
     this.swingViaMid = keys.length > move.keys.length;
     this.anim.play(keys);
@@ -426,7 +504,7 @@ export class Fighter {
    */
   refitSwing() {
     const m = this.move;
-    if (this.state !== 'attack' || !m?.weapon || this.attackEnd || this.stateFrame >= m.startup) return;
+    if (this.state !== 'attack' || !m?.weapon || this.attackEnd || this.stateFrame >= m.startup || m.spin || m.air?.flip || m.throw) return;
     const l = m.lunge;
     const left = l ? Math.max(0, Math.min(1, (l.to - this.stateFrame) / Math.max(1, l.to - l.from))) : 0;
     const fit = this.weaponFit(m, this.aim, left);
@@ -467,7 +545,7 @@ export class Fighter {
     const ox = t.pos.x - this.pos.x;
     const oz = t.pos.z - this.pos.z;
     const side = (ox * fz - oz * fx) / Math.max(0.01, Math.hypot(ox, oz));
-    const h = targetHeight(t, aim?.height ?? move.height);
+    const h = targetHeight(t, aim?.height ?? move.height) + (aim?.edgeDy ?? 0) * t.scale;
     return {
       target: [side * ahead * 0.5 / this.scale, h / this.scale, ahead / this.scale],
       strikeAt: Math.max(w.strikeFrom + 0.06, w.length - (w.edge === 'blade' && w.style === 'twoHand' ? 0.14 : 0.08)),
@@ -489,10 +567,6 @@ export class Fighter {
   }
 
   /**
-   * How much higher (+) or lower (-) the target's part is than this strike was authored
-   * to hit, in our own (unscaled) metres. Small differences are left to the pose.
-   */
-  /**
    * Whether an unarmed strike can get to what it goes for on the current target: a small
    * creature's jab can't get up to a giant's head (nor its body shot to his belly), but a
    * kick can always find a shin.
@@ -507,6 +581,10 @@ export class Fighter {
     });
   }
 
+  /**
+   * How much higher (+) or lower (-) the target's part is than this strike was authored
+   * to hit, in our own (unscaled) metres. Small differences are left to the pose.
+   */
   private heightGap(move: MoveDef, aim: Aim | null): number {
     const t = this.target;
     if (!t || !t.alive) return 0;
@@ -522,6 +600,7 @@ export class Fighter {
     this.setState('defend');
     if (kind === 'weave') this.weaveSide = slipSide ?? (this.weaveSide === 1 ? -1 : 1);
     this.defense = { def, threatSerial, phase: 'startup', success: false, side: this.weaveSide };
+    this.defenseManual = false;
     this.lastDefendedSerial = threatSerial;
     this.stamina = Math.max(0, this.stamina - 0.015);
     this.defenseCooldown[kind] = def.cooldown;
@@ -604,11 +683,23 @@ export class Fighter {
   celebrate(frames = 150) {
     this.setState('celebrate');
     this.stunFrames = frames;
+    const up = this.liftsWithBothHands() ? 'victory2' : 'victory';
     this.anim.play([
-      { f: 14, pose: getPose('victory'), ease: 'out' },
-      { f: frames - 24, pose: getPose('victory') },
+      { f: 14, pose: getPose(up), ease: 'out' },
+      { f: frames - 24, pose: getPose(up) },
       { f: frames, pose: getPose(this.weapon ? (this.weapon.style === 'oneHand' ? 'wGuard1' : 'wGuard2') : 'guard'), ease: 'inOut' },
     ]);
+  }
+
+  /**
+   * A heavy two-handed tool (axe, sledgehammer, club) goes up level overhead in both
+   * hands, the lead hand slid up the handle. Anything lighter — a sword, a bat — is
+   * raised in the one hand, the other fist up beside it: gripped with both, the second
+   * hand would end up right in front of the face.
+   */
+  private liftsWithBothHands(): boolean {
+    const w = this.weapon;
+    return !!w && w.style === 'twoHand' && w.choke > 0 && w.mass >= 2 && !this.isSevered('foreArmL');
   }
 
   enterLocomotion(fade = 6) {
@@ -667,6 +758,7 @@ export class Fighter {
       if (legsUnder) copyPose(L, this.pose);
       else blendPose(this.anim.out, L, this.moveBlend, this.pose);
     }
+    this.applyAir();
     if (this.weapon && !this.isSevered('foreArmR')) {
       forwardKinematics(this.pose, this.rig, this.pos, this.yaw, this.scale);
       this.keepWeaponClear();
@@ -675,6 +767,26 @@ export class Fighter {
     forwardKinematics(this.pose, this.rig, this.pos, this.yaw, this.scale);
     // Authored-leg animations (kicks, defense, reactions): feet are wherever the pose put them.
     if (!driven) this.footwork.syncToRig(this.rig);
+  }
+
+  /**
+   * In the air the whole body is lifted on its ballistic arc and turns about its centre
+   * of mass at a steady rate (the spin it left the ground with): the pose only tucks
+   * and extends the limbs.
+   */
+  private applyAir() {
+    if (!this.isAirborne()) return;
+    const a = this.move!.air!;
+    const P = this.pose;
+    P.root.y += this.airHeight() / this.scale;
+    if (!a.flip) return;
+    const u = (this.stateFrame - a.from) / (a.to - a.from);
+    _flipQ.setFromAxisAngle(_xAxis, a.flip * u);
+    // The centre of mass: a hand's width above the hip joints.
+    _com.set(0, 0.12, 0).applyQuaternion(P.rot.pelvis).add(P.root);
+    P.root.sub(_com).applyQuaternion(_flipQ).add(_com);
+    P.rot.pelvis.premultiply(_flipQ);
+    P.blade.applyQuaternion(_flipQ);
   }
 
   /** Chest rising and falling: slow and shallow when fresh, fast and heaving when gassed. */
@@ -740,6 +852,7 @@ export class Fighter {
     // Both hands stay on the haft whatever the body is doing — kicking, rocked by a
     // blow — until it's knocked flat.
     if (this.state === 'knockdown' || this.state === 'ko' || this.state === 'getup') return;
+    if (this.state === 'celebrate' && !this.liftsWithBothHands()) return;
     forwardKinematics(this.pose, _localRig);
     const w = this.weapon!;
     bladeFrame({ rig: _localRig, pose: this.pose, yaw: 0, scale: 1 }, _grip, _dir);
@@ -847,7 +960,14 @@ export class Fighter {
     const guardR = guardHand(G.handR!, M.guardY + back * 0.02 * m - 0.12 * droop, M.guardZ * 0.6 - 0.04 * droop);
     const gb = G.blade ?? DEFAULT_BLADE;
     const sag = droop * 0.55;
-    const guardBlade: V3 = [gb[0] * (1 - sag) + 0.15 * sag, gb[1] * (1 - sag) - 0.35 * sag, gb[2] * (1 - sag) + 0.9 * sag];
+    let guardBlade: V3 = [gb[0] * (1 - sag) + 0.15 * sag, gb[1] * (1 - sag) - 0.35 * sag, gb[2] * (1 - sag) + 0.9 * sag];
+    // Someone inside the length of a long weapon: it's held up out of their way, not
+    // levelled into their chest.
+    if (this.weapon && this.target?.alive) {
+      const room = this.distanceTo(this.target) - 0.3 * this.target.scale;
+      const close = Math.max(0, Math.min(1, (this.weapon.length * this.scale + 0.35 - room) / 0.35));
+      if (close > 0) guardBlade = [guardBlade[0] * (1 - close), guardBlade[1] * (1 - close) + 0.95 * close, guardBlade[2] * (1 - close) + 0.3 * close];
+    }
     const lerp3 = (a: V3, b: V3, k: number): V3 => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
     const runHand = (side: 1 | -1): V3 => {
       const th = 0.32 + 0.68 * pump * side;
@@ -908,6 +1028,9 @@ export class Fighter {
 // enemy's haymaker are both 'hook').
 const _timed = new WeakMap<MoveDef, Map<string, MoveDef>>();
 
+/** The least wind-up (frames) an opponent's strike gets: enough to see it and react. */
+export const ENEMY_MIN_STARTUP = 15;
+
 /** A move with its frame data stretched (>1 slower) — cached per move and tempo. */
 export function timed(m: MoveDef, tempo: number): MoveDef {
   if (Math.abs(tempo - 1) < 0.03) return m;
@@ -923,6 +1046,9 @@ export function timed(m: MoveDef, tempo: number): MoveDef {
       active: Math.max(2, f(m.active)),
       recovery: Math.max(4, f(m.recovery)),
       lunge: m.lunge && { ...m.lunge, from: f(m.lunge.from), to: Math.max(f(m.lunge.from) + 1, f(m.lunge.to)) },
+      air: m.air && { ...m.air, from: f(m.air.from), to: Math.max(f(m.air.from) + 2, f(m.air.to)) },
+      spin: m.spin && { ...m.spin, from: f(m.spin.from), to: Math.max(f(m.spin.from) + 2, f(m.spin.to)), hold: m.spin.hold && [f(m.spin.hold[0]), f(m.spin.hold[1])] },
+      throw: m.throw && { ...m.throw, release: f(m.throw.release) },
       armor: m.armor && [f(m.armor[0]), f(m.armor[1])],
       evades: m.evades && { ...m.evades, from: f(m.evades.from), to: f(m.evades.to) },
       cancel: m.cancel && { ...m.cancel, from: f(m.cancel.from), to: f(m.cancel.to) },
@@ -933,6 +1059,11 @@ export function timed(m: MoveDef, tempo: number): MoveDef {
 }
 
 const _localRig = makeRig();
+const _flipQ = new Quaternion();
+const _xAxis = new Vector3(1, 0, 0);
+const _com = new Vector3();
+/** m/s². */
+export const GRAVITY = 9.81;
 const _grip = new Vector3();
 const _dir = new Vector3();
 const _push = new Vector3();

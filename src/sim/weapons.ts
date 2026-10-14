@@ -12,7 +12,8 @@ import type { Aim, DefenseKind, Key, MoveDef } from './moves';
  */
 export type WeaponId =
   | 'cleaver' | 'machete' | 'gladius' | 'pan' | 'axe' | 'bat' | 'chair' | 'club'
-  | 'crowbar' | 'sledgehammer' | 'cue' | 'bottle' | 'katana' | 'bokken' | 'pipe' | 'fireaxe';
+  | 'crowbar' | 'sledgehammer' | 'cue' | 'bottle' | 'katana' | 'bokken' | 'pipe' | 'fireaxe'
+  | 'ninjato' | 'kunai';
 export type WeaponStyle = 'oneHand' | 'twoHand';
 
 export interface WeaponDef {
@@ -30,7 +31,7 @@ export interface WeaponDef {
   damageMul: number;
   /** How deep / bloody its cuts are (0 = none). */
   cut: number;
-  /** Power to sever limbs (0 = never). */
+  /** How much each blow does toward taking a limb off (whether it can at all: see GORE). */
   cleave: number;
   /** Frames an edge stays bitten into the body before it's wrenched free. */
   bite: number;
@@ -69,11 +70,69 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   katana: { id: 'katana', name: 'Katana', style: 'twoHand', edge: 'blade', length: 0.98, strikeFrom: 0.22, radius: 0.05, damageMul: 1.5, cut: 1, cleave: 0.85, bite: 5, tempo: 0.95, mass: 1.1, choke: 0, ...TWO_HAND },
   bokken: { id: 'bokken', name: 'Bokken', style: 'twoHand', edge: 'blunt', length: 0.95, strikeFrom: 0.3, radius: 0.05, damageMul: 1.3, cut: 0, cleave: 0, bite: 0, tempo: 0.9, mass: 0.6, choke: 0, ...TWO_HAND },
   pipe: { id: 'pipe', name: 'Lead Pipe', style: 'oneHand', edge: 'blunt', length: 0.72, strikeFrom: 0.25, radius: 0.045, damageMul: 1.3, cut: 0, cleave: 0, bite: 0, tempo: 1, mass: 1.4, choke: 0, ...ONE_HAND_CUTS },
+  // A short, straight one-handed sword: quick, and light enough to fight with on the move.
+  ninjato: { id: 'ninjato', name: 'Ninjato', style: 'oneHand', edge: 'blade', length: 0.62, strikeFrom: 0.14, radius: 0.05, damageMul: 1.35, cut: 0.95, cleave: 0.55, bite: 6, tempo: 0.85, mass: 0.8, choke: 0, ...ONE_HAND_CUTS },
+  // A throwing knife: a stab in the hand, but made to fly point first.
+  kunai: { id: 'kunai', name: 'Kunai', style: 'oneHand', edge: 'blade', length: 0.26, strikeFrom: 0.08, radius: 0.03, damageMul: 1.3, cut: 0.7, cleave: 0, bite: 4, tempo: 0.8, mass: 0.2, choke: 0, light: 'hack', heavy: 'hack', chain: { hack: 'hack' } },
   fireaxe: { id: 'fireaxe', name: 'Fire Axe', style: 'twoHand', edge: 'blade', length: 0.9, strikeFrom: 0.68, radius: 0.09, damageMul: 1.5, cut: 1, cleave: 0.95, bite: 16, tempo: 1.1, mass: 2.8, choke: 0.42, ...TWO_HAND },
+};
+
+/**
+ * What a weapon can actually do to a body beyond hurting it, weapon by weapon — not
+ * derived from its numbers, because "heavy" and "sharp" aren't enough on their own: a
+ * lead pipe is heavy and won't split a skull; a kitchen knife is sharp and won't take
+ * an arm off.
+ */
+export interface Gore {
+  /**
+   * Brought straight down onto the crown at full power: 'split' cleaves the head in two
+   * (only a heavy edge), 'cleft' buries the blade in the skull (a lighter one), 'crush'
+   * caves it in (only real mass will). Each kills; null: it hurts, and that's all.
+   */
+  crown: 'split' | 'cleft' | 'crush' | null;
+  /** Which limbs it can take off: all of them, only forearms, or none. */
+  sever: 'all' | 'forearms' | 'none';
+  /** Can take the head off (a level cut through the neck). */
+  decap: boolean;
+  /** Can slice pieces away: an ear, scalp, a chunk of flesh. */
+  tear: boolean;
+}
+
+const NO_GORE: Gore = { crown: null, sever: 'none', decap: false, tear: false };
+
+export const GORE: Record<WeaponId, Gore> = {
+  // Big edges with the weight behind them: everything. Only these split a skull in two.
+  axe: { crown: 'split', sever: 'all', decap: true, tear: true },
+  fireaxe: { crown: 'split', sever: 'all', decap: true, tear: true },
+  // A long, keen edge takes limbs and heads, but it's too light to halve a skull: brought
+  // straight down, it cuts deep into it instead (which kills just the same).
+  katana: { crown: 'cleft', sever: 'all', decap: true, tear: true },
+  // Short or light blades: deep, killing cuts into the skull, a hand or forearm off,
+  // slices away flesh — but not a neck, a thigh or a whole skull in one blow.
+  machete: { crown: 'cleft', sever: 'forearms', decap: false, tear: true },
+  cleaver: { crown: 'cleft', sever: 'forearms', decap: false, tear: true },
+  gladius: { crown: 'cleft', sever: 'forearms', decap: false, tear: true },
+  ninjato: { crown: 'cleft', sever: 'forearms', decap: false, tear: true },
+  // A knife cuts and slices; it doesn't chop.
+  kunai: { crown: null, sever: 'none', decap: false, tear: true },
+  // Only real mass coming down caves a skull in.
+  sledgehammer: { crown: 'crush', sever: 'none', decap: false, tear: false },
+  club: { crown: 'crush', sever: 'none', decap: false, tear: false },
+  // Blunt and too light (or too awkward) for any of it: they bruise, cut skin, knock down.
+  pipe: NO_GORE,
+  crowbar: NO_GORE,
+  bat: NO_GORE,
+  chair: NO_GORE,
+  pan: NO_GORE,
+  cue: NO_GORE,
+  bottle: NO_GORE,
+  bokken: NO_GORE,
 };
 
 
 const HEAD: Aim = { id: 'head', weight: 3 };
+/** A level cut at the head goes for the neck, under the jaw (dropping a little at the knees to get under it). */
+const NECK: Aim = { id: 'head', weight: 3, edgeDy: -0.05, add: { root: [0, -0.05, 0] } };
 const BODY: Aim = { id: 'body', weight: 2, offset: [0.02, -0.32, -0.04], height: 'mid', add: { root: [0, -0.06, 0], abdomen: [0.12, 0, 0] } };
 const LEGS: Aim = { id: 'legs', weight: 1, offset: [0.04, -0.62, -0.08], height: 'low', add: { root: [0, -0.12, 0], abdomen: [0.3, 0, 0] } };
 
@@ -106,7 +165,7 @@ export const WEAPON_MOVES: Record<string, MoveDef> = {
     knockback: 1.4, impulse: 16, hitstop: 7, shake: 0.24, radius: 0, reach: 1.6,
     lunge: { from: 2, to: 10, distance: 0.2 },
     cancel: { into: ['backslash', 'chop', 'slash', 'frontKick', 'lowKick'], from: 13, to: 30 },
-    aims: [HEAD, BODY],
+    aims: [NECK, BODY],
     keys: keys('wSlashWind', 'wSlashExt', 'wSlashFollow', 'wGuard1'),
   }),
   backslash: weaponMove({
@@ -118,7 +177,7 @@ export const WEAPON_MOVES: Record<string, MoveDef> = {
     knockback: 1.4, impulse: 15, hitstop: 7, shake: 0.22, radius: 0, reach: 1.55,
     lunge: { from: 1, to: 8, distance: 0.16 },
     cancel: { into: ['chop', 'slash', 'frontKick', 'lowKick'], from: 11, to: 28 },
-    aims: [HEAD, BODY],
+    aims: [NECK, BODY],
     keys: keys('wBackWind', 'wBackExt', 'wBackFollow', 'wGuard1', 0.4),
   }),
   // Point-first stab: the sword arm drives straight from the hip with a lunge, and the
@@ -166,7 +225,7 @@ export const WEAPON_MOVES: Record<string, MoveDef> = {
     knockback: 2.6, impulse: 30, lift: 0.08, hitstop: 10, shake: 0.42, radius: 0, reach: 2.05,
     lunge: { from: 3, to: 14, distance: 0.25 },
     cancel: { into: ['sweepBack', 'overhead', 'frontKick'], from: 18, to: 34 },
-    aims: [HEAD, BODY, LEGS],
+    aims: [NECK, BODY, LEGS],
     keys: keys('wSweepWind', 'wSweepExt', 'wSweepFollow', 'wGuard2', 0.6),
   }),
   sweepBack: weaponMove({
@@ -176,7 +235,7 @@ export const WEAPON_MOVES: Record<string, MoveDef> = {
     damage: 9, guardDamage: 20, poiseDamage: 36, hitstun: 26, blockstun: 16,
     knockback: 2.4, impulse: 26, lift: 0.06, hitstop: 9, shake: 0.38, radius: 0, reach: 1.9,
     lunge: { from: 2, to: 12, distance: 0.2 },
-    aims: [HEAD, BODY],
+    aims: [NECK, BODY],
     keys: keys('wSweepBackWind', 'wSweepBackExt', 'wSweepBackFollow', 'wGuard2', 0.4),
   }),
   overhead: weaponMove({
@@ -202,6 +261,136 @@ export function selectWeaponMove(button: Button, w: WeaponDef, counter: DefenseK
   if (chainFrom) return button === 'lpunch' ? (w.chain[chainFrom] ?? null) : w.heavy;
   return button === 'lpunch' ? w.light : w.heavy;
 }
+
+// ---- Fighting styles: how particular fighters use a weapon --------------------
+const FLIP = Math.PI * 2;
+Object.assign(WEAPON_MOVES, {
+  // The berserker's spinning cleave: the weapon held out at arm's length and the whole
+  // body turned under it — a full circle, wound up from the feet and carried round by
+  // its own weight, then braked. Anything within reach all the way round gets it.
+  spinCleave: weaponMove({
+    id: 'spinCleave', name: 'Spinning Cleave',
+    startup: 16, active: 20, recovery: 30,
+    // Round at chest height: nothing to duck under, only a guard to take it on.
+    height: 'mid', kind: 'hook', weight: 'heavy',
+    damage: 13, guardDamage: 30, poiseDamage: 55, hitstun: 30, blockstun: 20,
+    knockback: 3.0, impulse: 36, lift: 0.05, hitstop: 11, shake: 0.5, radius: 0, reach: 2.3,
+    spin: { from: 6, to: 40, turns: 1 },
+    keys: [
+      { at: ['s', 0.5], pose: 'wSpinWind', ease: 'inOut' },
+      { at: ['s', 1], pose: 'wSpinExt', ease: 'in' },
+      { at: ['a', 1], pose: 'wSpinExt' },
+      { at: ['r', 0.4], pose: 'wSpinFollow', ease: 'out' },
+      { at: ['r', 1], pose: 'wGuard2', ease: 'inOut' },
+    ],
+  }),
+  // Two-handed throw: up behind the head and over, the whole body behind it.
+  throwHeavy: weaponMove({
+    id: 'throwHeavy', name: 'Throw',
+    startup: 22, active: 3, recovery: 22,
+    height: 'high', kind: 'straight', weight: 'heavy',
+    damage: 0, guardDamage: 0, poiseDamage: 0, hitstun: 0, blockstun: 0,
+    knockback: 0, impulse: 0, hitstop: 0, shake: 0, radius: 0, reach: 9,
+    throw: { release: 22, speed: 12, spin: 1.5 },
+    noHit: true,
+    keys: [
+      { at: ['s', 0.7], pose: 'wThrow2Wind', ease: 'inOut' },
+      { at: ['a', 0], pose: 'wThrow2Rel', ease: 'in' },
+      { at: ['a', 1], pose: 'wThrow2Rel' },
+      { at: ['r', 0.5], pose: 'wThrow2Follow', ease: 'out' },
+      { at: ['r', 1], pose: 'guard', ease: 'inOut' },
+    ],
+  }),
+  // One-handed overarm throw (a bottle, a cleaver, a knife).
+  throwOne: weaponMove({
+    id: 'throwOne', name: 'Throw',
+    startup: 16, active: 3, recovery: 18,
+    height: 'high', kind: 'straight', weight: 'medium',
+    damage: 0, guardDamage: 0, poiseDamage: 0, hitstun: 0, blockstun: 0,
+    knockback: 0, impulse: 0, hitstop: 0, shake: 0, radius: 0, reach: 9,
+    throw: { release: 16, speed: 15, spin: 2 },
+    noHit: true,
+    keys: [
+      { at: ['s', 0.65], pose: 'wThrow1Wind', ease: 'inOut' },
+      { at: ['a', 0], pose: 'wThrow1Rel', ease: 'in' },
+      { at: ['a', 1], pose: 'wThrow1Rel' },
+      { at: ['r', 0.6], pose: 'guard', ease: 'inOut' },
+    ],
+  }),
+  // Samurai: the draw cut — flat across from the left hip on a step in.
+  iai: weaponMove({
+    id: 'iai', name: 'Iai Draw Cut',
+    startup: 12, active: 5, recovery: 20,
+    height: 'mid', kind: 'hook', weight: 'heavy',
+    damage: 12, guardDamage: 18, poiseDamage: 35, hitstun: 26, blockstun: 14,
+    knockback: 1.6, impulse: 22, hitstop: 9, shake: 0.35, radius: 0, reach: 2.1,
+    lunge: { from: 3, to: 14, distance: 0.55 },
+    keys: keys('wIaiWind', 'wIaiExt', 'wIaiFollow', 'wGuard2', 0.5),
+  }),
+  // Samurai: kesa-giri — the diagonal cut down from the shoulder.
+  kesa: weaponMove({
+    id: 'kesa', name: 'Kesa-giri',
+    startup: 13, active: 5, recovery: 20,
+    height: 'high', kind: 'hook', weight: 'heavy',
+    damage: 13, guardDamage: 22, poiseDamage: 40, hitstun: 28, blockstun: 16,
+    knockback: 1.8, impulse: 26, hitstop: 10, shake: 0.4, radius: 0, reach: 2.0,
+    lunge: { from: 3, to: 13, distance: 0.35 },
+    aims: [HEAD, BODY],
+    keys: keys('wKesaWind', 'wKesaExt', 'wKesaFollow', 'wGuard2', 0.55),
+  }),
+  // Samurai: tsuki — the point driven in on a long lunge.
+  tsuki: weaponMove({
+    id: 'tsuki', name: 'Tsuki',
+    startup: 11, active: 4, recovery: 18,
+    height: 'mid', kind: 'straight', weight: 'medium',
+    damage: 12, guardDamage: 14, poiseDamage: 25, hitstun: 24, blockstun: 12,
+    knockback: 1.0, impulse: 16, hitstop: 8, shake: 0.3, radius: 0, reach: 2.3,
+    lunge: { from: 2, to: 11, distance: 0.7 },
+    keys: keys('wTsukiWind', 'wTsukiExt', 'wTsukiExt', 'wGuard2', 0.5),
+  }),
+  // Samurai: men — straight down on the head, quick and clean.
+  menCut: weaponMove({
+    id: 'menCut', name: 'Men',
+    startup: 12, active: 4, recovery: 18,
+    height: 'high', kind: 'straight', weight: 'heavy',
+    damage: 13, guardDamage: 24, poiseDamage: 45, hitstun: 28, blockstun: 16,
+    knockback: 1.8, impulse: 26, hitstop: 10, shake: 0.4, radius: 0, reach: 2.1,
+    lunge: { from: 3, to: 12, distance: 0.45 },
+    aims: [HEAD],
+    keys: keys('wOverheadWind', 'wOverheadExt', 'wOverheadFollow', 'wGuard2', 0.5),
+  }),
+  // Ninja: low and long, cutting across on the way past.
+  dashSlash: weaponMove({
+    id: 'dashSlash', name: 'Dash Slash',
+    startup: 14, active: 5, recovery: 20,
+    height: 'mid', kind: 'hook', weight: 'heavy',
+    damage: 11, guardDamage: 16, poiseDamage: 35, hitstun: 26, blockstun: 14,
+    knockback: 1.4, impulse: 20, hitstop: 8, shake: 0.3, radius: 0, reach: 3.2,
+    lunge: { from: 2, to: 16, distance: 2.2 },
+    keys: keys('wDashWind', 'wDashExt', 'wDashFollow', 'wGuard1', 0.45),
+  }),
+  // Ninja: a front flip, the sword brought down by the turn itself.
+  flipSlash: weaponMove({
+    id: 'flipSlash', name: 'Flip Slash',
+    startup: 36, active: 7, recovery: 16,
+    height: 'high', kind: 'straight', weight: 'heavy',
+    damage: 14, guardDamage: 26, poiseDamage: 60, hitstun: 28, blockstun: 16,
+    knockback: 2.0, impulse: 28, hitstop: 11, shake: 0.5, radius: 0, reach: 2.6,
+    lunge: { from: 8, to: 44, distance: 1.6 },
+    air: { from: 8, to: 44, flip: FLIP },
+    evades: { from: 10, to: 42, heights: ['low'] },
+    keys: [
+      { at: ['s', 0.2], pose: 'bfCrouch', ease: 'inOut' },
+      { at: ['s', 0.3], pose: 'bfLaunch', ease: 'out' },
+      { at: ['s', 0.55], pose: 'wFlipTuck', ease: 'out' },
+      { at: ['s', 0.8], pose: 'wFlipTuck' },
+      { at: ['a', 0], pose: 'wFlipExt', ease: 'inOut' },
+      { at: ['a', 1], pose: 'wFlipExt' },
+      { at: ['r', 0.4], pose: 'bfLand', ease: 'in' },
+      { at: ['r', 1], pose: 'wGuard1', ease: 'inOut' },
+    ],
+  }),
+} satisfies Record<string, MoveDef>);
 
 /**
  * How an armed enemy fights (distances scaled by its size later): it stands where the

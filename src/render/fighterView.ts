@@ -27,6 +27,10 @@ export interface Palette {
     cyclops?: boolean;
     snout?: boolean;
     tail?: boolean;
+    /** Cloth over the lower face (and the hood, in the hair colour). */
+    mask?: string;
+    /** Hair tied up on top. */
+    topknot?: boolean;
   };
 }
 
@@ -64,6 +68,8 @@ export const GEAR_COLORS: Record<string, { color: string; metalness: number; rou
   iron: { color: '#8d9399', metalness: 0.5, roughness: 0.45 },
   steel: { color: '#cfd6dd', metalness: 0.7, roughness: 0.3 },
   gold: { color: '#d8b04a', metalness: 0.7, roughness: 0.35 },
+  blacksteel: { color: '#3a3d44', metalness: 0.8, roughness: 0.28 },
+  mythril: { color: '#a9d8ea', metalness: 0.85, roughness: 0.18 },
 };
 
 export type GearLook = Partial<Record<'helmet' | 'chest' | 'legs' | 'boots' | 'cuffs', { material: string; tier: number }>>;
@@ -203,6 +209,14 @@ export class FighterView {
     if (A.cyclops) this.eyes.push(addMesh('head', box(0.1, 0.08, 0.02), eyeMat('head'), [0, 0.19, 0.136]));
     else for (const s of [1, -1]) this.eyes.push(addMesh('head', box(0.045, 0.05, 0.02), eyeMat('head'), [s * 0.06, 0.18, 0.135]));
     if (A.snout) this.add('head', box(0.16, 0.1, 0.1), 'skin', [0, 0.1, 0.16]);
+    // Ears (they can be cut off).
+    for (const [side, s] of [['L', 1], ['R', -1]] as const) this.ears[side] = this.add('head', box(0.03, 0.075, 0.055), 'skin', [s * 0.137, 0.165, -0.005]);
+    if (A.mask) {
+      const cloth = new MeshStandardMaterial({ color: A.mask, flatShading: true, roughness: 0.95 });
+      addMesh('head', box(0.265, 0.13, 0.03), cloth, [0, 0.08, 0.13]);
+      addMesh('head', box(0.27, 0.06, 0.27), cloth, [0, 0.0, 0]);
+    }
+    if (A.topknot) this.add('head', box(0.07, 0.1, 0.12), 'hair', [0, 0.37, -0.02]);
     if (A.horns) {
       const hm = new MeshStandardMaterial({ color: A.horns === 'bull' ? '#e8dcc0' : '#1c1414', flatShading: true, roughness: 0.5 });
       this.mats.head.push(hm);
@@ -230,6 +244,12 @@ export class FighterView {
   }
 
   private readonly gearMeshes: Mesh[] = [];
+  private readonly ears = {} as Record<'L' | 'R', Mesh>;
+  /** Raw patches where pieces were torn away. */
+  private readonly gouges: Group[] = [];
+  /** The split skull: two halves opening from the jaw, and the meshes they replaced. */
+  private split: { halves: Group[]; hidden: Mesh[]; t: number; open: number } | null = null;
+  private crushed: Mesh[] = [];
   private headSkin!: MeshStandardMaterial;
   private cutMesh: Mesh | null = null;
   private static readonly BRUISE = new Color('#7d3b4c');
@@ -282,27 +302,41 @@ export class FighterView {
       piece('head', h.material, [0.29, 0.13, 0.29], [0, 0.3, 0]);
       piece('head', h.material, [0.29, 0.14, 0.05], [0, 0.22, -0.13]);
       if (h.tier >= 3) piece('head', h.material, [0.27, 0.03, 0.05], [0, 0.2, 0.14]); // visor bar
+      if (h.tier >= 4) for (const s of [1, -1]) piece('head', h.material, [0.04, 0.16, 0.2], [s * 0.145, 0.17, 0.01]); // cheek guards
+      if (h.tier >= 5) piece('head', h.material, [0.05, 0.08, 0.26], [0, 0.4, 0]); // crest
+      if (h.tier >= 6) piece('head', 'gold', [0.3, 0.025, 0.3], [0, 0.245, 0]); // circlet
     }
     const c = look.chest;
     if (c) {
       piece('chest', c.material, [0.5, 0.3, 0.06], [0, 0.15, 0.14]);
       if (c.tier >= 2) piece('chest', c.material, [0.5, 0.3, 0.06], [0, 0.15, -0.14]);
       if (c.tier >= 3) for (const s of [1, -1]) piece('chest', c.material, [0.14, 0.08, 0.16], [s * 0.21, 0.29, 0]); // pauldrons
+      if (c.tier >= 4) piece('abdomen', c.material, [0.36, 0.2, 0.24], [0, 0.1, 0]); // faulds
+      if (c.tier >= 5) for (const s of [1, -1]) piece('chest', c.material, [0.18, 0.06, 0.2], [s * 0.23, 0.35, 0]); // second lames
+      if (c.tier >= 6) piece('chest', 'gold', [0.1, 0.1, 0.02], [0, 0.18, 0.175]); // boss
     }
     const l = look.legs;
     if (l) {
       for (const side of ['L', 'R'] as const) {
         piece(`shin${side}`, l.material, [0.16, 0.26, 0.05], [0, -0.2, 0.08]);
         if (l.tier >= 2) piece(`thigh${side}`, l.material, [0.18, 0.28, 0.05], [0, -0.22, 0.09]);
+        if (l.tier >= 4) piece(`shin${side}`, l.material, [0.1, 0.07, 0.07], [0, -0.03, 0.09]); // knee cops
+        if (l.tier >= 5) piece(`thigh${side}`, l.material, [0.18, 0.28, 0.05], [0, -0.22, -0.09]);
       }
     }
     const b = look.boots;
-    if (b) for (const side of ['L', 'R'] as const) piece(`shin${side}`, b.material, [0.18, 0.13, 0.29], [0, -0.42, 0.045]);
+    if (b) {
+      for (const side of ['L', 'R'] as const) {
+        piece(`shin${side}`, b.material, [0.18, 0.13, 0.29], [0, -0.42, 0.045]);
+        if (b.tier >= 4) piece(`shin${side}`, b.material, [0.17, 0.12, 0.17], [0, -0.32, 0]); // cuff
+      }
+    }
     const k = look.cuffs;
     if (k) {
       for (const side of ['L', 'R'] as const) {
         piece(`foreArm${side}`, k.material, [0.15, 0.1, 0.15], [0, -0.21, 0]);
         if (k.tier >= 3) for (const sx of [1, -1]) piece(`foreArm${side}`, 'steel', [0.03, 0.03, 0.06], [sx * 0.05, -0.3, 0.1]);
+        if (k.tier >= 4) piece(`foreArm${side}`, k.material, [0.14, 0.12, 0.14], [0, -0.1, 0]); // vambrace
       }
     }
   }
@@ -430,6 +464,176 @@ export class FighterView {
     for (const m of this.woundMeshes) m.parent?.remove(m);
     this.woundGroups.length = 0;
     this.woundMeshes.length = 0;
+    for (const g of this.gouges) g.parent?.remove(g);
+    this.gouges.length = 0;
+    this.ears.L.visible = this.ears.R.visible = true;
+    if (this.split) {
+      for (const h of this.split.halves) h.parent?.remove(h);
+      for (const m of this.split.hidden) m.visible = true;
+      this.split = null;
+    }
+    for (const m of this.crushed) {
+      m.scale.set(1, 1, 1);
+      m.position.y = m.userData.y0 ?? m.position.y;
+    }
+    this.crushed = [];
+  }
+
+  /**
+   * A piece torn away: an ear comes off the head, scalp or cheek or a chunk of muscle
+   * leaves a raw red gouge. (The piece itself flies off as a gib.)
+   */
+  tear(piece: string, bone: BoneName, local: [number, number, number], size: number) {
+    if (piece === 'earL' || piece === 'earR') {
+      const ear = this.ears[piece === 'earL' ? 'L' : 'R'];
+      ear.visible = false;
+      const g = new Group();
+      const raw = new Mesh(new BoxGeometry(0.012, 0.06, 0.045), STUMP_MAT);
+      raw.position.copy(ear.position).setX(ear.position.x - Math.sign(ear.position.x) * 0.008);
+      g.add(raw);
+      this.bones.head.add(g);
+      this.gouges.push(g);
+      return;
+    }
+    const at: [number, number, number] = piece === 'scalp' ? [local[0], 0.3, local[2]] : local;
+    const { p, n } = surfacePoint(bone, at);
+    const g = new Group();
+    g.position.set(p[0], p[1], p[2]);
+    g.quaternion.setFromUnitVectors(_up.set(0, 0, 1), _n.set(n[0], n[1], n[2]));
+    const w = Math.max(0.035, Math.min(0.11, size));
+    const raw = new Mesh(new BoxGeometry(w, w * 0.8, 0.012), STUMP_MAT);
+    const deep = new Mesh(new BoxGeometry(w * 0.55, w * 0.45, 0.014), WOUND_MAT);
+    deep.position.z = 0.002;
+    g.add(raw, deep);
+    if (piece === 'scalp') {
+      // Bare skull showing through.
+      const bone = new Mesh(new BoxGeometry(w * 0.4, w * 0.3, 0.015), BONE_MAT);
+      bone.position.set(w * 0.15, 0, 0.003);
+      g.add(bone);
+    }
+    this.bones[bone].add(g);
+    this.gouges.push(g);
+  }
+
+  /**
+   * The skull split down the middle: every block on the head is cut in two at the
+   * midline, and the halves fall open from the jaw — raw inside, bone at the edges.
+   */
+  splitHead() {
+    if (this.split) return;
+    const head = this.bones.head;
+    const pivotY = 0.04;
+    const halves = [1, -1].map((s) => {
+      const g = new Group();
+      g.position.set(0, pivotY, 0);
+      g.userData.side = s;
+      head.add(g);
+      return g;
+    });
+    const hidden: Mesh[] = [];
+    for (const child of [...head.children]) {
+      // (Cuts already on the face go with it.)
+      if (child instanceof Group && !halves.includes(child)) child.visible = false;
+      if (!(child instanceof Mesh) || !child.visible) continue;
+      const geo = child.geometry as BoxGeometry;
+      const P = (geo as BoxGeometry).parameters;
+      const rotated = child.rotation.x !== 0 || child.rotation.y !== 0 || child.rotation.z !== 0;
+      hidden.push(child);
+      child.visible = false;
+      const x0 = child.position.x;
+      if (!P || rotated) {
+        const copy = child.clone();
+        copy.visible = true;
+        copy.position.y -= pivotY;
+        halves[x0 >= 0 ? 0 : 1].add(copy);
+        continue;
+      }
+      const sx = child.scale.x;
+      const lo = x0 - (P.width * sx) / 2;
+      const hi = x0 + (P.width * sx) / 2;
+      for (const [k, a, b] of [[0, Math.max(0, lo), hi], [1, lo, Math.min(0, hi)]] as const) {
+        if (b - a < 0.004) continue;
+        const m = new Mesh(new BoxGeometry((b - a) / sx, P.height, P.depth), child.material);
+        m.scale.copy(child.scale);
+        m.position.set((a + b) / 2, child.position.y - pivotY, child.position.z);
+        m.castShadow = true;
+        halves[k].add(m);
+      }
+    }
+    // The cut faces: raw flesh, with bone round the edge and the inside showing (layered
+    // just proud of each half's cut, toward the gap).
+    for (const g of halves) {
+      const s = g.userData.side as number;
+      const layer = (w: number, h: number, d: number, depth: number, y: number, mat: MeshStandardMaterial) => {
+        const m = new Mesh(new BoxGeometry(0.002, h, d), mat);
+        m.position.set(-s * depth, y, 0.01);
+        void w;
+        g.add(m);
+      };
+      layer(0, 0.25, 0.24, 0.0015, 0.125, SPLIT_MAT);
+      layer(0, 0.21, 0.2, 0.0035, 0.14, BONE_MAT);
+      layer(0, 0.18, 0.17, 0.0055, 0.145, BRAIN_MAT);
+      // Blood running down the face from the cut.
+      const run = new Mesh(new BoxGeometry(0.02, 0.12, 0.012), WET_MAT);
+      run.position.set(-s * 0.012, 0.07, 0.132);
+      g.add(run);
+    }
+    // Down in the cleft: blood and brain, filling the bottom of the V.
+    const core = new Group();
+    const wet = new Mesh(new BoxGeometry(0.03, 0.16, 0.2), SPLIT_MAT);
+    wet.position.set(0, 0.1, 0.01);
+    const brain = new Mesh(new BoxGeometry(0.05, 0.08, 0.15), BRAIN_MAT);
+    brain.position.set(0, 0.17, 0.0);
+    core.add(wet, brain);
+    head.add(core);
+    halves.push(core);
+    this.split = { halves, hidden, t: 0, open: 0.34 + Math.random() * 0.1 };
+  }
+
+  /** Caved in from above: the top of the head crushed down, raw where it burst. */
+  crushHead() {
+    const head = this.bones.head;
+    for (const child of head.children) {
+      if (!(child instanceof Mesh) || child.position.y < 0.12) continue;
+      child.userData.y0 = child.position.y;
+      child.scale.set(1.08, 0.72, 1.05);
+      child.position.y -= 0.025;
+      this.crushed.push(child);
+    }
+    this.tear('scalp', 'head', [0, 0.3, 0], 0.11);
+  }
+
+  /**
+   * A shorter blade buried in the skull: a deep cleft down the top of the head, front
+   * to back, open and red, bone either side — the head stays in one piece.
+   */
+  cleftHead() {
+    const g = new Group();
+    const slot = new Mesh(new BoxGeometry(0.04, 0.09, 0.22), SPLIT_MAT);
+    slot.position.set(0, 0.265, 0.01);
+    const deep = new Mesh(new BoxGeometry(0.022, 0.1, 0.2), WOUND_MAT);
+    deep.position.set(0, 0.262, 0.01);
+    g.add(slot, deep);
+    for (const s of [1, -1]) {
+      const bone = new Mesh(new BoxGeometry(0.008, 0.02, 0.2), BONE_MAT);
+      bone.position.set(s * 0.024, 0.3, 0.01);
+      g.add(bone);
+    }
+    // Running down the forehead.
+    const run = new Mesh(new BoxGeometry(0.03, 0.14, 0.012), WET_MAT);
+    run.position.set(0.01, 0.22, 0.133);
+    g.add(run);
+    this.bones.head.add(g);
+    this.gouges.push(g);
+  }
+
+  private updateSplit(dt: number) {
+    const sp = this.split;
+    if (!sp || sp.t >= 1) return;
+    // Falls open fast, then sags the last bit.
+    sp.t = Math.min(1, sp.t + dt * 3.2);
+    const k = 1 - (1 - sp.t) ** 3;
+    for (const g of sp.halves) if (g.userData.side) g.rotation.z = -(g.userData.side as number) * sp.open * k;
   }
 
   /** Where a limb was cut off: a raw red stump on the body, and on the end of the limb. */
@@ -486,6 +690,7 @@ export class FighterView {
 
   updateCues(dt: number, f: Fighter, enabled = true) {
     this.flash = Math.max(0, this.flash - dt * 9);
+    this.updateSplit(dt);
     this.updateEyes(dt, f);
     if (!enabled) {
       if (this.cuesShown) {
@@ -533,6 +738,8 @@ const WOUND_MAT = new MeshStandardMaterial({ color: '#5e0a0a', roughness: 0.35, 
 const WET_MAT = new MeshStandardMaterial({ color: '#b3121a', roughness: 0.15, metalness: 0.1, flatShading: true });
 const STUMP_MAT = new MeshStandardMaterial({ color: '#9e1016', roughness: 0.3, flatShading: true });
 const BONE_MAT = new MeshStandardMaterial({ color: '#efe6d2', roughness: 0.6, flatShading: true });
+const SPLIT_MAT = new MeshStandardMaterial({ color: '#b3121a', emissive: '#3a0303', roughness: 0.25, metalness: 0.1, flatShading: true });
+const BRAIN_MAT = new MeshStandardMaterial({ color: '#c97f86', roughness: 0.4, flatShading: true });
 const _up = new Vector3();
 const _n = new Vector3();
 

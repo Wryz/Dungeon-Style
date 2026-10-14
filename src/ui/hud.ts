@@ -20,6 +20,9 @@ export class Hud {
   private readonly coinsEl: HTMLDivElement;
   private readonly promptEl: HTMLDivElement;
   private readonly flashEl: HTMLDivElement;
+  private readonly movesEl: HTMLDivElement;
+  private readonly incomingEl: HTMLDivElement;
+  private slotEls: { root: HTMLDivElement; name: HTMLSpanElement; cd: HTMLElement; key: HTMLElement; alt: HTMLElement }[] = [];
   private shownCoins = 0;
   private comboTimer = 0;
   private lagP = 1;
@@ -44,12 +47,15 @@ export class Hud {
       <div class="prompt"></div>
       <div class="flash"></div>
       <div class="combo"></div>
+      <div class="moves"></div>
+      <div class="incoming">!</div>
+      <div class="tcue"><span class="tkey"></span><span class="ttext"></span></div>
       <div class="banner"></div>
       <div class="hint"></div>
       <div class="vignette"></div>
       <div class="letterbox top"></div>
       <div class="letterbox bottom"></div>
-      <button class="gear" title="Settings (Esc)">⚙</button>`;
+      <div class="hud-btns"><button class="logbtn" title="Battle log (B)"><i></i>Log</button><button class="gear" title="Settings (Esc)">⚙</button></div>`;
     root.appendChild(this.el);
     const q = <T extends HTMLElement>(s: string) => this.el.querySelector<T>(s)!;
     this.pHp = q('.left .hp .fill');
@@ -67,6 +73,81 @@ export class Hud {
     this.coinsEl = q('.coins');
     this.promptEl = q('.prompt');
     this.flashEl = q('.flash');
+    this.movesEl = q('.moves');
+    this.incomingEl = q('.incoming');
+    this.cueEl = q('.tcue');
+    this.cueKey = q('.tcue .tkey');
+    this.cueText = q('.tcue .ttext');
+  }
+
+  private readonly cueEl: HTMLDivElement;
+  private readonly cueKey: HTMLSpanElement;
+  private readonly cueText: HTMLSpanElement;
+  private cueShown = '';
+
+  /**
+   * What to do right now, in a word, centre screen: an axe coming down (dodge), an
+   * opening (punish), a counter window, a guard to go round. Null hides it.
+   */
+  cue(c: { text: string; key: string; kind: 'danger' | 'open' | 'counter' | 'info' } | null) {
+    const id = c ? `${c.kind}|${c.key}|${c.text}` : '';
+    if (id === this.cueShown) return;
+    this.cueShown = id;
+    if (!c) {
+      this.cueEl.classList.remove('show');
+      return;
+    }
+    this.cueEl.className = `tcue show ${c.kind}`;
+    this.cueKey.textContent = c.key;
+    this.cueKey.style.display = c.key ? '' : 'none';
+    this.cueText.textContent = c.text;
+    // Restart the pop-in.
+    void this.cueEl.offsetWidth;
+    this.cueEl.classList.add('pop');
+  }
+
+  /**
+   * The four attack buttons, bottom left: what each one throws right now, and whether
+   * it can — ready, still recovering (the dark sweep is how much is left), a chain
+   * follow-up, a counter, or gone (that limb is).
+   */
+  moves(slots: { key: string; name: string; state: 'ready' | 'busy' | 'chain' | 'counter' | 'locked'; left: number; alt?: string; hint?: boolean; wide?: boolean }[]) {
+    if (this.slotEls.length !== slots.length) {
+      this.movesEl.innerHTML = '';
+      this.slotEls = slots.map(() => {
+        const root = document.createElement('div');
+        root.className = 'slot';
+        root.innerHTML = '<i class="cd"></i><b class="key"></b><span class="name"></span><small class="alt"></small>';
+        this.movesEl.appendChild(root);
+        return { root, name: root.querySelector('.name')!, cd: root.querySelector('.cd')!, key: root.querySelector('.key')!, alt: root.querySelector('.alt')! };
+      });
+    }
+    slots.forEach((s, i) => {
+      const el = this.slotEls[i];
+      if (el.key.textContent !== s.key) el.key.textContent = s.key;
+      if (el.name.textContent !== s.name) el.name.textContent = s.name;
+      if (el.alt.textContent !== (s.alt ?? '')) el.alt.textContent = s.alt ?? '';
+      const cls = `slot ${s.state}${s.hint ? ' hint' : ''}${s.wide ? ' wide' : ''}`;
+      if (el.root.className !== cls) el.root.className = cls;
+      el.cd.style.height = `${Math.round(Math.max(0, Math.min(1, s.left)) * 100)}%`;
+    });
+  }
+
+  /** A red '!' over whoever's winding up a strike at you (orange: it can't be stopped with a jab). */
+  incoming(world: Vector3 | null, camera: Camera | null, armored = false) {
+    if (!world || !camera) {
+      this.incomingEl.classList.remove('show');
+      return;
+    }
+    const p = world.clone().project(camera);
+    if (p.z > 1) {
+      this.incomingEl.classList.remove('show');
+      return;
+    }
+    this.incomingEl.classList.add('show');
+    this.incomingEl.classList.toggle('armor', armored);
+    this.incomingEl.style.left = `${(p.x * 0.5 + 0.5) * 100}%`;
+    this.incomingEl.style.top = `${(-p.y * 0.5 + 0.5) * 100}%`;
   }
 
   /** Letterbox bars in, gameplay HUD out (camera cuts). */
@@ -96,7 +177,7 @@ export class Hud {
     this.coinsEl.style.display = show ? '' : 'none';
   }
 
-  /** Short tutorial prompt floating above a world position (empty text hides it). */
+  /** Short prompt floating above a world position (empty text hides it). */
   prompt(text: string, world?: Vector3, camera?: Camera) {
     if (!text) {
       this.promptEl.classList.remove('show');
@@ -148,16 +229,21 @@ export class Hud {
     const k = (code: string) => `<b>${keyLabel(code)}</b>`;
     this.hint.innerHTML = `
       <span>${k(b.up)}${k(b.left)}${k(b.down)}${k(b.right)} move</span>
-      <span>${k(b.lpunch)} ${k(b.rpunch)} punch L / R</span>
+      <span>${k(b.lpunch)} ${k(b.rpunch)} punch L / R <span class="dim">· as a strike lands: parry</span></span>
       <span>${k(b.lkick)} ${k(b.rkick)} kick L / R</span>
       <span>${k(b.pickup)} grab / drop weapon</span>
-      <span class="dim">defense is automatic</span>
+      <span class="dim">blocking is automatic</span>
       <span class="dim"><b>Esc</b> settings</span>
-      <span class="dim"><b>L</b> tuning</span>`;
+      <span class="dim"><b>B</b> battle log</span>
+      <span class="dim"><b>M</b> mute</span>`;
   }
 
   get gearButton(): HTMLButtonElement {
     return this.el.querySelector('.gear')!;
+  }
+
+  get logButton(): HTMLButtonElement {
+    return this.el.querySelector('.logbtn')!;
   }
 
   showCombo(n: number) {

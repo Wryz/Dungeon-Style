@@ -175,3 +175,32 @@ describe('what a blow carries', () => {
     expect(pushScale(a, d, WEAPONS.sledgehammer)).toBeGreaterThan(pushScale(a, d, WEAPONS.machete) * 1.3);
   });
 });
+
+describe('parries', () => {
+  it('a guard raised just in time knocks the attacker off balance; a guard held early only blocks', () => {
+    const run = (lead: number) => {
+      const sim = new CombatSim(4);
+      sim.walkable = new RectWalkable(-6, 6, -6, 6);
+      const p = createPlayer();
+      p.autoDefense = false;
+      p.pos.set(0, 0, 0);
+      p.yaw = Math.PI / 2;
+      const { fighter: e, ai } = createEnemy('brawler', sim.rng);
+      ai.cfg.passive = true;
+      e.pos.set(1.1, 0, 0);
+      e.yaw = -Math.PI / 2;
+      sim.add(p);
+      sim.add(e, ai);
+      for (let i = 0; i < 20; i++) sim.step();
+      e.startMove(e.moves.straight, false, 'head');
+      let parry: boolean | null = null;
+      for (let i = 0; i < 60; i++) {
+        if (e.state === 'attack' && e.framesToActive === lead && p.free) p.startDefense('block', e.id * 100000 + e.attackSerial);
+        for (const ev of sim.step()) if (ev.type === 'block' && ev.defender === p) parry = ev.parry;
+      }
+      return { parry, staggered: e.state === 'hitstun' || e.stateFrame < 20 };
+    };
+    expect(run(3).parry).toBe(true);
+    expect(run(14).parry).toBe(false);
+  });
+});

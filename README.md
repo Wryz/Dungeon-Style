@@ -1,8 +1,8 @@
-# Roguelike Brawler
+# DungeonStyles
 
-A 3D low-poly roguelike where combat is automatic and physics-driven: **you only choose
+A 3D low-poly fighting game where combat is physics-driven: **you only choose
 when and how to attack — the character defends on its own.** Fight round after round,
-one on one, in a gladiator gauntlet whose arena keeps changing — a boxing ring, the
+one on one, in arenas that keep changing — a boxing ring, the
 street, a grocery store, the Roman colosseum — against tougher and tougher opponents,
 demons and giant bosses.
 
@@ -16,18 +16,44 @@ demons and giant bosses.
   opponent; every 4th round is a **boss** in the colosseum. Regular rounds cycle
   through seven arenas: the boxing ring, the street, a grocery store, an underground
   warehouse fight club, a biker bar, a dojo and a city rooftop at night — each with its
-  own props, floor sound, ambience and locals.
-  Falling sends you back to round 1 — coins and gear stay. Your best round is saved.
-- **Opponents:** Rookie (quick jabs), Brawler (haymakers), Kicker (teep / low kick /
-  body roundhouse), Bruiser (slow, armored, heavy), and from round 6 mythical creatures:
-  **Imps** (small, fast swarmers) and **Demons** (horned heavy hitters). Humans dress for
-  the venue — trunks and gloves in the ring, hoodies on the street, aprons in the store,
-  helmets in the colosseum.
-- **Bosses (giants):** The Champion (1.6×), The Minotaur (1.75×, horns and snout) and
-  The Cyclops (1.85×). Size scales reach, step length, mass and hit weight.
-- **Economy:** KOs burst into coins and each cleared round pays a bonus; between rounds
-  a shop sells helmet, chestplate, leggings, boots and fist cuffs (3 tiers each) that
-  change your stats and show on your character. Progress is saved in the browser.
+  own props, floor sound and ambience.
+  Falling sends you back to round 1 — but the run pays out (more the further you got,
+  plus a bonus for a new best), coins and gear stay, and the shop opens so you can gear
+  up before going again. Your best round is saved.
+- **Opponents, each with a fighting style of its own** (see *Fighting styles* below):
+  Rookie, Brawler, Kicker, Bruiser, **Samurai** (katana) and **Ninja** (ninjato and
+  throwing knives); from round 3 the second wave joins — **The Boxer**, **Nak Muay**,
+  **Knife Fighter**, **The Wrestler**, **The Duelist** (gladius), **Capoeirista**,
+  **The Berserker** (fire axe), **The Monk** (staff) and **The Sumo**; and from round 6
+  mythical creatures: **Imps** (small acrobats) and **Demons** (horned stalkers that
+  pounce). Humans dress for the venue — trunks and
+  gloves in the ring, hoodies on the street, aprons in the store, helmets in the
+  colosseum; the samurai wears hakama and a topknot, the ninja black with a mask.
+- **Bosses (giants):** The Champion (1.6×), The Minotaur (1.75×, horns and snout),
+  The Cyclops (1.85×) and The Troll (1.95×, sledgehammer). Size scales reach, step length, mass and hit weight.
+- **The shop — The Armoury:** KOs burst into coins and each cleared round pays a bonus;
+  between rounds (and after a death) you spend them in a tabbed store, every card with a
+  rarity colour (common → mythic), its stats and its price:
+  - **Armour** — helmet, chestplate, leggings, boots and fist cuffs, 6 tiers each (leather
+    and iron up to blacksteel and mythril), shown on your character.
+  - **Weapons** — a rack of 17 weapons, from a beer bottle to the battle axe; buy any and
+    choose which one you carry into every round (or go in bare-handed).
+  - **Training** — eight stats levelled up to 10 (each level dearer): vitality, power,
+    toughness, guard, grit, footwork, conditioning, poise.
+  - **Skills** — bought once, always on, some unlocked by how far you've got: Perfect
+    Timing (later parries still count), Counter Master, Bloodlust (heal on hit), Thick
+    Blood, Adrenaline, Second Wind (once a round, back up from under 25%), Quick Hands,
+    Fortune (+30% coins), Heavy Hands, Executioner, Last Stand (survive one knockout blow).
+  - **Supplies** — stack up to 9; one of each is used at the start of every round: Health
+    Tonic, War Paint, Whetstone, Iron Rations, Smelling Salts, Lucky Coin (double coins).
+  - **Outfits** — eight colourways for your fighter.
+  Your current stats sit along the bottom; progress is saved in the browser (older saves
+  keep everything, weapons included).
+- **Opponents gear up too:** from round 4 on they wear the same armour you can buy — more
+  pieces and better tiers the further you get (tier 6 plate by the late rounds) — and
+  more and more of them walk in armed. The round banner tells you what they've got.
+  They read your strikes better every round, and a big weapon wound up overhead is the
+  thing they watch for most.
 - **Weapons:** every arena has weapons lying around — a folding chair in the ring, a
   bat and a machete on the street, a cleaver and a frying pan in the grocery store, a
   crowbar and a sledgehammer in the warehouse, a pool cue and a beer bottle in the bar,
@@ -45,10 +71,30 @@ demons and giant bosses.
   feet and blunt weapons rebound. Only a miss, a blow that cleaves clean through, or one
   that drives the target off their feet carries through. Edged weapons
   leave lasting cuts that keep bleeding (and slowly drain health — enough of them and
-  your opponent bleeds out); heavy edges take arms, legs and heads off, and the limb
-  flies free as a physics body while the stump pumps blood. Your own limbs only come
-  off with the blow that finishes you. Enemies pick weapons up too; the Minotaur
+  your opponent bleeds out); heavy edges take arms and legs off, and the limb flies
+  free as a physics body while the stump pumps blood. **Where and how a blade meets the
+  head matters:** chopped straight down onto the crown, only a heavy edge (battle axe, fire axe)
+  splits the skull open — the halves fall apart from the jaw; a lighter blade (katana,
+  machete, cleaver, gladius, ninjato) buries itself in it; real mass (sledgehammer,
+  spiked club) caves it in. Each kills anyone outright, you included. Only a level cut
+  across the neck takes the head off, and only the big edges (axes, katana) can; a blow coming down
+  off to one side shears off the ear. **What each weapon can do is set weapon by
+  weapon** (`GORE` in `src/sim/weapons.ts`): the big edges take any limb or the head;
+  the short blades a hand/forearm at most; a knife only slices; and the blunt weapons —
+  pipe, crowbar, bat, chair, pan, cue, bottle, bokken — never cut anything off or split
+  anything, however hard they land. Glancing edges tear
+  pieces away — ears, scalp, a cheek, chunks of muscle — which fly off, tumble and lie
+  where they land, leaving a raw gouge. Your own limbs only come off with the blow that
+  finishes you. Enemies pick weapons up too; the Minotaur
   carries an axe and the Cyclops a spiked club. Blocking a blade costs a forearm cut.
+- **Heavy weapons hit like nothing else:** a committed swing (E) with a battle axe or a
+  sledgehammer does well over 40 at full speed — three or four clean ones put most
+  opponents away — and armour stops less of it; even blocked, it smashes through far
+  more of the guard and some of it gets through the arms. Timing is everything: caught
+  early in the swing it's a shove (damage falls off steeply with how much of the swing is
+  behind it). When someone crowds inside the weapon's length you give ground while
+  winding up, so it's the head that lands, not the haft — unless your back is to a wall.
+  Opponents know it: they won't throw a jab into an axe on its way down.
 - **Size-aware fighting:** every strike is fitted to the opponent actually in front of
   you — aimed at where their head, body and legs really are, shortened to the
   distance between you, with the body rising and looking up at a giant or sinking,
@@ -69,8 +115,8 @@ demons and giant bosses.
 - **Sound:** footsteps that match the floor (canvas, asphalt, tile, sand; giants thud),
   fighters exhale on every strike and grunt when a big one lands, punches slap the face
   and thud into the body, a bat knocks, a pan rings, a chair clatters, an axe chops.
-  Each arena has its own ambience — a murmuring crowd that roars at knockdowns and
-  severed limbs, traffic on the street, fridges humming in the store. All procedural.
+  The bar's jukebox, the store's fridges and the warehouse's lights hum. No crowd, no
+  continuous background hiss. All procedural.
 - **Presentation:** no game-style sparks on flesh — sweat flies off a face that gets
   hit. Hit flashes, telegraph rings, glowing limbs and popups are optional
   (Settings → Combat cues, off by default).
@@ -86,8 +132,6 @@ demons and giant bosses.
   sand kicks up underfoot in the colosseum, and hits don't freeze time.
 - **Movement:** in a fight, boxer footwork; out of range, a real run (~3.8 m/s) with a
   clocked stride, flight phase, forward lean, pumping arms and a lean into turns.
-- **Tutorial:** the first visit is a warm-up in the ring against a sparring partner —
-  punches, a combo, automatic defense, countering, kicks — with few-word prompts.
 
 A training ring with a respawning brawler is at `?mode=training` (or the **L** panel →
 Gauntlet, which can also jump to any round; **Weapons** puts any weapon in your hands).
@@ -109,16 +153,58 @@ npm run build      # typecheck + production build into dist/
 | Action | Keyboard (default) | Mouse | Gamepad | Touch |
 |---|---|---|---|---|
 | Move | WASD (+ arrows) | | left stick | stick |
-| Left punch | **Q** | left click | X / LB | L PUNCH |
-| Right punch | **E** | right click | Y / RB | R PUNCH |
+| Left punch / parry | **Q** | left click | X / LB | L PUNCH |
+| Right punch / parry | **E** | right click | Y / RB | R PUNCH |
 | Left kick | **R** | | A / LT | L KICK |
 | Right kick | **F** | | B / RT | R KICK |
 | Grab / drop weapon | **G** | | R3 / Back | |
-| Skip warm-up | **Enter** | | | |
+
+Blocking (and slipping a punch you've read) is automatic, but **Q and E double as
+parries**: press one just as a strike is about to land and it meets the strike instead
+of throwing a punch. Timed to the last instant it's a **perfect parry** — the attacker is
+knocked off balance, a beat of slow motion, a longer counter window and a counter that
+hits much harder. A big swing (or one at your legs) can't be parried, so the press slides
+you back out of it instead (perfect timing: a perfect dodge). Pressed early you only
+block, so mashing keeps you covered but only timing pays; with nothing coming, Q and E
+just attack.
+
+**Fight tips** read the fight for you, centre screen, with the key to press: a big swing
+coming (*"Haymaker coming — wait for it"* → *"Parry now!"*), a counter window open, an
+opponent who missed or is rocked (*punish*, *keep going*), one covering up (*go low*),
+or you gassed or getting predictable. The matching button glows in the move panel
+(bottom left) — Q and E show *Parry* while a strike is coming. Tips can be turned off in
+Settings.
+
+**The camera** frames the fight in three-quarter view: behind you and off to one side of
+the line between you and your opponent, high enough to look down over your shoulder, so
+both of you are always in shot and they're never hidden behind you. It pulls back as you
+separate (and for a giant), swings round on a spring as you circle, switches sides
+rather than backing into a wall, and goes up and wider when a wall squeezes it in.
+
+**Battle Log** (**B**, the *Log* button, or *Watch it back* on the shop and defeat
+screens): every battle this session is recorded off the game canvas as an MP4, with the
+moments that mattered marked on its timeline — big hits, perfect parries, knockdowns,
+guard breaks, gore, the KO. Scrub, play at 0.25×–2×, step a frame at a time (←/→, Shift
+for 5 s), click a moment to jump just before it; then save the whole battle, or set a
+clip's start and end (I / O) and save just that — both as `.mp4`. Where the browser has
+a WebCodecs video encoder (current Chrome, Edge, Safari and Firefox), frames are encoded
+straight to H.264 and the MP4 is put together from them, so a clip is cut instantly (from
+the keyframe at or just before its start); otherwise the browser's MediaRecorder films it,
+as MP4 wherever it can. Recording can be turned off in Settings; in a browser that can't
+record video, the moments are still logged.
+
+When you fall, the **defeat screen** sums up the run — a rank (D to S) for how far you
+got, knockouts, damage, best combo, perfect parries, brutal kills, time — and counts the
+run's payout into your wallet; then gear up in the shop or go straight back in.
 
 **Esc** (or the ⚙ button) opens **Settings**, where every key can be rebound; bindings
-are saved in the browser. Debug: **L** tuning panel · **H** hitboxes · **T** cycle
-slow-mo · **P** pause · **.** step one frame · **Backspace** restart · **M** mute.
+are saved in the browser. **M** mutes.
+
+**Developer mode** (local `npm run dev`, or `?dev` on the deployed URL; never shown to
+players otherwise): **L** tuning panel · **H** hitboxes · **T** cycle slow-mo · **P**
+pause · **.** step one frame · **Backspace** restart · `?mode=training` training ring ·
+`window.game` for scripting. The tuning panel is loaded on demand, so it isn't in the
+player's bundle.
 
 ## How the combat works
 
@@ -256,6 +342,50 @@ each other or the scenery.
   back against it. Heavy weapons land with a longer impact pause and a bigger jolt.
   `tests/gravity.test.ts` covers the sim side.
 
+**Fighting styles.** Every opponent fights its own way: its own techniques, a
+temperament, and particular ways with particular weapons.
+
+| Opponent | Temperament | Signature techniques |
+|---|---|---|
+| Rookie | sloppy: backs off flinching after every hit | pawing jabs, a wild looping **haymaker** when hurt |
+| Brawler | pressure | hooks and body shots, grabs what's lying around and **throws** it |
+| Kicker | pressure | teeps and low kicks, **spinning back kick** in close, **jumping kick** to close in |
+| Bruiser | pressure | **shoulder charge** at a run, **stomp** |
+| Samurai | patient: waits just out of reach | katana: **kesa-giri**, **men**, **tsuki**; a **draw cut** when you step in or whiff |
+| Ninja | skirmish: in, cut, sprint back out | **kunai** off the belt from range, **dash slash**, **flip slash**, **back flip** away |
+| Imp | skirmish | **back flip** out of trouble, **front flip heel drop** |
+| Demon | skirmish (stalks) | hooks and straights, **pounce** from out of reach, spinning back kick |
+| Champion | pressure | combinations, **superman punch** |
+| Minotaur | berserk: angrier the more it's hurt | axe sweeps, overheads, **spinning cleave**, **axe throw** — then a head-down **charge** while he goes to get it back |
+| Cyclops | pressure | huge sweeps, pounding overheads, **stomp**, the odd **club throw** |
+| The Boxer | patient counter-puncher (loses patience if you won't come) | hands only: jab–straight–**check hook** combinations, the **uppercut** when you duck in, a check hook the instant you miss |
+| Nak Muay | pressure | walks forward behind **push kicks**, chops the legs with low kicks into body roundhouses, a **flying kick** to close in |
+| The Wrestler | pressure, relentless | shoots in with the **shoulder charge**, **sweeps** the legs, **dives** on you from out of reach |
+| Capoeirista | skirmish, never still (wide swaying ginga) | **spinning** and **jumping** kicks, **front flips**, a low **rasteira** slide, cartwheels away |
+| The Duelist | skirmish: lunge in, back out | gladius point first — **thrusts**, the **riposte** the instant you miss, a **dash slash** from range |
+| The Berserker | berserk | fire axe overheads again and again, **spinning cleave**, hurls the axe, wild haymakers when hurt |
+| Knife Fighter | sloppy and dirty | cleaver **hacks** in close, a **thrown knife** to make you flinch, goes for the legs |
+| The Monk | patient, almost never caught | bokken staff **sweeps**, flips away from attacks, one clean blow for every mistake you make |
+| The Sumo | pressure (1.3× size) | the **charge** off the line, a storm of open-hand **thrusts**, the **stamp** |
+| The Troll | berserk (boss, 1.95×) | the **sledgehammer** like a falling tree, ground-shaking **stomps**, charges if it loses the hammer |
+
+All of it is physical:
+- **Jumps and flips** follow a real ballistic arc: how high is set by how long they
+  are in the air (h = g·t²/8). The take-off speed is fixed and there's no steering in
+  the air. A flip turns the body about its centre of mass at a steady rate. Hit in
+  mid-air, a fighter goes down. A body flying into someone stops against them.
+- **Spins** turn the whole body under the weapon. A giant pitches its spin down to a
+  man's chest rather than sweeping over his head. A spinning back kick stops turning
+  while the leg drives out, then finishes the turn.
+- **Thrown weapons** are rigid bodies: gravity, end-over-end spin, sub-stepped
+  collisions. An axe cuts only if the edge is leading when it arrives. A practised
+  thrower judges the spin for the distance, so it does from where they stood. Step in
+  or out and it may arrive handle-first. Knives fly point first. Damage comes from
+  kinetic energy, reckoned at a man's size as it is for blows in the hand. The push
+  comes from momentum, all of it into the body: Δv = p / (M + m). Automatic defence reads things thrown at
+  you (a big axe more readily than a small knife). Anything thrown ends up on the
+  floor for whoever gets to it first.
+
 **Fighting logic.**
 - **Steering:** enemies walk round props instead of pressing into them.
 - **Blocking:** enemies only block what a guard can stop, and need an arm to do it. An
@@ -301,14 +431,14 @@ src/
     motion.ts   contextual movement profile (distance zones + fight-state modifiers)
     ragdoll.ts  Rapier powered ragdoll: joint "muscles" chase the animated pose;
                 hits relax muscles near the impact + add impulses, then recover
-  arena/      arena themes (shape, props, spawns) and their visuals (crowds, lights)
+  arena/      arena themes (shape, props, spawns) and their visuals (props, lights)
   world/      walkable areas and obstacle collision
   render/     blocky low-poly fighters + gear + creature parts, looks per venue, camera,
               wall cutout, blood, coins, particles
   feel/       procedural impact audio (WebAudio, no assets)
   input/      rebindable keyboard, mouse, gamepad and touch input
   game/       glue: fixed-step loop, gauntlet flow (rounds, bosses, coins, shop, weapons),
-              round generation, economy + save data, trauma/blood, tutorial
+              round generation, economy + save data, trauma/blood
   ui/         HUD, settings (key rebinding, blood toggle), shop
   debug/      Tweakpane live tuning (frame data, feel, physics, AI)
 ```

@@ -1,4 +1,5 @@
 import {
+  Matrix4,
   Quaternion,
   Vector3,
   BoxGeometry,
@@ -120,6 +121,20 @@ export function buildWeapon(def: WeaponDef): Group {
       part(new CylinderGeometry(0.014, 0.016, 0.12, 8), 'glass', 0, 0.02, 0);
       part(new CylinderGeometry(0.035, 0.035, 0.16, 8), 'glass', 0, 0.17, 0);
       part(new CylinderGeometry(0.036, 0.036, 0.06, 8), 'white', 0, 0.17, 0);
+      break;
+    case 'ninjato':
+      // Straight blade, square guard, cord-wrapped grip.
+      part(box(0.034, 0.22, 0.032), 'wrap', 0, -0.05, 0);
+      part(box(0.07, 0.012, 0.07), 'darkSteel', 0, 0.065, 0);
+      part(box(0.008, L - 0.12, 0.036), 'steel', 0, 0.08 + (L - 0.12) / 2, 0.004);
+      part(box(0.008, 0.05, 0.026), 'steel', 0, L - 0.02, 0.01, 0.6, 0, 0);
+      break;
+    case 'kunai':
+      // Ring pommel, wrapped grip, leaf blade.
+      part(new CylinderGeometry(0.022, 0.022, 0.008, 10), 'darkSteel', 0, -0.06, 0, Math.PI / 2, 0, 0);
+      part(box(0.018, 0.1, 0.018), 'wrap', 0, 0.0, 0);
+      part(box(0.006, 0.13, 0.04), 'darkSteel', 0, 0.12, 0);
+      part(box(0.006, 0.04, 0.022), 'darkSteel', 0, 0.2, 0, 0.6, 0, 0);
       break;
     case 'katana':
       part(box(0.035, 0.26, 0.032), 'wrap', 0, -0.06, 0);
@@ -257,3 +272,45 @@ export class DropView {
 
 const G = 9.81;
 const _q = new Quaternion();
+
+/**
+ * A weapon in flight: the same model, placed every frame from the sim's rigid body —
+ * grip where it is, pointing the way it points, the edge on the side it turns toward.
+ */
+export class ProjectileView {
+  readonly root = new Group();
+  private readonly model: Group;
+  private readonly m = new Matrix4();
+  private readonly x = new Vector3();
+  private readonly y = new Vector3();
+  private readonly z = new Vector3();
+
+  constructor(def: WeaponDef, scale: number) {
+    this.model = buildWeapon(def);
+    this.model.scale.setScalar(scale);
+    this.root.add(this.model);
+  }
+
+  /** @param grip world grip point; `dir` grip-to-tip; `edge` the way the edge faces (both unit). */
+  place(grip: Vector3, dir: Vector3, edge: Vector3) {
+    this.y.copy(dir).normalize();
+    this.z.copy(edge).addScaledVector(this.y, -edge.dot(this.y));
+    if (this.z.lengthSq() < 1e-6) this.z.set(0, 1, 0).addScaledVector(this.y, -this.y.y);
+    this.z.normalize();
+    this.x.crossVectors(this.y, this.z).normalize();
+    this.m.makeBasis(this.x, this.y, this.z);
+    this.model.quaternion.setFromRotationMatrix(this.m);
+    this.model.position.copy(grip);
+  }
+
+  dispose() {
+    this.root.removeFromParent();
+    this.root.traverse((o) => {
+      if (o instanceof Mesh) {
+        o.geometry.dispose();
+        (o.material as MeshStandardMaterial).dispose();
+      }
+    });
+  }
+}
+

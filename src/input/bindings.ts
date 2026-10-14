@@ -7,8 +7,8 @@ export const ACTIONS: { id: Action; label: string }[] = [
   { id: 'down', label: 'Move down' },
   { id: 'left', label: 'Move left' },
   { id: 'right', label: 'Move right' },
-  { id: 'lpunch', label: 'Left punch' },
-  { id: 'rpunch', label: 'Right punch' },
+  { id: 'lpunch', label: 'Left punch (parry as a strike lands)' },
+  { id: 'rpunch', label: 'Right punch (parry as a strike lands)' },
   { id: 'lkick', label: 'Left kick' },
   { id: 'rkick', label: 'Right kick' },
   { id: 'pickup', label: 'Pick up / drop weapon' },
@@ -29,8 +29,8 @@ export const DEFAULT_BINDINGS: Bindings = {
   pickup: 'KeyG',
 };
 
-/** Keys reserved for menus / the tuning panel; they can't be bound to actions. */
-export const RESERVED_KEYS = new Set(['Escape', 'KeyL']);
+/** Keys reserved for the menu, mute and the battle log; they can't be bound to actions. */
+export const RESERVED_KEYS = new Set(['Escape', 'KeyM', 'KeyB']);
 
 const STORAGE_KEY = 'brawler.bindings.v1';
 

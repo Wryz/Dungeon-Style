@@ -44,38 +44,8 @@ export class Sfx {
   private wantAmbience: Ambience | null = null;
   private ambNodes: AudioNode[] = [];
   private ambSources: AudioScheduledSourceNode[] = [];
-  private crowdGain: GainNode | null = null;
 
   /** A looping, filtered noise bed (gain, filter, optional slow swell). */
-  private bed(type: BiquadFilterType, freq: number, q: number, gain: number, lfoHz = 0, lfoDepth = 0): GainNode {
-    const ctx = this.ctx!;
-    const src = ctx.createBufferSource();
-    src.buffer = this.noise;
-    src.loop = true;
-    src.playbackRate.value = 0.5 + Math.random() * 0.2;
-    const f = ctx.createBiquadFilter();
-    f.type = type;
-    f.frequency.value = freq;
-    f.Q.value = q;
-    const g = ctx.createGain();
-    g.gain.value = gain;
-    src.connect(f).connect(g).connect(this.master);
-    src.start();
-    this.ambSources.push(src);
-    this.ambNodes.push(f, g);
-    if (lfoHz > 0) {
-      const lfo = ctx.createOscillator();
-      lfo.frequency.value = lfoHz;
-      const depth = ctx.createGain();
-      depth.gain.value = gain * lfoDepth;
-      lfo.connect(depth).connect(g.gain);
-      lfo.start();
-      this.ambSources.push(lfo);
-      this.ambNodes.push(depth);
-    }
-    return g;
-  }
-
   private hum(freq: number, gain: number) {
     const ctx = this.ctx!;
     const o = ctx.createOscillator();
@@ -102,68 +72,25 @@ export class Sfx {
     for (const n of this.ambNodes) n.disconnect();
     this.ambSources = [];
     this.ambNodes = [];
-    this.crowdGain = null;
+    // (No continuous noise beds: filtered hiss under everything reads as running
+    // water, not a crowd. Only the rooms' own electrical hum stays.)
     switch (kind) {
-      case 'ring':
-        // Packed hall: murmur, the odd shout swelling up.
-        this.crowdGain = this.bed('bandpass', 900, 0.6, 0.05, 0.13, 0.5);
-        this.bed('lowpass', 220, 0.7, 0.03);
-        break;
-      case 'colosseum':
-        // Tens of thousands in the open air: a big rolling roar.
-        this.crowdGain = this.bed('bandpass', 700, 0.5, 0.08, 0.09, 0.6);
-        this.bed('bandpass', 1800, 0.8, 0.02, 0.21, 0.7);
-        this.bed('lowpass', 160, 0.7, 0.03);
-        break;
-      case 'street':
-        // City at night: traffic rumble, distant hiss, a few onlookers.
-        this.bed('lowpass', 110, 0.8, 0.07, 0.05, 0.4);
-        this.bed('highpass', 3500, 0.5, 0.008);
-        this.crowdGain = this.bed('bandpass', 1000, 0.8, 0.012, 0.3, 0.6);
-        break;
       case 'warehouse':
-        // An underground fight: a tight ring of people shouting, all of it bouncing off
-        // concrete, and the building's hum.
-        this.crowdGain = this.bed('bandpass', 1100, 0.7, 0.06, 0.19, 0.7);
-        this.bed('bandpass', 400, 0.6, 0.03, 0.07, 0.5);
         this.hum(50, 0.01);
         break;
       case 'bar':
-        // Chatter, glasses, and a jukebox thumping somewhere.
-        this.crowdGain = this.bed('bandpass', 1300, 0.9, 0.035, 0.31, 0.6);
+        // A jukebox thumping somewhere.
         this.hum(55, 0.012);
         this.hum(82.4, 0.008);
-        this.bed('lowpass', 250, 0.7, 0.02);
-        break;
-      case 'dojo':
-        // Near silence: a soft breeze through paper screens.
-        this.bed('bandpass', 500, 0.5, 0.012, 0.05, 0.8);
-        this.crowdGain = this.bed('bandpass', 900, 0.8, 0.004, 0.2, 0.4);
-        break;
-      case 'rooftop':
-        // Wind gusting over the edge, the city far below.
-        this.bed('bandpass', 350, 0.4, 0.05, 0.11, 0.9);
-        this.bed('lowpass', 120, 0.8, 0.04, 0.04, 0.4);
-        this.bed('highpass', 2500, 0.4, 0.006, 0.17, 0.8);
-        this.crowdGain = this.bed('bandpass', 1000, 0.8, 0.008, 0.3, 0.5);
         break;
       case 'grocery':
-        // Fridges and air-conditioning, fluorescent buzz.
+        // Fridges and fluorescent buzz.
         this.hum(60, 0.012);
         this.hum(120, 0.008);
-        this.bed('lowpass', 380, 0.7, 0.025);
-        this.crowdGain = this.bed('bandpass', 1100, 0.9, 0.006, 0.25, 0.5);
+        break;
+      default:
         break;
     }
-  }
-
-  /** The crowd reacts: 0..1 (a gasp for a big hit, a roar for a knockout). */
-  crowd(intensity: number) {
-    if (!this.ctx || !this.crowdGain) return;
-    const scale = this.wantAmbience === 'colosseum' ? 1.4 : this.wantAmbience === 'ring' || this.wantAmbience === 'warehouse' ? 1 : this.wantAmbience === 'bar' ? 0.6 : 0.3;
-    const g = intensity * scale;
-    this.noiseBurst('bandpass', 850, 0.5, 0.25 * g, 0.12, 1.2 + intensity, 1300);
-    this.noiseBurst('bandpass', 1700, 0.9, 0.12 * g, 0.18, 1.0 + intensity, 2400);
   }
 
   // -------------------------------------------------------------------------

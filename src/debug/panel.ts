@@ -71,9 +71,12 @@ export function buildPanel(game: Game): { toggle: () => void } {
   live.addBinding(mi, 'guard', { readonly: true, label: 'guard Δ' });
 
   const cam = pane.addFolder({ title: 'Camera', expanded: false });
-  cam.addBinding(CAMERA_TUNING, 'elevation', { min: 0.2, max: 1.4, step: 0.01 });
-  cam.addBinding(CAMERA_TUNING, 'azimuth', { min: -1.2, max: 1.2, step: 0.01 });
-  cam.addBinding(CAMERA_TUNING, 'baseView', { min: 3, max: 14, step: 0.1, label: 'view height' });
+  cam.addBinding(CAMERA_TUNING, 'distance', { min: 1.5, max: 8, step: 0.05 });
+  cam.addBinding(CAMERA_TUNING, 'rise', { min: 0.5, max: 5, step: 0.05 });
+  cam.addBinding(CAMERA_TUNING, 'shoulder', { min: -1, max: 1, step: 0.05 });
+  cam.addBinding(CAMERA_TUNING, 'sideAngle', { min: 0, max: 1.4, step: 0.02, label: 'side angle' });
+  cam.addBinding(CAMERA_TUNING, 'turnRate', { min: 0.5, max: 10, step: 0.1, label: 'turn spring' });
+  cam.addBinding(CAMERA_TUNING, 'fov', { min: 30, max: 90, step: 1 });
 
   const enemy = pane.addFolder({ title: 'Enemy AI' });
   enemy.addBinding(game.aiCfg, 'passive', { label: 'training dummy' });
@@ -101,7 +104,7 @@ export function buildPanel(game: Game): { toggle: () => void } {
   wpn.addButton({ title: 'Empty hands' }).on('click', () => game.giveWeapon(null));
 
   const runF = pane.addFolder({ title: 'Gauntlet', expanded: false });
-  runF.addButton({ title: game.mode === 'gauntlet' ? 'Open training ring' : 'Back to the gauntlet' }).on('click', () => {
+  runF.addButton({ title: game.mode === 'gauntlet' ? 'Open training ring' : 'Back to the fights' }).on('click', () => {
     location.search = game.mode === 'gauntlet' ? '?mode=training' : '';
   });
   if (game.mode === 'gauntlet') {
