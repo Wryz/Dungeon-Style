@@ -93,6 +93,27 @@
    }
   ]
  },
+ "a_rooftop": {
+  "seconds": 15.067,
+  "ko": 12.066666666666666,
+  "marks": [
+   {
+    "t": 3.6,
+    "kind": "parry",
+    "label": "Perfect parry"
+   },
+   {
+    "t": 6.067,
+    "kind": "down",
+    "label": "Nak Muay knocked down (sliding strike)"
+   },
+   {
+    "t": 8.733,
+    "kind": "down",
+    "label": "Nak Muay knocked down (sliding strike)"
+   }
+  ]
+ },
  "a_street": {
   "seconds": 10.7,
   "ko": 7.7,
@@ -132,6 +153,84 @@
     "t": 17.733,
     "kind": "ko",
     "label": "KO — Lead Pipe slash"
+   }
+  ]
+ },
+ "b_champion": {
+  "seconds": 13.2,
+  "ko": 9.7,
+  "marks": [
+   {
+    "t": 4.733,
+    "kind": "down",
+    "label": "The Champion knocked down (sliding strike)"
+   },
+   {
+    "t": 9.7,
+    "kind": "gore",
+    "label": "You: limb off"
+   },
+   {
+    "t": 9.7,
+    "kind": "ko",
+    "label": "KO — Katana overhead smash"
+   }
+  ]
+ },
+ "b_cyclops": {
+  "seconds": 19.167,
+  "ko": 15.666666666666666,
+  "marks": [
+   {
+    "t": 3.667,
+    "kind": "parry",
+    "label": "Perfect dodge"
+   },
+   {
+    "t": 5.9,
+    "kind": "hurt",
+    "label": "Hit by spiked club sweeping swing · -14"
+   },
+   {
+    "t": 8.033,
+    "kind": "hit",
+    "label": "Counter Sledgehammer sweeping swing · 24"
+   },
+   {
+    "t": 8.533,
+    "kind": "down",
+    "label": "The Cyclops knocked down (sliding strike)"
+   },
+   {
+    "t": 13.4,
+    "kind": "hurt",
+    "label": "Hit by spiked club sweeping swing · -13"
+   },
+   {
+    "t": 15.667,
+    "kind": "ko",
+    "label": "KO — Sledgehammer sweeping swing"
+   }
+  ]
+ },
+ "b_minotaur": {
+  "seconds": 16.733,
+  "ko": 13.233333333333333,
+  "marks": [
+   {
+    "t": 4.767,
+    "kind": "down",
+    "label": "You knocked down (shoulder charge)"
+   },
+   {
+    "t": 9,
+    "kind": "down",
+    "label": "The Minotaur knocked down (flying kick)"
+   },
+   {
+    "t": 13.233,
+    "kind": "ko",
+    "label": "KO — Sliding Strike"
    }
   ]
  },
@@ -221,6 +320,22 @@
     "t": 15.267,
     "kind": "ko",
     "label": "KO — Machete overhead chop"
+   }
+  ]
+ },
+ "w_sledge": {
+  "seconds": 6.367,
+  "ko": 3.3333333333333335,
+  "marks": [
+   {
+    "t": 3.333,
+    "kind": "gore",
+    "label": "You: skull crushed"
+   },
+   {
+    "t": 3.333,
+    "kind": "ko",
+    "label": "KO — Sledgehammer overhead smash"
    }
   ]
  }

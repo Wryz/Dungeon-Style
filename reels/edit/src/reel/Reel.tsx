@@ -28,7 +28,14 @@ export const reelLength = (p: Pick<ReelProps, "grid" | "segments">) => cutFrames
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 
 /** One cut: the footage (and its game sound) punched in on the beat. */
-const Cut: React.FC<{ s: Segment; frames: number; beatFrames: number; gameVolume: number; hookTop: number }> = ({ s, frames, beatFrames, gameVolume, hookTop }) => {
+const Cut: React.FC<{ s: Segment; frames: number; beatFrames: number; gameVolume: number; hookTop: number; textFrames: number }> = ({
+  s,
+  frames,
+  beatFrames,
+  gameVolume,
+  hookTop,
+  textFrames,
+}) => {
   const f = useCurrentFrame();
   const rate = s.rate ?? 1;
   const kicks = [0, ...(s.hits ?? []).map((b) => Math.round(b * beatFrames))];
@@ -46,7 +53,11 @@ const Cut: React.FC<{ s: Segment; frames: number; beatFrames: number; gameVolume
       </AbsoluteFill>
       <Audio src={staticFile(`footage/${s.clip}.wav`)} trimBefore={trim} playbackRate={rate} volume={s.sound ?? gameVolume} />
       <AbsoluteFill style={{ backgroundColor: "white", opacity: flash }} />
-      {s.text ? <Caption text={s.text} sub={s.sub} accent={s.accent} top={hookTop} /> : null}
+      {s.text && textFrames > 0 ? (
+        <Sequence durationInFrames={textFrames} layout="none">
+          <Caption text={s.text} sub={s.sub} accent={s.accent} top={hookTop} />
+        </Sequence>
+      ) : null}
     </AbsoluteFill>
   );
 };
@@ -109,7 +120,7 @@ export const Reel: React.FC<ReelProps> = (p) => {
     <AbsoluteFill style={{ backgroundColor: INK }}>
       {p.segments.map((s, i) => (
         <Sequence key={i} from={cuts[i]} durationInFrames={cuts[i + 1] - cuts[i]} name={`${i + 1}. ${s.clip}${s.text ? ` · ${s.text}` : ""}`}>
-          <Cut s={s} frames={cuts[i + 1] - cuts[i]} beatFrames={beatFrames} gameVolume={p.gameVolume} hookTop={cuts[i] < hookFrames ? 470 : 300} />
+          <Cut s={s} frames={cuts[i + 1] - cuts[i]} beatFrames={beatFrames} gameVolume={p.gameVolume} hookTop={cuts[i] < hookFrames ? 470 : 300} textFrames={endFrom - cuts[i]} />
         </Sequence>
       ))}
       {/* Vignette: pulls the eye to the fight, darkens the edges under Instagram's buttons. */}
