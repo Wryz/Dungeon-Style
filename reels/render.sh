@@ -20,7 +20,10 @@ for id in "${ids[@]}"; do
     *)
       npx remotion render "$id" "$tmp/$id.mp4" --crf=16 --concurrency="${CONCURRENCY:-2}"
       # Instagram plays reels at about -14 LUFS: master to that, peaks under -1.5 dBTP.
-      ffmpeg -y -loglevel error -i "$tmp/$id.mp4" -c:v copy -af loudnorm=I=-14:TP=-1.5:LRA=11 -ar 48000 -c:a aac -b:a 192k -movflags +faststart "$dest/$id.mp4"
+      # (Game sound alone is all spikes: even it out first, or the peak limit holds it down.)
+      af="loudnorm=I=-14:TP=-1.5:LRA=11"
+      case "$id" in *-game-sound) af="acompressor=threshold=-26dB:ratio=4:attack=4:release=90:makeup=2,$af" ;; esac
+      ffmpeg -y -loglevel error -i "$tmp/$id.mp4" -c:v copy -af "$af" -ar 48000 -c:a aac -b:a 192k -movflags +faststart "$dest/$id.mp4"
       ;;
   esac
   echo "-> $dest/$id"
