@@ -1,0 +1,227 @@
+{
+ "a_bar": {
+  "seconds": 11.433,
+  "ko": 8.433333333333334,
+  "marks": [
+   {
+    "t": 3.433,
+    "kind": "hit",
+    "label": "Counter Push Kick · 8"
+   },
+   {
+    "t": 5.067,
+    "kind": "parry",
+    "label": "Perfect parry"
+   },
+   {
+    "t": 5.733,
+    "kind": "hit",
+    "label": "Counter Beer Bottle hack · 13"
+   },
+   {
+    "t": 6.8,
+    "kind": "hit",
+    "label": "Counter Overhead Chop · 5"
+   },
+   {
+    "t": 8.433,
+    "kind": "ko",
+    "label": "KO — Beer Bottle overhead chop"
+   }
+  ]
+ },
+ "a_dojo": {
+  "seconds": 14.033,
+  "ko": 11.033333333333333,
+  "marks": [
+   {
+    "t": 7.633,
+    "kind": "down",
+    "label": "Ninja knocked down (overhead smash)"
+   },
+   {
+    "t": 11.033,
+    "kind": "gore",
+    "label": "You: skull cleft"
+   },
+   {
+    "t": 11.033,
+    "kind": "ko",
+    "label": "KO — Katana overhead smash"
+   }
+  ]
+ },
+ "a_grocery": {
+  "seconds": 8.833,
+  "ko": 5.833333333333333,
+  "marks": [
+   {
+    "t": 4.733,
+    "kind": "hit",
+    "label": "Counter Push Kick · 8"
+   },
+   {
+    "t": 5.833,
+    "kind": "ko",
+    "label": "KO — Frying Pan overhead chop"
+   }
+  ]
+ },
+ "a_ring": {
+  "seconds": 14.233,
+  "ko": 11.233333333333333,
+  "marks": [
+   {
+    "t": 3.867,
+    "kind": "hit",
+    "label": "Counter Push Kick · 8"
+   },
+   {
+    "t": 8.267,
+    "kind": "hit",
+    "label": "Counter Cross · 7"
+   },
+   {
+    "t": 9.167,
+    "kind": "hit",
+    "label": "Counter Cross · 7"
+   },
+   {
+    "t": 11.233,
+    "kind": "ko",
+    "label": "KO — Cross"
+   }
+  ]
+ },
+ "a_street": {
+  "seconds": 10.7,
+  "ko": 7.7,
+  "marks": [
+   {
+    "t": 5.667,
+    "kind": "hit",
+    "label": "Counter Sweeping Swing · 5"
+   },
+   {
+    "t": 6.767,
+    "kind": "hit",
+    "label": "Counter Push Kick · 7"
+   },
+   {
+    "t": 7.7,
+    "kind": "ko",
+    "label": "KO — Baseball Bat overhead smash"
+   }
+  ]
+ },
+ "a_warehouse": {
+  "seconds": 20.733,
+  "ko": 17.733333333333334,
+  "marks": [
+   {
+    "t": 9.967,
+    "kind": "down",
+    "label": "Rookie knocked down (lead pipe overhead chop)"
+   },
+   {
+    "t": 15.767,
+    "kind": "parry",
+    "label": "Perfect parry"
+   },
+   {
+    "t": 17.733,
+    "kind": "ko",
+    "label": "KO — Lead Pipe slash"
+   }
+  ]
+ },
+ "b_troll": {
+  "seconds": 13.633,
+  "ko": 10.133333333333333,
+  "marks": [
+   {
+    "t": 5.667,
+    "kind": "hit",
+    "label": "Counter Push Kick · 6"
+   },
+   {
+    "t": 6.3,
+    "kind": "hit",
+    "label": "Battle Axe sweeping swing · 21"
+   },
+   {
+    "t": 7.633,
+    "kind": "down",
+    "label": "The Troll knocked down (sliding strike)"
+   }
+  ]
+ },
+ "w_axe": {
+  "seconds": 12.367,
+  "ko": 9.366666666666667,
+  "marks": [
+   {
+    "t": 5.6,
+    "kind": "hit",
+    "label": "Counter Low Kick · 6"
+   },
+   {
+    "t": 9.367,
+    "kind": "ko",
+    "label": "KO — Battle Axe sweeping swing"
+   }
+  ]
+ },
+ "w_chair": {
+  "seconds": 20.1,
+  "ko": 17.1,
+  "marks": [
+   {
+    "t": 2.533,
+    "kind": "parry",
+    "label": "Perfect dodge"
+   },
+   {
+    "t": 7.833,
+    "kind": "hit",
+    "label": "Folding Chair sweeping swing · 15"
+   },
+   {
+    "t": 14.633,
+    "kind": "down",
+    "label": "Kicker knocked down (folding chair overhead smash)"
+   },
+   {
+    "t": 17.1,
+    "kind": "ko",
+    "label": "KO — Folding Chair overhead smash"
+   }
+  ]
+ },
+ "w_machete": {
+  "seconds": 18.267,
+  "ko": 15.266666666666667,
+  "marks": [
+   {
+    "t": 7.5,
+    "kind": "hit",
+    "label": "Counter Machete slash · 13"
+   },
+   {
+    "t": 10.433,
+    "kind": "hit",
+    "label": "Counter Low Kick · 7"
+   },
+   {
+    "t": 13.767,
+    "kind": "hit",
+    "label": "Counter Push Kick · 6"
+   },
+   {
+    "t": 15.267,
+    "kind": "ko",
+    "label": "KO — Machete overhead chop"
+   }
+  ]
+ }
+}
