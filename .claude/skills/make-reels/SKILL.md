@@ -1,155 +1,128 @@
 ---
 name: make-reels
-description: Produce finished, ready-to-upload Instagram Reels / TikToks / YouTube Shorts for a video game from its own repo. Capture real gameplay frame by frame with the game's sound in sync, cut it to the beat of music in the trending style with Remotion, add viral-style captions, an end card and covers, and deliver MP4s plus captions and hashtags. Use this whenever the user wants reels, shorts, TikToks, trailers, promo clips, gameplay montages or social videos for their game, even if they don't say "reel" (e.g. "make some content for Instagram", "I need clips to promote my game", "edit a hype video from gameplay").
+description: Produce finished, ready-to-upload Instagram Reels / TikToks / YouTube Shorts for a video game from its own repo. Capture real gameplay with the game's sound in sync, research trending music for the genre, edit to the beat (Remotion), design a look that fits the game, and deliver MP4s, covers and post captions. Use this whenever the user wants reels, shorts, TikToks, trailers, promo clips, gameplay montages or social videos for their game, even if they don't say "reel" (e.g. "make some content for Instagram", "I need clips to promote my game", "edit a hype video from gameplay").
 ---
 
 # Make reels for a game
 
-Make three ~20 s vertical reels (1080×1920, 30 fps) from real gameplay of the game in
-this repo, ready for the user to upload by hand. The user expects finished, post-ready
-videos, not a plan. Work end to end, check your own output visually, and only stop for
-decisions that are truly theirs.
+Make short vertical videos (default: three reels, ~20 s, 1080×1920, 30 fps) from real
+gameplay of the game in this repo, finished and ready for the user to upload by hand.
+Work end to end, check your own output visually, and only stop for decisions that are
+truly theirs.
 
-The method was proven on a three.js fighting game (DungeonStyle). Everything here
-generalizes. The bundled scripts and template are the working code from that run.
+This skill is a **process**, not a house style. Every game is different, so its reels
+should look and feel like that game. Don't reuse fonts, colours, caption treatments or
+edit templates from other games' reels. Design them fresh from this game's identity.
 
-## What "good" means here
-- **Real gameplay with real sound in sync.** The game's own hits, crunches and crowd at the
-  exact frame. Captured footage, no mock-ups.
-- **Smooth.** Frame-stepped capture, so a slow headless renderer doesn't matter.
-- **On the beat.** Every cut on a measured beat, the big hit landing just after it.
-- **Hook in the first second, payoff, loop.** The opening frame already has action and a
-  hook line. Each reel ends on the logo + "LINK IN BIO" and a flash that loops cleanly back into the start.
-- **Viral styling.** Big condensed caps (Anton, bundled), heavy black outline, key words in
-  the game's brand colours, punch zoom + flash + shake on every cut, vignette.
-- **Honest.** Keep the game's content as it is (gore included unless told otherwise).
-  Say what you couldn't verify (e.g. trending songs' tempos) and point out weak shots.
+## 1. Understand the game and its identity
+- **What it is and why it's fun.** The genre, the core loop, the most impressive or
+  surprising moments, what's unique. Read the README, the code and any store/press text.
+- **How it runs.** The engine, how a frame is updated and rendered, where sound goes, how
+  input is read, how levels/characters/items are chosen, any debug hooks or cinematic or
+  slow-motion cameras.
+- **Its look and voice.** The logo and brand files, its colour palette, the typefaces its
+  own UI uses (bundled font files are the best source), and the tone: cosy, brutal,
+  goofy, eerie, sleek. This drives every style decision later.
+- **The container.** `nproc`, `free -g`, `ffmpeg -encoders | grep 264`, whether
+  Chromium/Playwright is installed (`ls /opt/pw-browsers`, `npm root -g`), whether npm
+  can reach the network, whether the engine CLI is present.
 
-## Workflow
+Then pick concepts that suit this game. Common shapes: a tour ("every level is
+different"), a ranking or tier list, an escalation ("it keeps getting harder"),
+"POV:", fails vs wins, progression (before and after). Each needs a hook in the first
+second and a reason to comment or rewatch. Plan a shot list from them: which level,
+setup or moment produces each beat of the story.
 
-### 0. Recon (short)
-Find out what the game is, how it runs and how it's built: engine, how a frame is updated
-and rendered, where sound goes, how player input is read, how levels/rounds/enemies/
-weapons are chosen, whether a debug/dev hook exposes the game object, any cinematic or
-slow-mo camera, the brand assets (logo, colours) and the game's name. Check the
-container: `nproc`, `free -g`, `ffmpeg -encoders | grep 264`, Chromium/Playwright
-(`ls /opt/pw-browsers`, `npm root -g`), outbound npm.
+If the user gave constraints (content rating, things to show or avoid, a style
+reference), they override everything here.
 
-Pick 3 concepts that suit this game. Patterns that work:
-- **Tour**: "every level/round is a new X", one finisher per place.
-- **Ranking / tier list**: weapons, characters, items, worst to best, coloured tier tags,
-  "what's your S tier?".
-- **Escalation**: "they keep getting bigger/harder", bosses walking in, then each going down.
-- Others: "POV: …", fails vs wins, "1 vs 100", before/after progression.
+## 2. Capture real gameplay, smooth and in sync
+The principle: **step the game a fixed 1/30 s per frame** instead of recording in real
+time, so the footage is smooth however slow the renderer is (headless containers render
+in software). Capture the game's **own sound in sync** by logging every sound call with
+its game time and rendering that log offline afterwards. Let the player play on
+**autopilot** so takes have action, and make sure takes **end on the key moment** (a
+win, kill, goal, combo, crash).
 
-Each needs a hook line, per-cut captions and a comment-bait question. Plan the shot list
-from the concepts (which level, loadout and opponent gives each moment).
+- **Web games** (three.js, Babylon, Phaser, PixiJS, canvas): read
+  `references/director-contract.md`, then use `scripts/capture.cjs` (Playwright +
+  ffmpeg), `scripts/batch.sh` (parallel takes from a `shots.json`) and
+  `scripts/director-template.js` (the game-specific hooks you write). Serve a
+  **production build**: hot reload kills takes. For concrete code of every hook, see
+  `references/director-example-dungeonstyle.js`, a working director for one fighting
+  game. Take its techniques, not its gameplay choices.
+- **Other engines**: read `references/capture-native.md` (Unity `captureFramerate` /
+  Recorder, Godot Movie Maker, fallbacks).
 
-### 1. Capture
-**Web games** (three.js, Babylon, Phaser, PixiJS, canvas…): read
-`references/director-contract.md`, then set up in the repo:
-```
-reels/capture/capture.cjs   ← scripts/capture.cjs
-reels/capture/batch.sh      ← scripts/batch.sh
-reels/capture/director.js   ← scripts/director-template.js, filled in for this game
-reels/shots.json            ← [{ "name": "a_level1", "level": 1, "weapon": "…", "enemyHp": 0.4, "seconds": 22, "tail": 3 }, …]
-reels/stage.sh, reels/render.sh, reels/inspect.sh ← scripts/
-```
-`references/director-example-dungeonstyle.js` is a complete working director to crib
-from. Serve a **production build** (`vite build && vite preview --port 5173`, or any static
-server). A dev server's hot reload kills takes the moment anything in the repo changes.
 Any change to the game itself should be a small, clean hook that doesn't affect
-players (e.g. a way to point the sound engine at another audio context). Mention it in
-the commit.
+players. Mention it in the commit.
 
-**Other engines** (Unity, Godot, native): read `references/capture-native.md`.
+Frame the action for 9:16. The game's normal camera is usually framed for landscape, so
+re-place it for portrait and keep the subject(s) large and unobstructed. If the game has
+cinematic or slow-motion moments, they're usually the best footage.
 
-Then:
-1. **Test one take first** (one shot, `seconds` ~6–10), and look at it:
-   `reels/inspect.sh reels/out/<take>.mp4 0 99 3` → contact sheet with timestamps. Fix
-   framing (both subjects in frame, not hidden behind the player, not inside props),
-   the autopilot (is it actually fighting?) and the KO detection before the batch. One bad
-   assumption multiplied by 15 takes costs an hour.
-2. **Batch**: `OUT=reels/out JOBS=3 GAME_URL=… reels/capture/batch.sh` (3 jobs on 4 cores;
-   expect ~1–1.5 s per frame per job in software WebGL). Run it in the background and
-   watch its log with a Monitor on `done:|Error|error`. While it runs, do the music
-   research and set up the edit.
-3. **Inspect every take** and re-shoot the bad ones (no KO, camera blocked, player died).
-   Common fixes: lower `enemyHp`, add `finishAfter`, a different level or loadout.
-   Protect good takes from being overwritten by re-runs (copy them to a `final/` folder).
+**Test one short take first** and look at it (`scripts/inspect.sh` makes a timestamped
+contact sheet). Fix framing, autopilot and key-moment detection before the batch; one bad
+assumption multiplied over many takes wastes an hour. Then run the batch in the background
+(watch its log for `done:` / errors), **inspect every take**, and re-shoot the bad ones.
 
-### 2. Music
-Read `references/music.md`. In short: research what's trending for the genre (a
-background subagent is good for this), download 2–4 royalty-free tracks in that style
-(CC0 / CC BY, with `CREDITS.md`), measure beat grids (`scripts/beats.py`), choose ~20 s
-windows from the loudness map, and splice a bed with `scripts/bed.py` if needed.
+## 3. Music
+Read `references/music.md`. Research what's trending on Reels/TikTok for this game's
+genre and mood. Never bake copyrighted songs into the file (Instagram mutes or blocks
+them). Bake in royalty-free tracks in the trending style (CC0 / CC BY, with a credits
+file), and also make a **game-sound-only version** of each reel for adding the trending
+song in Instagram's audio picker. Measure each track's beat grid (`scripts/beats.py`) and
+cut on measured beats. `scripts/bed.py` splices a track on beat boundaries when the window
+you want runs into a long break.
 
-### 3. Edit (Remotion)
-Load the Remotion skill (`remotion:remotion-best-practices`) if it's available. Copy
-`assets/edit/` to `reels/edit/` and run `npm i` there (it includes Anton.ttf; Remotion's
-renderer may not reach Google Fonts). Then:
-- `public/brand/logo.png` ← the game's logo. Set the brand colours in
-  `src/reel/Caption.tsx` (`ACCENT`, `HOT`, `CREAM`, `INK`) from the logo/brand files.
-- `reels/stage.sh reels/final` → copies takes into `public/footage/` and writes
-  `src/takes.json` (KO time and length of every take).
-- Write the three timelines in `src/reels.ts` (it has an example). A segment is
-  `{clip, from, beats, text?, sub?, accent?, hits?, rate?, push?}`. `koCut(take, beats)`
-  opens 0.3 s before a take's KO so the blow lands just after the cut. Start each reel on
-  action. Use the game's own slow-motion cuts as money shots. `hook` holds a line over the
-  first bars. `title` is the game's name on the end card, and `endBeats` sets how long the
-  end card runs over the last cut. If the end card falls in the music's quiet stretch,
-  the loop slams back into the drop.
-- `npx tsc --noEmit`, then `npx remotion compositions`, which also warns if any cut runs past
-  the end of its take (that would freeze).
-- Render one reel, make a contact sheet (`ffmpeg -i R.mp4 -vf "fps=2,scale=180:-1,tile=11x4"`)
-  and **look at it**. Check for captions colliding, blocked shots, empty frames at the
-  start of takes (the camera settling), and captions left on under the end card. Fix,
-  then render everything.
-- Covers: a striking still per reel in `public/stills/` (ffmpeg `-ss T -frames:v 1`),
-  set in `COVERS`. The title stays in the centre band so it survives the profile grid's
-  crop.
+## 4. Design and edit
+Use Remotion (load `remotion:remotion-best-practices` if available) or another
+programmatic editor. Set up a fresh project for this game. **Design the look from step 1:**
+- **Type.** Use the game's own fonts if it ships them, otherwise pick open-licence fonts
+  (Google Fonts, SIL OFL) that match its tone. Bundle the font file locally: the renderer
+  may not reach font CDNs (fonts.gstatic.com usually works with curl;
+  raw.githubusercontent.com may not).
+- **Colour.** From the game's palette and logo.
+- **Captions and motion.** Fit the tone: a cosy game wants soft, rounded and gentle; an
+  action game can be punchy; a horror game sparse and unsettling. Short-form basics still
+  apply: readable on a phone at a glance, inside the safe area (Instagram's buttons cover
+  the right edge and the bottom ~20%), and on screen long enough to read.
+- **Structure.** Hook in the first second, payoff, then the logo and call to action,
+  ending so the loop back to the start feels intentional.
 
-### 4. Render & deliver
-`reels/render.sh` (all reels, `-game-sound` versions and covers) → `media/reels/`,
-mastered to −14 LUFS. Verify with ffprobe (1080×1920, 30 fps, h264/aac, ~20 s) and
-`ffmpeg -af ebur128`. Write `media/reels/CAPTIONS.md`: for each reel, the caption
-(hook, a line of context, the comment-bait question, "🎮 Link in bio"), ~8 hashtags, alt
-text, the music credit line, and the suggested trending sound + where to start it for the
-`-game-sound` version. Add posting tips: one reel a day, strongest first, and reply to
-comments.
+Mechanics worth carrying over:
+- Timelines as data, with cuts placed on measured beat times.
+- Key moments land just after a cut.
+- A check that no cut runs past the end of its take (that freezes).
+- A game-sound-only twin of each composition.
+- Covers that keep the title in the centre band, so the profile grid's crop keeps it.
 
-Commit the pipeline (`reels/`), the tiny game hook and the outputs, and push. Send the
-user the three main reels, the covers and CAPTIONS.md (SendUserFile, if available).
-Then give a short summary: what each reel is, what's baked in versus the game-sound
-versions, any weak shots, and how to make the next batch.
+**Render one reel, make a contact sheet and look at it** before rendering the rest.
+Check overlapping text, blocked or empty shots, captions under the end card, and pacing.
 
-## Hard-won gotchas
-- `<canvas id="game">` makes `window.game` the canvas until the real object exists, so
-  test for a property only the game object has.
-- With `requestAnimationFrame` stubbed, Playwright's `waitForFunction` never re-polls. Use
-  `{ polling: 500 }` (capture.cjs does).
-- Dev servers with hot reload reload the page when repo files change (scaffolding Remotion
-  is enough to trigger it). Capture against a production build.
-- `xargs -P` stops launching new jobs once one is killed or fails (batch.sh guards this
-  with `exit 0`). Killing a capture leaves orphaned headless browsers, so kill those whose
-  parent is PID 1.
-- Edits to `director.js` only affect takes that **start** afterwards.
+## 5. Render and deliver
+`scripts/render.sh` shows the mastering step: about −14 LUFS and −1.5 dBTP (Instagram's
+playback level), with a compressor before loudnorm for game-sound-only versions. Verify
+the outputs (resolution, fps, codecs, duration, loudness).
+
+Write a captions file. For each reel: the post caption (hook, a line of context, a
+question that invites comments, the call to action), hashtags, alt text, the music
+credit, and the suggested trending sound plus where to start it. Commit the pipeline, the
+game hook and the outputs, push, and send the user the videos, covers and captions.
+Then summarize: what each reel is, the baked-music vs game-sound versions, any weak
+shots, and how to make the next batch.
+
+## Gotchas from the first run (web capture)
+- An element with `id="game"` makes `window.game` resolve to the element until the real
+  object exists, so test for a property only the game object has.
+- With `requestAnimationFrame` stubbed, Playwright's `waitForFunction` never re-polls.
+  Use `{ polling: 500 }`.
 - `canvas.toDataURL` and page screenshots are 3–5× slower than `gl.readPixels`.
-- Some finishes don't go through the game's KO-mark path. Also detect the KO from the sound.
-- raw.githubusercontent.com may be blocked. Fonts come from fonts.gstatic.com
-  (`curl "https://fonts.googleapis.com/css2?family=Anton"` gives the TTF URL).
-- Cluttered levels (shelves, pillars) block cinematic cameras. Prefer open levels for
-  money shots, or cut around the blocked frames.
-- The first ~1–2 s of a take is often the camera settling or an intro. Don't open a cut there.
-
-## Bundled files
-- `scripts/capture.cjs`: Playwright + ffmpeg frame-stepped capture driver (web).
-- `scripts/director-template.js`: the director to fill in. Its contract is in
-  `references/director-contract.md`.
-- `scripts/batch.sh`, `scripts/stage.sh`, `scripts/render.sh`, `scripts/inspect.sh`.
-- `scripts/beats.py` (beat grid + loudness map) and `scripts/bed.py` (beat-aligned bed splice).
-- `assets/edit/`: the Remotion project (Reel with beat-cut segments, punch/flash/shake,
-  captions, hook, end card, game-sound twin, covers, cut-length validation, Anton font).
-- `references/director-example-dungeonstyle.js`: a complete working director.
-- `references/capture-native.md`: Unity / Godot / other engines.
-- `references/music.md`: trending research, licences, beat grids, mastering.
+- `xargs -P` stops launching after one job dies. Killed captures leave orphaned headless
+  browsers, so kill those whose parent is PID 1.
+- Edits to the director only affect takes that **start** afterwards.
+- Some key moments bypass the game's usual event path (e.g. a fatal blow vs a normal KO).
+  Detect them from the sound log too.
+- Forced cinematic cameras can end up inside props in cluttered levels. Respect the
+  game's line-of-sight checks, or cut around the blocked frames.
+- The first second or two of a take is often the camera settling. Don't open a cut there.

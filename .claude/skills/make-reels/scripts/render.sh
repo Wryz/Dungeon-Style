@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Renders the reels (and their game-sound-only versions) and covers into media/reels/.
+# Example render + master step (Remotion project in reels/edit, outputs to media/reels/).
+# Adapt the paths and composition naming to the project you set up.
 #   reels/render.sh [CompositionId ...]     (default: every reel, its game-sound version and every cover)
 # Footage must be in reels/edit/public/footage (reels/capture/batch.sh, then copy).
 set -euo pipefail

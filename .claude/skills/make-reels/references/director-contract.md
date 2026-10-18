@@ -60,5 +60,7 @@ it. The director defines `window.__reel` with:
 - **Moments.** Push `{t, kind, label}` on hits, knockdowns, gore and KO from wherever the
   game reports them (an event bus, a recorder, a HUD popup). The edit uses the KO time.
 
-`director-example-dungeonstyle.js` is a complete, working director for a three.js +
-Rapier fighting game. Read it for concrete code for every hook above.
+`director-example-dungeonstyle.js` is a complete, working director for one three.js +
+Rapier fighting game. Read it for concrete code for each hook above. Its gameplay
+choices (fights, KOs, weapons) are specific to that game. Translate "KO" to this game's
+key moment (a goal, a win, a combo, a crash, a finished level).
