@@ -255,6 +255,213 @@
    }
   ]
  },
+ "g_cleft_1": {
+  "seconds": 8.033,
+  "ko": 4.533333333333333,
+  "marks": [
+   {
+    "t": 4.533,
+    "kind": "gore",
+    "label": "You: skull cleft"
+   },
+   {
+    "t": 4.533,
+    "kind": "ko",
+    "label": "KO — Katana overhead smash"
+   }
+  ]
+ },
+ "g_crush_1": {
+  "seconds": 7.833,
+  "ko": 4.333333333333333,
+  "marks": [
+   {
+    "t": 4.333,
+    "kind": "gore",
+    "label": "You: skull crushed"
+   },
+   {
+    "t": 4.333,
+    "kind": "ko",
+    "label": "KO — Sledgehammer overhead smash"
+   }
+  ]
+ },
+ "g_crush_2": {
+  "seconds": 13.367,
+  "ko": 9.866666666666667,
+  "marks": [
+   {
+    "t": 7.167,
+    "kind": "hurt",
+    "label": "Hit by fire axe sweeping swing · -13"
+   },
+   {
+    "t": 9.867,
+    "kind": "ko",
+    "label": "KO — Spiked Club overhead smash"
+   }
+  ]
+ },
+ "g_decap_2": {
+  "seconds": 7.267,
+  "ko": 3.7666666666666666,
+  "marks": [
+   {
+    "t": 3.767,
+    "kind": "ko",
+    "label": "KO — Katana overhead smash"
+   }
+  ]
+ },
+ "g_demon_1": {
+  "seconds": 10.967,
+  "ko": 7.466666666666667,
+  "marks": [
+   {
+    "t": 2.4,
+    "kind": "gore",
+    "label": "You: limb off"
+   },
+   {
+    "t": 2.4,
+    "kind": "down",
+    "label": "Demon knocked down (battle axe sweeping swing)"
+   }
+  ]
+ },
+ "g_demon_2": {
+  "seconds": 11.5,
+  "ko": 8,
+  "marks": [
+   {
+    "t": 6.333,
+    "kind": "down",
+    "label": "Demon knocked down (katana overhead smash)"
+   }
+  ]
+ },
+ "g_imp_1": {
+  "seconds": 9.567,
+  "ko": 6.066666666666666,
+  "marks": [
+   {
+    "t": 6.067,
+    "kind": "ko",
+    "label": "KO — Fire Axe overhead smash"
+   }
+  ]
+ },
+ "g_limb_1": {
+  "seconds": 11.933,
+  "ko": 8.433333333333334,
+  "marks": [
+   {
+    "t": 4.533,
+    "kind": "hit",
+    "label": "Counter Machete overhead chop · 17"
+   },
+   {
+    "t": 7.167,
+    "kind": "parry",
+    "label": "Perfect parry"
+   },
+   {
+    "t": 7.833,
+    "kind": "down",
+    "label": "Guard broken"
+   }
+  ]
+ },
+ "g_split_1": {
+  "seconds": 10.533,
+  "ko": 7.033333333333333,
+  "marks": [
+   {
+    "t": 3.9,
+    "kind": "hit",
+    "label": "Battle Axe sweeping swing · 26"
+   }
+  ]
+ },
+ "g_split_2": {
+  "seconds": 6.767,
+  "ko": 3.2666666666666666,
+  "marks": [
+   {
+    "t": 3.267,
+    "kind": "gore",
+    "label": "You: skull split"
+   },
+   {
+    "t": 3.267,
+    "kind": "ko",
+    "label": "KO — Fire Axe overhead smash"
+   }
+  ]
+ },
+ "g_wait_cyclops": {
+  "seconds": 16.533,
+  "ko": 12.533333333333333,
+  "marks": [
+   {
+    "t": 3.633,
+    "kind": "parry",
+    "label": "Perfect dodge"
+   },
+   {
+    "t": 5.633,
+    "kind": "hurt",
+    "label": "Hit by spiked club sweeping swing · -14"
+   },
+   {
+    "t": 7.3,
+    "kind": "hurt",
+    "label": "Hit by spiked club sweeping swing · -14"
+   },
+   {
+    "t": 9.233,
+    "kind": "hit",
+    "label": "Counter Battle Axe sweeping swing · 29"
+   },
+   {
+    "t": 10.867,
+    "kind": "down",
+    "label": "The Cyclops knocked down (battle axe overhead smash)"
+   }
+  ]
+ },
+ "g_wait_troll": {
+  "seconds": 18.4,
+  "ko": 14.4,
+  "marks": [
+   {
+    "t": 3.8,
+    "kind": "hit",
+    "label": "Counter Katana overhead smash · 19"
+   },
+   {
+    "t": 5.267,
+    "kind": "hit",
+    "label": "Counter Katana overhead smash · 23"
+   },
+   {
+    "t": 6.067,
+    "kind": "down",
+    "label": "Guard broken"
+   },
+   {
+    "t": 6.9,
+    "kind": "down",
+    "label": "The Troll knocked down (katana overhead smash)"
+   },
+   {
+    "t": 12.733,
+    "kind": "hurt",
+    "label": "Hit by sledgehammer sweeping swing · -14"
+   }
+  ]
+ },
  "w_axe": {
   "seconds": 12.367,
   "ko": 9.366666666666667,

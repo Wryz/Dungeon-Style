@@ -96,8 +96,8 @@ const Pill: React.FC<{ text: string; color?: string }> = ({ text, color = INK })
       borderRadius: 4,
       fontFamily: INTER,
       fontWeight: 800,
-      fontSize: 30,
-      letterSpacing: "0.4em",
+      fontSize: 40,
+      letterSpacing: "0.32em",
       textTransform: "uppercase",
       color,
     }}
@@ -250,7 +250,7 @@ export const GoreReel: React.FC<GoreReelProps> = (p) => {
       <AbsoluteFill style={{ background: "radial-gradient(ellipse at 50% 46%, rgba(0,0,0,0) 50%, rgba(40,2,4,0.55) 100%)" }} />
       {p.hook && hookFrames > 0 ? (
         <Sequence durationInFrames={hookFrames} name="Hook">
-          <Title text={p.hook} top={210} size={84} />
+          <Title text={p.hook} top={200} size={100} />
         </Sequence>
       ) : null}
       <Sequence from={endFrom} durationInFrames={total - endFrom} name="End card">

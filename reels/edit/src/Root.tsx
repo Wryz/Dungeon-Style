@@ -2,7 +2,9 @@ import React from "react";
 import { Composition, Still } from "remotion";
 import { Cover } from "./reel/Cover";
 import { FPS, Reel, reelLength } from "./reel/Reel";
+import { GoreCover, GoreReel } from "./gore/GoreReel";
 import { COVERS, REELS } from "./reels";
+import { GORE_COVERS, GORE_REELS } from "./reels-gore";
 
 /**
  * Every reel twice: with its (royalty-free) music baked in, and with game sound only, cut
@@ -32,6 +34,23 @@ export const RemotionRoot: React.FC = () => {
             defaultProps={{ ...props, music: null, gameVolume: 1 }}
           />
         </React.Fragment>
+      ))}
+      {Object.entries(GORE_REELS).map(([id, props]) => (
+        <React.Fragment key={id}>
+          <Composition id={id} component={GoreReel} fps={FPS} width={1080} height={1920} durationInFrames={reelLength(props)} defaultProps={props} />
+          <Composition
+            id={`${id}-game-sound`}
+            component={GoreReel}
+            fps={FPS}
+            width={1080}
+            height={1920}
+            durationInFrames={reelLength(props)}
+            defaultProps={{ ...props, music: null, gameVolume: 1 }}
+          />
+        </React.Fragment>
+      ))}
+      {Object.entries(GORE_COVERS).map(([id, props]) => (
+        <Still key={id} id={id} component={GoreCover} width={1080} height={1920} defaultProps={props} />
       ))}
       {Object.entries(COVERS).map(([id, props]) => (
         <Still key={id} id={id} component={Cover} width={1080} height={1920} defaultProps={props} />
