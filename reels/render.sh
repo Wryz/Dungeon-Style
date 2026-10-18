@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Renders the reels (and their game-sound-only versions) and covers into media/reels/.
-#   reels/render.sh [CompositionId ...]     (default: every reel in src/reels.ts)
+#   reels/render.sh [CompositionId ...]     (default: every reel, its game-sound version and every cover)
 # Footage must be in reels/edit/public/footage (reels/capture/batch.sh, then copy).
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -10,7 +10,7 @@ mkdir -p "$dest" "$tmp"
 cd "$here/edit"
 ids=("$@")
 if [ ${#ids[@]} -eq 0 ]; then
-  mapfile -t ids < <(npx remotion compositions --quiet 2>/dev/null | tr ' ' '\n' | grep -E '^Reel[0-9]+' || true)
+  mapfile -t ids < <(npx remotion compositions --quiet 2>/dev/null | tr ' ' '\n' | grep -E '^(Reel|Cover)[0-9]+' || true)
 fi
 for id in "${ids[@]}"; do
   case "$id" in
