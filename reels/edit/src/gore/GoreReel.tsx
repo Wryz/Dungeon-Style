@@ -109,13 +109,16 @@ const Pill: React.FC<{ text: string; color?: string }> = ({ text, color = INK })
 /** A kill, the way the death screen announces one: red, glowing, slammed in. */
 const KillLabel: React.FC<{ text: string; sub?: string; top: number }> = ({ text, sub, top }) => {
   const f = useCurrentFrame();
+  // As big as the longest word allows inside the frame (≈0.82 em per tracked capital).
+  const longest = Math.max(...text.split(" ").map((w) => w.length));
+  const size = Math.min(128, Math.floor(980 / (longest * 0.82)));
   return (
     <div style={{ position: "absolute", left: 40, right: 40, top, display: "flex", flexDirection: "column", alignItems: "center", gap: 22 }}>
       <div
         style={{
           fontFamily: INTER,
           fontWeight: 900,
-          fontSize: 128,
+          fontSize: size,
           lineHeight: 1,
           letterSpacing: "0.1em",
           textAlign: "center",
@@ -242,7 +245,7 @@ export const GoreReel: React.FC<GoreReelProps> = (p) => {
             beatFrames={beatFrames}
             gameVolume={p.gameVolume}
             textFrames={endFrom - cuts[i]}
-            textTop={cuts[i] < hookFrames ? 520 : 330}
+            textTop={cuts[i] < hookFrames ? 620 : 330}
           />
         </Sequence>
       ))}

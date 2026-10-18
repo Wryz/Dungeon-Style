@@ -43,7 +43,8 @@ const finishers: GoreReelProps = {
     at("g_cleft_1", moment("g_cleft_1", "gore"), 8, GT, { count: "02", label: "SKULL CLEFT", labelAt: 1, sub: "KATANA", hits: [1] }),
     at("g_crush_1", moment("g_crush_1", "gore"), 8, GT, { count: "03", label: "SKULL CRUSHED", labelAt: 1, sub: "SLEDGEHAMMER", hits: [1] }),
     at(DECAP, decapAt, 8, DECAP === "a_dojo" ? 0.46 : GT, { count: "04", label: "DECAPITATED", labelAt: 1, sub: DECAP === "g_decap_5" || DECAP === "g_decap_3" ? "BATTLE AXE" : DECAP === "g_decap_4" ? "FIRE AXE" : "KATANA", hits: [1] }),
-    at("g_demon_1", moment("g_demon_1", "gore"), 8, GT, { count: "05", label: "LIMB OFF", labelAt: 1, sub: "AND THE REST OF YOU", hits: [1] }),
+    // (Opens a beat later than the others: before that the camera is still finding them.)
+    at("g_demon_1", moment("g_demon_1", "gore"), 8, 0.15, { count: "05", label: "LIMB OFF", labelAt: 0.35, sub: "AND THE REST OF YOU", hits: [0.35] }),
     { clip: "g_cleft_1", from: 5.4, beats: 5 },
   ],
 };
