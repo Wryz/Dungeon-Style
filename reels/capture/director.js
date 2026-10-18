@@ -156,9 +156,17 @@
     // They also take the portrait camera's side of the fight: shot over a shoulder, one
     // fighter hides the other in a narrow frame.
     g.cine.play = (shot) => {
+      // Square on to the line between the two, on the side the portrait camera is on.
       const at = shot.focus();
+      const e = g.enemy ? (g.ragdolls.get(g.enemy)?.pelvisPos() ?? g.enemy.pos) : at;
       const side = cam.position.clone().sub(at).setY(0);
-      if (side.lengthSq() > 1e-4) shot = { ...shot, side: side.normalize().lerp(shot.side.clone().normalize(), 0.25) };
+      const line = e.clone().sub(g.player.pos).setY(0);
+      if (line.lengthSq() > 1e-4) {
+        line.normalize();
+        const perp = line.clone().set(line.z, 0, -line.x);
+        if (perp.dot(side) < 0) perp.negate();
+        shot = { ...shot, side: perp.addScaledVector(line, 0.15).normalize() };
+      } else if (side.lengthSq() > 1e-4) shot = { ...shot, side: side.normalize() };
       play({ ...shot, distance: (shot.distance ?? 3) * (opts.cutPull ?? 1.45) });
     };
 
