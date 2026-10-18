@@ -225,5 +225,49 @@
    "rpunch",
    "lpunch"
   ]
+ },
+ {
+  "name": "g_decap_3",
+  "round": 10,
+  "weapon": "axe",
+  "armour": 6,
+  "enemyHp": 0.25,
+  "finishAfter": 6,
+  "seconds": 20,
+  "tail": 3.5,
+  "buttons": [
+   "rpunch",
+   "rpunch",
+   "lpunch"
+  ]
+ },
+ {
+  "name": "g_decap_4",
+  "round": 7,
+  "weapon": "fireaxe",
+  "armour": 6,
+  "enemyHp": 0.25,
+  "finishAfter": 6,
+  "seconds": 20,
+  "tail": 3.5,
+  "buttons": [
+   "rpunch",
+   "rpunch",
+   "lpunch"
+  ]
+ },
+ {
+  "name": "g_decap_5",
+  "round": 2,
+  "weapon": "axe",
+  "armour": 6,
+  "enemyHp": 0.25,
+  "finishAfter": 6,
+  "seconds": 20,
+  "tail": 3.5,
+  "buttons": [
+   "lpunch",
+   "rpunch"
+  ]
  }
 ]
