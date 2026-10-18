@@ -182,6 +182,13 @@
 
     // ---- The round.
     g.startRound(opts.round ?? 1);
+    // A chosen opponent instead of the round's draw (same arena, same round tuning).
+    if (opts.kind) {
+      g.clearEnemies();
+      const [x, z] = g.theme.enemySpawns[0];
+      const f = g.spawn(opts.kind, x, z, { ...g.spec.spawns[0], kind: opts.kind, weapon: opts.enemyWeapon });
+      g.sim.ais.get(f).cfg.passive = true;
+    }
     for (const e of g.enemies) {
       e.hp = e.stats.maxHp * (opts.enemyHp ?? 0.7);
       // They still land hits (and the damage shows), just not enough to end the take.

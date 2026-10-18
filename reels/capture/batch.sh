@@ -11,5 +11,5 @@ node -e '
   const shots = require(process.argv[1]);
   const want = process.argv.slice(2);
   for (const s of shots) if (!want.length || want.includes(s.name)) console.log(JSON.stringify(s));
-' "$here/../shots.json" "$@" |
-  xargs -d '\n' -P "$jobs" -I{} sh -c 'node "$0/capture.cjs" "$1" "$2" 2>&1 | grep --line-buffered -v "GL Driver"' "$here" {} "$out"
+' "$(realpath "${SHOTS:-$here/../shots.json}")" "$@" |
+  xargs -d "\n" -P "$jobs" -I{} sh -c 'node "$0/capture.cjs" "$1" "$2" 2>&1 | grep --line-buffered -v "GL Driver"; exit 0' "$here" {} "$out"
