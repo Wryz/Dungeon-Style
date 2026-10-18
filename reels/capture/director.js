@@ -43,6 +43,8 @@
       if (name === 'constructor' || name === 'unlock' || name === 'attach' || typeof proto[name] !== 'function') continue;
       sfx[name] = (...args) => {
         R.events.push({ t: t(), name, args });
+        // (Not every finish is marked as a KO: a fatal blow or bleeding out isn't.)
+        if (name === 'ko' && R.koAt < 0) R.koAt = t();
       };
     }
     g.input.onAnyInput = () => {};
