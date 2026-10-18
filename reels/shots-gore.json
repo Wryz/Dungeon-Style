@@ -1,16 +1,229 @@
 [
-  { "name": "g_split_1", "round": 7, "weapon": "axe", "armour": 6, "enemyHp": 0.25, "finishAfter": 6, "seconds": 20, "tail": 3.5 },
-  { "name": "g_split_2", "round": 2, "weapon": "fireaxe", "armour": 5, "enemyHp": 0.25, "finishAfter": 6, "seconds": 20, "tail": 3.5 },
-  { "name": "g_cleft_1", "round": 10, "weapon": "katana", "armour": 5, "enemyHp": 0.25, "finishAfter": 6, "seconds": 20, "tail": 3.5 },
-  { "name": "g_cleft_2", "round": 11, "weapon": "machete", "armour": 4, "enemyHp": 0.25, "finishAfter": 6, "seconds": 20, "tail": 3.5 },
-  { "name": "g_crush_1", "round": 1, "weapon": "sledgehammer", "armour": 5, "enemyHp": 0.25, "finishAfter": 6, "seconds": 20, "tail": 3.5 },
-  { "name": "g_crush_2", "round": 17, "weapon": "club", "armour": 4, "enemyHp": 0.25, "finishAfter": 6, "seconds": 20, "tail": 3.5 },
-  { "name": "g_decap_1", "round": 7, "weapon": "katana", "armour": 6, "enemyHp": 0.25, "finishAfter": 6, "seconds": 20, "tail": 3.5 },
-  { "name": "g_decap_2", "round": 2, "weapon": "katana", "armour": 5, "enemyHp": 0.25, "finishAfter": 6, "seconds": 20, "tail": 3.5 },
-  { "name": "g_limb_1", "round": 5, "weapon": "machete", "armour": 4, "enemyHp": 0.3, "finishAfter": 7, "seconds": 20, "tail": 3.5 },
-  { "name": "g_demon_1", "round": 10, "kind": "demon", "weapon": "axe", "armour": 6, "enemyHp": 0.35, "finishAfter": 7, "seconds": 22, "tail": 3.5 },
-  { "name": "g_demon_2", "round": 7, "kind": "demon", "weapon": "katana", "armour": 6, "enemyHp": 0.35, "finishAfter": 7, "seconds": 22, "tail": 3.5 },
-  { "name": "g_imp_1", "round": 2, "kind": "imp", "weapon": "fireaxe", "armour": 5, "enemyHp": 0.35, "finishAfter": 7, "seconds": 22, "tail": 3.5 },
-  { "name": "g_wait_troll", "round": 16, "weapon": "katana", "armour": 6, "enemyHp": 0.6, "finishAfter": 14, "seconds": 32, "tail": 4 },
-  { "name": "g_wait_cyclops", "round": 12, "weapon": "axe", "armour": 6, "enemyHp": 0.6, "finishAfter": 12, "seconds": 30, "tail": 4 }
+ {
+  "name": "g_split_1",
+  "round": 7,
+  "weapon": "axe",
+  "armour": 6,
+  "enemyHp": 0.25,
+  "finishAfter": 6,
+  "seconds": 20,
+  "tail": 3.5,
+  "buttons": [
+   "rpunch",
+   "rpunch",
+   "rpunch",
+   "lpunch"
+  ]
+ },
+ {
+  "name": "g_split_2",
+  "round": 2,
+  "weapon": "fireaxe",
+  "armour": 5,
+  "enemyHp": 0.25,
+  "finishAfter": 6,
+  "seconds": 20,
+  "tail": 3.5,
+  "buttons": [
+   "rpunch",
+   "rpunch",
+   "rpunch",
+   "lpunch"
+  ]
+ },
+ {
+  "name": "g_cleft_1",
+  "round": 10,
+  "weapon": "katana",
+  "armour": 5,
+  "enemyHp": 0.25,
+  "finishAfter": 6,
+  "seconds": 20,
+  "tail": 3.5,
+  "buttons": [
+   "rpunch",
+   "rpunch",
+   "rpunch",
+   "lpunch"
+  ]
+ },
+ {
+  "name": "g_cleft_2",
+  "round": 11,
+  "weapon": "machete",
+  "armour": 4,
+  "enemyHp": 0.25,
+  "finishAfter": 6,
+  "seconds": 20,
+  "tail": 3.5,
+  "buttons": [
+   "rpunch",
+   "rpunch",
+   "rpunch",
+   "lpunch"
+  ]
+ },
+ {
+  "name": "g_crush_1",
+  "round": 1,
+  "weapon": "sledgehammer",
+  "armour": 5,
+  "enemyHp": 0.25,
+  "finishAfter": 6,
+  "seconds": 20,
+  "tail": 3.5,
+  "buttons": [
+   "rpunch",
+   "rpunch",
+   "rpunch",
+   "lpunch"
+  ]
+ },
+ {
+  "name": "g_crush_2",
+  "round": 17,
+  "weapon": "club",
+  "armour": 4,
+  "enemyHp": 0.25,
+  "finishAfter": 6,
+  "seconds": 20,
+  "tail": 3.5,
+  "buttons": [
+   "rpunch",
+   "rpunch",
+   "rpunch",
+   "lpunch"
+  ]
+ },
+ {
+  "name": "g_decap_1",
+  "round": 7,
+  "weapon": "katana",
+  "armour": 6,
+  "enemyHp": 0.25,
+  "finishAfter": 6,
+  "seconds": 20,
+  "tail": 3.5,
+  "buttons": [
+   "rpunch",
+   "rpunch",
+   "rpunch",
+   "lpunch"
+  ]
+ },
+ {
+  "name": "g_decap_2",
+  "round": 2,
+  "weapon": "katana",
+  "armour": 5,
+  "enemyHp": 0.25,
+  "finishAfter": 6,
+  "seconds": 20,
+  "tail": 3.5,
+  "buttons": [
+   "rpunch",
+   "rpunch",
+   "rpunch",
+   "lpunch"
+  ]
+ },
+ {
+  "name": "g_limb_1",
+  "round": 5,
+  "weapon": "machete",
+  "armour": 4,
+  "enemyHp": 0.3,
+  "finishAfter": 7,
+  "seconds": 20,
+  "tail": 3.5,
+  "buttons": [
+   "rpunch",
+   "rpunch",
+   "rpunch",
+   "lpunch"
+  ]
+ },
+ {
+  "name": "g_demon_1",
+  "round": 10,
+  "kind": "demon",
+  "weapon": "axe",
+  "armour": 6,
+  "enemyHp": 0.35,
+  "finishAfter": 7,
+  "seconds": 22,
+  "tail": 3.5,
+  "buttons": [
+   "rpunch",
+   "rpunch",
+   "rpunch",
+   "lpunch"
+  ]
+ },
+ {
+  "name": "g_demon_2",
+  "round": 7,
+  "kind": "demon",
+  "weapon": "katana",
+  "armour": 6,
+  "enemyHp": 0.35,
+  "finishAfter": 7,
+  "seconds": 22,
+  "tail": 3.5,
+  "buttons": [
+   "rpunch",
+   "rpunch",
+   "rpunch",
+   "lpunch"
+  ]
+ },
+ {
+  "name": "g_imp_1",
+  "round": 2,
+  "kind": "imp",
+  "weapon": "fireaxe",
+  "armour": 5,
+  "enemyHp": 0.35,
+  "finishAfter": 7,
+  "seconds": 22,
+  "tail": 3.5,
+  "buttons": [
+   "rpunch",
+   "rpunch",
+   "rpunch",
+   "lpunch"
+  ]
+ },
+ {
+  "name": "g_wait_troll",
+  "round": 16,
+  "weapon": "katana",
+  "armour": 6,
+  "enemyHp": 0.6,
+  "finishAfter": 14,
+  "seconds": 32,
+  "tail": 4,
+  "buttons": [
+   "rpunch",
+   "rpunch",
+   "rpunch",
+   "lpunch"
+  ]
+ },
+ {
+  "name": "g_wait_cyclops",
+  "round": 12,
+  "weapon": "axe",
+  "armour": 6,
+  "enemyHp": 0.6,
+  "finishAfter": 12,
+  "seconds": 30,
+  "tail": 4,
+  "buttons": [
+   "rpunch",
+   "rpunch",
+   "rpunch",
+   "lpunch"
+  ]
+ }
 ]
