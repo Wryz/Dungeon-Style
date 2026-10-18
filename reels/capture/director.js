@@ -195,6 +195,8 @@
     // The player can't lose: they take the hits (and the damage shows), but never go down for good.
     const floor = p.stats.maxHp * 0.5;
     if (p.alive && p.hp < floor) p.hp = floor;
+    // A take has a running time: past it, the next clean hit finishes them.
+    if (R.frame / FPS > (R.opts.finishAfter ?? 9)) for (const e of g.enemies) if (e.alive) e.hp = Math.min(e.hp, 1);
     R.frame++;
     g.frame(1 / FPS);
     const gl = g.renderer.getContext();
