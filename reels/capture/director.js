@@ -162,6 +162,14 @@
       play({ ...shot, distance: (shot.distance ?? 3) * (opts.cutPull ?? 1.45) });
     };
 
+    // ---- The player never goes down for good (a knockout or bleeding out ends the take):
+    // they get straight back up instead.
+    const onKO = g.onKO.bind(g);
+    g.onKO = (f) => {
+      if (f === g.player) g.revivePlayer();
+      else onKO(f);
+    };
+
     // ---- The round.
     g.startRound(opts.round ?? 1);
     for (const e of g.enemies) {
