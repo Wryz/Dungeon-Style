@@ -9,7 +9,7 @@ const pos = (v: number) => (Number.isFinite(v) ? Math.max(0.0001, v) : 0.0001);
 
 /** Procedural impact sounds (no assets): noise bursts + pitched thumps through a compressor. */
 export class Sfx {
-  private ctx: AudioContext | null = null;
+  private ctx: BaseAudioContext | null = null;
   private master!: GainNode;
   private noise!: AudioBuffer;
   volume = 0.7;
@@ -17,12 +17,19 @@ export class Sfx {
   /** Must be called from a user gesture. */
   unlock() {
     if (this.ctx) {
-      if (this.ctx.state === 'suspended') void this.ctx.resume();
+      if (this.ctx.state === 'suspended' && this.ctx instanceof AudioContext) void this.ctx.resume();
       return;
     }
     const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     if (!Ctx) return;
-    const ctx = new Ctx();
+    this.attach(new Ctx());
+  }
+
+  /**
+   * Play into `ctx`: the speakers, or an OfflineAudioContext (the reel capture renders a
+   * logged fight's sounds offline, in sync with its frame-by-frame video).
+   */
+  attach(ctx: BaseAudioContext) {
     this.ctx = ctx;
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -14;

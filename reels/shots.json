@@ -1,0 +1,17 @@
+[
+  { "name": "a_ring", "round": 1, "armour": 1, "enemyHp": 0.5, "seconds": 22, "tail": 3 },
+  { "name": "a_street", "round": 2, "weapon": "bat", "armour": 2, "enemyHp": 0.45, "seconds": 22, "tail": 3 },
+  { "name": "a_grocery", "round": 3, "weapon": "pan", "armour": 2, "enemyHp": 0.45, "seconds": 22, "tail": 3 },
+  { "name": "a_warehouse", "round": 5, "weapon": "pipe", "armour": 3, "enemyHp": 0.45, "seconds": 22, "tail": 3 },
+  { "name": "a_bar", "round": 6, "weapon": "bottle", "armour": 3, "enemyHp": 0.45, "seconds": 22, "tail": 3 },
+  { "name": "a_dojo", "round": 7, "weapon": "katana", "armour": 4, "enemyHp": 0.45, "seconds": 22, "tail": 3 },
+  { "name": "a_rooftop", "round": 9, "weapon": "fireaxe", "armour": 5, "enemyHp": 0.45, "seconds": 22, "tail": 3 },
+  { "name": "w_chair", "round": 10, "weapon": "chair", "armour": 3, "enemyHp": 0.4, "seconds": 22, "tail": 3 },
+  { "name": "w_machete", "round": 11, "weapon": "machete", "armour": 4, "enemyHp": 0.4, "seconds": 22, "tail": 3 },
+  { "name": "w_sledge", "round": 13, "weapon": "sledgehammer", "armour": 5, "enemyHp": 0.4, "seconds": 22, "tail": 3 },
+  { "name": "w_axe", "round": 15, "weapon": "axe", "armour": 6, "enemyHp": 0.4, "seconds": 22, "tail": 3 },
+  { "name": "b_champion", "round": 4, "weapon": "katana", "armour": 5, "enemyHp": 0.55, "seconds": 26, "tail": 3.5 },
+  { "name": "b_minotaur", "round": 8, "weapon": "fireaxe", "armour": 6, "enemyHp": 0.55, "seconds": 26, "tail": 3.5 },
+  { "name": "b_cyclops", "round": 12, "weapon": "sledgehammer", "armour": 6, "enemyHp": 0.55, "seconds": 26, "tail": 3.5 },
+  { "name": "b_troll", "round": 16, "weapon": "axe", "armour": 6, "enemyHp": 0.55, "seconds": 26, "tail": 3.5 }
+]
