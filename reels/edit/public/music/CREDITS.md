@@ -7,3 +7,6 @@
 | `offardifferentnature_ai_contact_CC0.mp3` | "Ai Contact" by Of Far Different Nature — https://opengameart.org/content/ai-contact | CC0 (no credit required) |
 
 Beat times for each track are in `../../src/beats.json` (measured with librosa).
+| `ghost_trip.mp3` | "Ghost Trip" by Tsorthan Grove — https://opengameart.org/content/ghost-trip | CC BY 4.0 — credit: `Music: "Ghost Trip" by Tsorthan Grove (opengameart.org/content/ghost-trip), CC BY 4.0` |
+| `rager_dead_space_dubstep.mp3` | "Rager - Dead Space (Dubstep)" by TheMightyRager — https://opengameart.org/content/rager-dead-space-dubstep | CC BY 4.0 — credit: `Music: "Rager - Dead Space (Dubstep)" by TheMightyRager (opengameart.org/content/rager-dead-space-dubstep), CC BY 4.0` |
+| `nene_boss_battle_10_metal.mp3` | "Boss Battle 10 [Metal]" by nene — https://opengameart.org/content/boss-battle-10-metal | CC0 (no credit required) |
